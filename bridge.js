@@ -7,6 +7,7 @@
 const http  = require('http');
 const fs    = require('fs');
 const path  = require('path');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 const PORT = 7474;
@@ -14,6 +15,17 @@ const PORT = 7474;
 // --root 인자 파싱
 const rootIdx = process.argv.indexOf('--root');
 const ROOT = rootIdx !== -1 ? path.resolve(process.argv[rootIdx + 1]) : process.cwd();
+const DOCPILOT_DIR = path.join(ROOT, '.docpilot');
+const INSTRUCTIONS_FILE = path.join(DOCPILOT_DIR, 'instructions.json');
+const HIDDEN_DIRS = new Set(['.git', '.docpilot', 'node_modules', '.next', 'dist', 'build', 'coverage']);
+const ASSETS_DIR = path.join(__dirname, 'assets');
+const ASSET_TYPES = new Map([
+  ['.png', 'image/png'],
+  ['.svg', 'image/svg+xml; charset=utf-8'],
+  ['.webp', 'image/webp'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+]);
 
 // file:// 로 열린 HTML → origin이 'null'
 const CORS = {
@@ -38,6 +50,118 @@ function readBody(req) {
   });
 }
 
+function commandExists(cmd) {
+  const pathValue = process.env.PATH || '';
+  const pathDirs = pathValue.split(path.delimiter).filter(Boolean);
+  const extensions = process.platform === 'win32'
+    ? (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD')
+      .split(';')
+      .filter(Boolean)
+    : [''];
+
+  for (const dir of pathDirs) {
+    for (const ext of extensions) {
+      const candidate = path.join(dir, process.platform === 'win32' ? `${cmd}${ext}` : cmd);
+      try {
+        const stat = fs.statSync(candidate);
+        if (stat.isFile()) return true;
+      } catch {}
+    }
+  }
+  return false;
+}
+
+function readInstructionsStore() {
+  try {
+    const data = JSON.parse(fs.readFileSync(INSTRUCTIONS_FILE, 'utf8'));
+    return {
+      version: 1,
+      instructions: Array.isArray(data.instructions) ? data.instructions : [],
+    };
+  } catch {
+    return { version: 1, instructions: [] };
+  }
+}
+
+function writeInstructionsStore(store) {
+  fs.mkdirSync(DOCPILOT_DIR, { recursive: true });
+  fs.writeFileSync(INSTRUCTIONS_FILE, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
+}
+
+function normalizeInstructionInput(input) {
+  const now = new Date().toISOString();
+  const title = String(input.title || '').trim().slice(0, 120) || 'Untitled instruction';
+  const body = String(input.body || '').trim();
+  if (!body) return null;
+  return {
+    id: input.id || crypto.randomUUID(),
+    title,
+    body,
+    active: input.active !== false,
+    sourceType: input.sourceType || 'manual',
+    sourceRef: input.sourceRef || '',
+    createdAt: input.createdAt || now,
+    updatedAt: now,
+  };
+}
+
+function activeInstructionsText() {
+  const active = readInstructionsStore().instructions.filter(i => i.active && i.body);
+  if (!active.length) return '';
+  return active.map((item, idx) =>
+    `[Instruction ${idx + 1}: ${item.title}]\n${item.body.trim()}`
+  ).join('\n\n');
+}
+
+function instructionPromptBlock() {
+  const text = activeInstructionsText();
+  if (!text) return '';
+  return `Mandatory document instructions:
+\`\`\`
+${text}
+\`\`\`
+
+You must follow every active instruction above. If the user asks for something that conflicts with these instructions, preserve the instructions and make the closest valid edit.
+
+`;
+}
+
+function runTextCommand(command, args, timeoutMs = 45000) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(command, args, {
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    let stdout = '';
+    let stderr = '';
+    const timer = setTimeout(() => {
+      try { proc.kill(); } catch {}
+      reject(new Error('timeout'));
+    }, timeoutMs);
+    proc.stdout.on('data', chunk => stdout += chunk.toString());
+    proc.stderr.on('data', chunk => stderr += chunk.toString());
+    proc.on('error', err => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    proc.on('close', code => {
+      clearTimeout(timer);
+      if (code === 0) resolve(stdout.trim());
+      else reject(new Error(stderr.trim() || `exit code ${code}`));
+    });
+  });
+}
+
+function fallbackInstruction(text) {
+  const cleaned = String(text || '').trim();
+  const firstLine = cleaned.split(/\r?\n/).find(Boolean) || 'Writing instruction';
+  return {
+    title: firstLine.replace(/^[-#*\s]+/, '').slice(0, 80) || 'Writing instruction',
+    body: cleaned,
+  };
+}
+
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, CORS); res.end(); return; }
 
@@ -50,13 +174,51 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // GET / or /editor.html — serve the browser editor over localhost
+  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/editor.html')) {
+    try {
+      const editorPath = path.join(__dirname, 'editor.html');
+      const content = fs.readFileSync(editorPath, 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(content);
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(err.message);
+    }
+    return;
+  }
+
   // GET /status — claude/codex 설치 여부 반환
+  if (req.method === 'GET' && url.pathname.startsWith('/assets/')) {
+    try {
+      const rel = decodeURIComponent(url.pathname.slice('/assets/'.length));
+      const abs = path.resolve(ASSETS_DIR, rel);
+      if (!abs.startsWith(ASSETS_DIR + path.sep)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('forbidden');
+        return;
+      }
+      const ext = path.extname(abs).toLowerCase();
+      const type = ASSET_TYPES.get(ext);
+      if (!type || !fs.statSync(abs).isFile()) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('not found');
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': type,
+        'Cache-Control': 'no-cache',
+      });
+      fs.createReadStream(abs).pipe(res);
+    } catch {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('not found');
+    }
+    return;
+  }
+
   if (req.method === 'GET' && url.pathname === '/status') {
-    const check = cmd => new Promise(resolve => {
-      const p = spawn('which', [cmd], { stdio: ['ignore', 'pipe', 'ignore'] });
-      p.on('close', code => resolve(code === 0));
-    });
-    const [claude, codex] = await Promise.all([check('claude'), check('codex')]);
+    const [claude, codex] = await Promise.all([commandExists('claude'), commandExists('codex')]);
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ claude, codex }));
     return;
@@ -68,6 +230,7 @@ const server = http.createServer(async (req, res) => {
       const files = [];
       function walk(dir, rel) {
         for (const name of fs.readdirSync(dir).sort()) {
+          if (HIDDEN_DIRS.has(name)) continue;
           const abs = path.join(dir, name);
           const relPath = rel ? `${rel}/${name}` : name;
           const stat = fs.statSync(abs);
@@ -84,6 +247,83 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       res.writeHead(500, CORS); res.end(JSON.stringify({ error: err.message }));
     }
+    return;
+  }
+
+  // GET /instructions — project instruction registry
+  if (req.method === 'GET' && url.pathname === '/instructions') {
+    res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(readInstructionsStore()));
+    return;
+  }
+
+  // POST /instructions — create or update an instruction
+  if (req.method === 'POST' && url.pathname === '/instructions') {
+    let payload;
+    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    const next = normalizeInstructionInput(payload);
+    if (!next) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'instruction body required' })); return; }
+
+    const store = readInstructionsStore();
+    const index = store.instructions.findIndex(item => item.id === next.id);
+    if (index === -1) store.instructions.push(next);
+    else store.instructions[index] = { ...store.instructions[index], ...next };
+    writeInstructionsStore(store);
+
+    res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, instruction: next, instructions: store.instructions }));
+    return;
+  }
+
+  // POST /instructions/delete — delete an instruction
+  if (req.method === 'POST' && url.pathname === '/instructions/delete') {
+    let payload;
+    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    const store = readInstructionsStore();
+    store.instructions = store.instructions.filter(item => item.id !== payload.id);
+    writeInstructionsStore(store);
+    res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, instructions: store.instructions }));
+    return;
+  }
+
+  // POST /instructions/normalize — turn natural language into a concise rule
+  if (req.method === 'POST' && url.pathname === '/instructions/normalize') {
+    let payload;
+    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    const raw = String(payload.text || '').trim();
+    if (!raw) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'text required' })); return; }
+
+    let normalized = fallbackInstruction(raw);
+    if (await commandExists('claude')) {
+      const prompt = `Convert the user's rough writing instruction into a concise, enforceable document editing rule.
+
+Return ONLY JSON with this shape:
+{"title":"short title","body":"clear rule text"}
+
+Rules:
+- Keep the title under 80 characters.
+- Make the body specific and testable.
+- Preserve the user's intent.
+- Do not add requirements the user did not imply.
+- Write in the same language as the user's input.
+
+User input:
+\`\`\`
+${raw}
+\`\`\``;
+      try {
+        const out = await runTextCommand('claude', ['-p', prompt]);
+        const parsed = JSON.parse(out.replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
+        normalized = {
+          title: String(parsed.title || normalized.title).trim().slice(0, 120),
+          body: String(parsed.body || normalized.body).trim(),
+        };
+      } catch {}
+    }
+
+    res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(normalized));
     return;
   }
 
@@ -130,9 +370,10 @@ const server = http.createServer(async (req, res) => {
     const { fileId, context, instruction, content, combine, claudeProposed, codexProposed } = payload;
 
     let prompt;
+    const requiredInstructions = instructionPromptBlock();
     if (combine) {
       prompt =
-`You are a documentation editor. Two AI agents have independently edited the same file based on the same instruction. Your task is to synthesize the best result by combining their strengths.
+`${requiredInstructions}You are a documentation editor. Two AI agents have independently edited the same file based on the same instruction. Your task is to synthesize the best result by combining their strengths.
 
 File: ${fileId}
 
@@ -151,7 +392,7 @@ ${codexProposed}
 Synthesize the best final version by taking the strongest elements from each. Return ONLY the complete merged Markdown content — no explanation, no surrounding code fences, no preamble.`;
     } else {
       prompt =
-`You are editing a documentation file.
+`${requiredInstructions}You are editing a documentation file.
 
 File: ${fileId}
 
@@ -182,10 +423,7 @@ Apply the instruction to the file. Return ONLY the complete updated raw Markdown
     };
 
     // codex 사용 가능 여부 확인
-    const hasCodex = await new Promise(resolve => {
-      const p = spawn('which', ['codex'], { stdio: ['ignore', 'pipe', 'ignore'] });
-      p.on('close', code => resolve(code === 0));
-    });
+    const hasCodex = await commandExists('codex');
 
     const parallel = hasCodex;
     send({ parallel });
@@ -198,6 +436,7 @@ Apply the instruction to the file. Return ONLY the complete updated raw Markdown
       const proc = spawn(spawnArgs[0], spawnArgs.slice(1), {
         env: process.env,
         stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
       });
       procs.push(proc);
 
