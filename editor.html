@@ -1190,7 +1190,7 @@ async function loadInstructionFromFile(){
 /* ── CHIPS ── */
 function addChip(sel,meta={}){
   if(!S.file)return;
-  const chip={id:'c'+(S.cc++),fileId:S.file,sel,source:meta.source||'block',active:true};
+  const chip={id:'c'+(S.cc++),fileId:S.file,sel,...meta,source:meta.source||'block',active:true};
   S.chips.push(chip);
   renderChips();
   setTimeout(()=>document.getElementById('chip-ta')?.focus(),30);
@@ -1310,15 +1310,50 @@ function clearChipFocus(){
   });
 }
 
-function textNodeAt(nodes,abs){
+function textNodesUnder(root){
+  const walker=document.createTreeWalker(root,4);
+  const nodes=[];
+  let node;
+  while((node=walker.nextNode()))nodes.push(node);
+  return nodes;
+}
+
+function textOffsetWithin(root,node,offset){
+  const nodes=textNodesUnder(root);
+  let pos=0;
+  for(const n of nodes){
+    if(n===node)return pos+offset;
+    pos+=n.textContent.length;
+  }
+  return null;
+}
+
+function textPositionAt(nodes,abs,isEnd=false){
   let pos=0;
   for(const n of nodes){
     const next=pos+n.textContent.length;
-    if(abs<=next)return{node:n,offset:Math.max(0,Math.min(n.textContent.length,abs-pos))};
+    if(abs<next||(isEnd&&abs===next)){
+      return{node:n,offset:Math.max(0,Math.min(n.textContent.length,abs-pos))};
+    }
     pos=next;
   }
   const last=nodes[nodes.length-1];
   return last?{node:last,offset:last.textContent.length}:null;
+}
+
+function chipBlockIndex(el){
+  return [...document.querySelectorAll(CLICKABLE_BLOCK_SELECTOR)].indexOf(el);
+}
+
+function selectionMeta(range){
+  const startBlock=previewBlockForNode(range.startContainer);
+  const endBlock=previewBlockForNode(range.endContainer);
+  if(!startBlock||startBlock!==endBlock)return null;
+  const startOffset=textOffsetWithin(startBlock,range.startContainer,range.startOffset);
+  const endOffset=textOffsetWithin(startBlock,range.endContainer,range.endOffset);
+  const blockIndex=chipBlockIndex(startBlock);
+  if(blockIndex<0||startOffset==null||endOffset==null||endOffset<=startOffset)return null;
+  return{blockIndex,startOffset,endOffset};
 }
 
 function normalizedMap(txt){
@@ -1348,12 +1383,29 @@ function highlightTextWithin(root,query){
   if(idx<0)return null;
   const start=mapped.map[idx];
   const end=mapped.map[idx+target.length-1]+1;
-  const startPos=textNodeAt(nodes,start);
-  const endPos=textNodeAt(nodes,end);
+  const startPos=textPositionAt(nodes,start,false);
+  const endPos=textPositionAt(nodes,end,true);
   if(!startPos||!endPos)return null;
   const range=document.createRange();
   range.setStart(startPos.node,startPos.offset);
   range.setEnd(endPos.node,endPos.offset);
+  const span=document.createElement('span');
+  span.className='chip-focus-fragment';
+  span.appendChild(range.extractContents());
+  range.insertNode(span);
+  return span;
+}
+
+function highlightRangeWithin(root,startOffset,endOffset){
+  const nodes=textNodesUnder(root);
+  if(!nodes.length||endOffset<=startOffset)return null;
+  const startPos=textPositionAt(nodes,startOffset,false);
+  const endPos=textPositionAt(nodes,endOffset,true);
+  if(!startPos||!endPos)return null;
+  const range=document.createRange();
+  range.setStart(startPos.node,startPos.offset);
+  range.setEnd(endPos.node,endPos.offset);
+  if(range.collapsed)return null;
   const span=document.createElement('span');
   span.className='chip-focus-fragment';
   span.appendChild(range.extractContents());
@@ -1371,10 +1423,17 @@ function showChipFocus(id){
   if(!target)return;
   let first=null;
   if(chip.source==='selection'){
-    for(const el of preview.querySelectorAll(CLICKABLE_BLOCK_SELECTOR)){
-      if(!normChipText(el.textContent).includes(target))continue;
-      first=highlightTextWithin(el,chip.sel);
-      if(first)break;
+    const blocks=[...preview.querySelectorAll(CLICKABLE_BLOCK_SELECTOR)];
+    const block=Number.isInteger(chip.blockIndex)?blocks[chip.blockIndex]:null;
+    if(block){
+      first=highlightRangeWithin(block,chip.startOffset,chip.endOffset);
+    }
+    if(!first){
+      for(const el of blocks){
+        if(!normChipText(el.textContent).includes(target))continue;
+        first=highlightTextWithin(el,chip.sel);
+        if(first)break;
+      }
     }
   }
   if(!first){
@@ -1398,10 +1457,12 @@ document.addEventListener('mouseup',e=>{
   const txt=sel.toString().trim();
   if(!txt||txt.length<2){hadSel=false;return;}
   if(!document.getElementById('preview').contains(sel.anchorNode)){hadSel=false;return;}
+  const range=sel.rangeCount?sel.getRangeAt(0):null;
+  const meta=range?selectionMeta(range):null;
   hadSel=true;
   markPreviewSelection(previewBlockForNode(sel.anchorNode));
   window.getSelection().removeAllRanges();
-  addChip(txt,{source:'selection'});
+  addChip(txt,{source:'selection',...(meta||{})});
 });
 
 document.addEventListener('click',e=>{
