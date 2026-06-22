@@ -1,4 +1,4 @@
-<title>eversafe_cordova · Docs Editor</title>
+<title>docpilot</title>
 <style>
 :root{
   --g:#0E1118;--s:#161C28;--s2:#1E2535;--s3:#262F40;
@@ -14,7 +14,7 @@
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
-  font-family:var(--ui);font-size:14px;-webkit-font-smoothing:antialiased}
+  font-family:var(--ui);font-size:15px;-webkit-font-smoothing:antialiased}
 #app{display:flex;flex-direction:column;height:100vh}
 
 /* HEADER */
@@ -35,13 +35,13 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
 #blbl{font-size:11px;color:var(--t3)}
 
 /* BUTTONS */
-.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;
-  border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:none;
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;
+  border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;border:none;
   font-family:var(--ui);transition:background .12s,color .12s}
 .btn-ghost{background:transparent;color:var(--t2)}.btn-ghost:hover{background:var(--s3);color:var(--t)}
 .btn-ac{background:var(--ac-d);color:var(--ac);border:1px solid rgba(124,140,248,.22)}.btn-ac:hover{background:var(--ac-g)}
 .mtog{display:flex;background:var(--s2);border-radius:6px;padding:2px}
-.mbtn{padding:4px 11px;border-radius:4px;font-size:12px;font-weight:500;cursor:pointer;
+.mbtn{padding:4px 13px;border-radius:4px;font-size:13px;font-weight:500;cursor:pointer;
   border:none;background:transparent;color:var(--t3);font-family:var(--ui);transition:background .1s,color .1s}
 .mbtn.active{background:var(--s3);color:var(--t)}
 .badge{display:inline-flex;align-items:center;justify-content:center;
@@ -83,7 +83,7 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
 
 /* PREVIEW */
 #prev-wrap{flex:1;overflow-y:auto;display:none}
-#preview{padding:32px 48px;max-width:820px;margin:0 auto;line-height:1.75;cursor:text}
+#preview{padding:20px 28px;max-width:820px;margin:0 auto;line-height:1.75;cursor:text}
 #preview h1{font-size:21px;font-weight:700;color:var(--t);margin-bottom:8px;letter-spacing:-.02em;
   border-bottom:1px solid var(--bd);padding-bottom:11px}
 #preview h2{font-size:16px;font-weight:600;color:var(--t);margin:26px 0 9px}
@@ -199,7 +199,7 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
 
 <div id="app">
   <header id="hdr">
-    <div class="logo"><div class="pip"></div>eversafe_cordova</div>
+    <div class="logo"><div class="pip"></div>docpilot</div>
     <div class="vsep"></div>
     <div id="crumb"><span style="color:var(--t3)">파일을 선택하세요</span></div>
     <div class="hright">
@@ -264,272 +264,9 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
 </div>
 
 <script>
-/* ── FILE CONTENT ── */
-const CONTENT={
-'README.md':`# Eversafe Cordova Plugin — 문서 구조
-
-이 \`docs/\` 디렉토리는 Cordova 플러그인의 요구사항·명세·테스트 케이스·ADR을 담는다.
-
-## 불변성 계층
-
-| 레벨 | 대상 | 의미 |
-|---|---|---|
-| L1 | plugin id, JS namespace, API 함수명 | 앱 개발자 인터페이스 — 절대 변경 불가 |
-| L1.5 | 인자 순서, 콜백 의미, eversafe.json 스키마 | 사용자 계약 — 변경 시 공지 필요 |
-| L2 | 내부 동작 불변량 | 구현이 지켜야 할 계약 |
-
-## 디렉토리 구성
-
-- \`requirements/\` — 제품 요구사항
-- \`specification/\` — 기술 명세
-- \`testcases/\` — 테스트 케이스
-- \`adr/\` — 아키텍처 결정 기록
-- \`issues/\` — 미해결 이슈
-- \`references/\` — 구현 참고 자료`,
-
-'requirements/overview.md':`# 개요 — Eversafe Cordova 플러그인의 역할
-
-## 문제
-
-Eversafe 네이티브 SDK는 모바일 앱의 런타임 보안을 책임진다. 위변조·루팅/탈옥·디버거·에뮬레이터 같은 위협을 탐지하고, 서버 요청의 정당성을 토큰으로 검증한다.
-
-Cordova 앱은 JavaScript 코드만으로 Android/iOS 네이티브 SDK를 직접 사용할 수 없다. JS 공개 API, Android 브릿지, iOS 브릿지, 플랫폼별 SDK 패키징을 하나의 사용 흐름으로 연결하는 플러그인이 필요하다.
-
-## 이 플러그인이 하는 일
-
-Eversafe Cordova 플러그인은 **Cordova 앱이 Android/iOS Eversafe 네이티브 SDK를 JavaScript 코드로 사용할 수 있게** 한다. \`cordova.plugins.EversafePlugin\` API 하나로 양 플랫폼의 Eversafe 기능을 동일하게 쓴다.
-
-핵심 가치:
-
-1. **단일 JS 코드로 양 플랫폼 보안 적용** — 플랫폼 분기 없이 \`initialize\` · \`setSubscriber\` · \`getToken\` 호출
-2. **매뉴얼 재활용** — Partners 매뉴얼의 Android/iOS 예시와 같은 단계
-3. **네이티브 동작 보존** — 플러그인은 JS ↔ native 경계를 잇는 역할만 함
-
-## 제공 / 비제공
-
-| 구분 | 항목 |
-|---|---|
-| 제공 | \`initialize\`, \`getToken\`, \`setSubscriber\` |
-| 현재 비제공 | DCDO(\`encrypt\`/\`decrypt\`), DSDO(보안 저장소) |`,
-
-'requirements/features.md':`# 기능 — 사용자에게 제공하는 것
-
-> 제품 관점의 기능 목록. 각 기능이 "무엇을 하는가"를 기술한다.
-
-## 1. 위협 탐지 (Dynamic Environment Protection)
-
-앱이 위험한 런타임 환경에서 실행되는지 탐지하고 알린다. 탐지 항목:
-
-- 앱 위변조
-- OS 위변조 (루팅 / 탈옥)
-- 디버거 연결, ADB / USB 디버깅
-- 프록시 설정
-- 에뮬레이터 / 시뮬레이터 환경
-
-탐지 시 앱에 위협 코드와 사용자 안내 메시지를 콜백(\`onEversafeThreatFoundCallback\`)으로 전달한다.
-
-## 2. 서버 요청 검증 (Dynamic Server Request Validation)
-
-서버 요청이 정당한 앱 인스턴스에서 왔는지 토큰으로 검증한다. Android는 Google Play Integrity 연동을 선택적으로 켤 수 있다(\`additionalInfo.playIntegrityApiCloudProjectNumber\`).
-
-## 3. 운영 모드 자동 전환
-
-| 모드 | 서버 통신 | 의미 |
-|---|---|---|
-| 다이나믹 | 성공 | 완전한 서버 검증 세션 |
-| 다이나믹 캐시 | 캐시 사용 | 이전 세션 캐시 기반 |
-| 기본(BASIC) | 불필요 | lite key 기반 |
-
-## 4. 현재 미제공 기능
-
-| 기능 | 상태 |
-|---|---|
-| DCDO (\`encrypt\`/\`decrypt\`) | 미구현 |
-| DSDO (보안 저장소) | 미노출 |
-| iOS \`encryptToken\` 매핑 | 미완성 |`,
-
-'specification/js-api.md':`# 공개 JS API 계약 — eversafe_cordova
-
-> **L1.5 + L2.** Cordova 앱 개발자가 호출하는 공개 JavaScript API의 이름·인자·콜백 의미가 고정된다.
-
-## 1. 공개 진입점 (L1)
-
-\`\`\`javascript
-cordova.plugins.EversafePlugin
-\`\`\`
-
-plugin id: \`eversafe-cordova-plugin\`
-
-## 2. initialize (L1.5)
-
-\`\`\`javascript
-cordova.plugins.EversafePlugin.initialize(
-  additionalInfo,
-  successCallback,
-  errorCallback
-);
-\`\`\`
-
-| 인자 | 필수 | 설명 |
-|---|---|---|
-| \`additionalInfo\` | 아니오 | 탐지 정책·timeout 등 native SDK에 전달할 옵션 object |
-| \`successCallback\` | 아니오 | 초기화 요청 성공 callback |
-| \`errorCallback\` | 아니오 | 초기화 실패 callback. 에러 메시지 문자열 전달 |
-
-## 3. setSubscriber (L1.5 + L2)
-
-\`\`\`javascript
-function onThreat(code, localizedDescription) { /* 전역 함수 */ }
-function onError(errorCode, errorMessage)      { /* 전역 함수 */ }
-
-cordova.plugins.EversafePlugin.setSubscriber(
-  onThreat, onError, successCallback, errorCallback
-);
-\`\`\`
-
-**전역 스코프 필수 (L2 계약):** callback 함수는 반드시 \`window\` 스코프에서 접근 가능해야 한다.
-
-\`\`\`javascript
-// 올바른 예
-window.onThreat = function(code, desc) { /* ... */ };
-window.onError  = function(code, msg)  { /* ... */ };
-
-// 잘못된 예
-const onThreat = (code, desc) => { /* ... */ };
-\`\`\`
-
-## 4. getToken (L1.5)
-
-\`\`\`javascript
-cordova.plugins.EversafePlugin.getToken(
-  timeout,
-  function successCallback(tokenBase64) { /* 즉시 서버로 전달, 저장 금지 */ },
-  function errorCallback(message) {}
-);
-\`\`\`
-
-토큰은 단기 수명이므로 저장 없이 즉시 App Server로 전달해야 한다.
-
-## 5. 미구현 — encrypt / decrypt
-
-\`encrypt\` 및 \`decrypt\`는 현재 **미완성** 상태다.`,
-
-'specification/plugin-contract.md':`# Plugin 설정 계약 — eversafe_cordova
-
-## 1. plugin.xml 핵심 선언 (L1)
-
-| 항목 | 고정 값 |
-|---|---|
-| plugin id | \`eversafe-cordova-plugin\` |
-| JS clobber target | \`cordova.plugins.EversafePlugin\` |
-| JS module source | \`www/js/EversafePlugin.js\` |
-| 지원 플랫폼 | Android, iOS |
-
-## 2. eversafe.json
-
-\`\`\`json
-{
-  "appId": { "android": "ANDROID_APP_ID", "ios": "IOS_APP_ID" },
-  "baseUrl": "https://your-server/eversafe"
-}
-\`\`\`
-
-> **보안 메모:** 공개 repository에 실제 운영값을 고정하지 않는다.`,
-
-'adr/ADR-CORDOVA-0001-callback-by-funcname.md':`# ADR-CORDOVA-0001: 콜백을 함수 참조 대신 함수명 문자열로 전달
-
-## 상태
-Accepted
-
-## 맥락
-Cordova JS-to-Native 브릿지는 JSON-serializable 값만 인자로 받는다. 함수 참조는 직렬화할 수 없다.
-
-## 결정
-callback 함수의 \`.name\`을 문자열로 추출해 native에 전달한다. Native는 \`window[name]()\`로 호출한다.
-
-## 결과
-- 앱 개발자는 callback 함수를 반드시 \`window\` 스코프에 노출해야 한다
-- 번들러 환경에서 이름 맹글링 주의 필요`,
-
-'issues/ISS-CORDOVA-001-encrypt-decrypt-incomplete.md':`# ISS-CORDOVA-001: encrypt/decrypt API 미완성
-
-## 상태
-Open
-
-## 설명
-\`encrypt\` 및 \`decrypt\` 기능은 네이티브 SDK에 존재하지만 Cordova 플러그인 JS API로 아직 노출되지 않았다.
-
-## 해결 조건
-1. JS API (\`encrypt\`, \`decrypt\`) 정의
-2. Android 브릿지 구현
-3. iOS 브릿지 구현`,
-
-'issues/ISS-CORDOVA-002-ios-encrypt-token-mapping.md':`# ISS-CORDOVA-002: iOS encryptToken 매핑 미완성
-
-## 상태
-Open
-
-## 설명
-\`additionalInfo.encryptToken\` 옵션이 Android에서는 구현되어 있으나 iOS SDK에는 매핑이 없다.`,
-
-'testcases/TC-SDK-001-cordova-initialize-token.md':`# TC-SDK-001: initialize → getToken 기본 흐름
-
-## 실행 절차
-1. \`cordova.plugins.EversafePlugin.initialize(null, successCb, errorCb)\` 호출
-2. \`successCb\` 수신 확인
-3. \`cordova.plugins.EversafePlugin.getToken(5000, tokenCb, errorCb)\` 호출
-4. \`tokenCb(tokenBase64)\` 수신 확인
-
-## 판정 기준
-
-| 항목 | 기대값 |
-|---|---|
-| initialize successCb | 5초 이내 |
-| tokenBase64 형식 | non-empty Base64 문자열 |`,
-
-'references/writing-guide.md':`# 문서 작성 가이드
-
-## 불변성 계층 표기
-- **L1**: 앱 개발자에게 노출된 공개 이름 — 변경 불가
-- **L1.5**: 사용자 계약 — 변경 시 공지 필요
-- **L2**: 내부 동작 불변량`
-};
-
-/* ── TREE ── */
-const TREE=[
-  {t:'file',id:'README.md',name:'README.md'},
-  {t:'folder',name:'requirements',open:true,children:[
-    {t:'file',id:'requirements/overview.md',name:'overview.md'},
-    {t:'file',id:'requirements/features.md',name:'features.md'},
-    {t:'file',id:'requirements/use-cases.md',name:'use-cases.md'},
-    {t:'file',id:'requirements/test-checklist.md',name:'test-checklist.md'},
-  ]},
-  {t:'folder',name:'specification',open:false,children:[
-    {t:'file',id:'specification/js-api.md',name:'js-api.md'},
-    {t:'file',id:'specification/plugin-contract.md',name:'plugin-contract.md'},
-    {t:'file',id:'specification/constants.md',name:'constants.md'},
-    {t:'file',id:'specification/native-sdk.md',name:'native-sdk.md'},
-    {t:'file',id:'specification/app-server-contract.md',name:'app-server-contract.md'},
-  ]},
-  {t:'folder',name:'testcases',open:false,children:[
-    {t:'file',id:'testcases/TC-SDK-001-cordova-initialize-token.md',name:'TC-SDK-001.md'},
-    {t:'file',id:'testcases/TC-SDK-002-cordova-subscriber-threat.md',name:'TC-SDK-002.md'},
-  ]},
-  {t:'folder',name:'adr',open:false,children:[
-    {t:'file',id:'adr/ADR-CORDOVA-0001-callback-by-funcname.md',name:'ADR-CORDOVA-0001.md'},
-  ]},
-  {t:'folder',name:'issues',open:false,children:[
-    {t:'file',id:'issues/ISS-CORDOVA-001-encrypt-decrypt-incomplete.md',name:'ISS-CORDOVA-001.md'},
-    {t:'file',id:'issues/ISS-CORDOVA-002-ios-encrypt-token-mapping.md',name:'ISS-CORDOVA-002.md'},
-  ]},
-  {t:'folder',name:'references',open:false,children:[
-    {t:'file',id:'references/writing-guide.md',name:'writing-guide.md'},
-    {t:'file',id:'references/cordova-plugin-basics.md',name:'cordova-plugin-basics.md'},
-  ]},
-];
 
 /* ── STATE ── */
-const S={file:null,mode:'preview',content:Object.assign({},CONTENT),
+const S={file:null,mode:'preview',content:{},
   jobs:[],pending:null,bridge:false,jc:0};
 
 /* ── IFRAME CSS ── */
@@ -618,7 +355,7 @@ function mkF(n){
 }
 
 /* ── FILE ── */
-function openFile(id){
+async function openFile(id){
   S.file=id;
   const pts=id.split('/');
   document.getElementById('crumb').innerHTML=pts.map((p,i)=>
@@ -626,8 +363,18 @@ function openFile(id){
     :`<span style="color:var(--t)">${p}</span>`).join('');
   document.getElementById('etbar').style.display='flex';
   document.getElementById('tpath').textContent=id;
-  if(!S.content[id])S.content[id]=`# ${id}\n\n내용이 없습니다.`;
-  renderEditor();buildTree(TREE,document.getElementById('troot'));
+  if(!S.content[id]){
+    if(S.bridge){
+      try{
+        const r=await fetch(`${BRIDGE}/file?id=${encodeURIComponent(id)}`);
+        if(r.ok){const d=await r.json();S.content[id]=d.content;}
+        else S.content[id]=`# ${id}\n\n(파일을 불러올 수 없습니다)`;
+      }catch{S.content[id]=`# ${id}\n\n(bridge 연결 오류)`;}
+    } else {
+      S.content[id]=`# ${id}\n\n(bridge가 꺼져 있습니다)`;
+    }
+  }
+  renderEditor();refreshTree();
 }
 
 /* ── EDITOR ── */
@@ -654,7 +401,13 @@ function setMode(m){
   renderEditor();hideBubble();
 }
 function onEdit(){if(S.file)S.content[S.file]=document.getElementById('etxt').value;schedFrame();}
-function doSave(){setMode('preview');}
+async function doSave(){
+  if(S.file&&S.bridge){
+    try{await fetch(`${BRIDGE}/save`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:S.file,content:S.content[S.file]||''})});}catch{}
+  }
+  setMode('preview');
+}
 
 /* ── BRIDGE ── */
 const BRIDGE='http://localhost:7474';
@@ -664,7 +417,7 @@ async function checkBridge(){
   document.getElementById('bdot').className='bdot '+(S.bridge?'on':'off');
   document.getElementById('blbl').textContent=S.bridge?'bridge on':'bridge off';
   document.getElementById('ib-hint').textContent=
-    S.bridge?'':'⚠ bridge off — node docs-bridge.js 실행 후 사용 가능';
+    S.bridge?'':'⚠ bridge off — node bridge.js --root /path/to/docs 실행 후 사용 가능';
 }
 setInterval(checkBridge,3000);checkBridge();
 
@@ -785,9 +538,13 @@ async function executeJob(id){
   }
 }
 
-function applyJob(id){
+async function applyJob(id){
   const job=S.jobs.find(j=>j.id===id);if(!job||!job.proposed)return;
   S.content[job.fileId]=job.proposed;
+  if(S.bridge){
+    try{await fetch(`${BRIDGE}/save`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:job.fileId,content:job.proposed})});}catch{}
+  }
   S.jobs=S.jobs.filter(j=>j.id!==id);
   if(S.file===job.fileId)renderEditor();
   renderJobs();syncB();
@@ -847,7 +604,37 @@ function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace
 /* ── TICK (elapsed time for working jobs) ── */
 setInterval(()=>{if(S.jobs.some(j=>j.state==='working'))renderJobs();},1000);
 
+/* ── TREE FROM PATHS ── */
+let _tree=[];
+function buildTreeFromPaths(paths){
+  const root=[];const folders={};
+  for(const id of paths){
+    const parts=id.split('/');
+    if(parts.length===1){
+      root.push({t:'file',id,name:parts[0]});
+    } else {
+      const fn=parts[0];
+      if(!folders[fn]){folders[fn]={t:'folder',name:fn,open:true,children:[]};root.push(folders[fn]);}
+      folders[fn].children.push({t:'file',id,name:parts[parts.length-1]});
+    }
+  }
+  return root;
+}
+function refreshTree(){buildTree(_tree,document.getElementById('troot'));}
+
 /* ── INIT ── */
-buildTree(TREE,document.getElementById('troot'));
-openFile('requirements/overview.md');
+async function init(){
+  await checkBridge();
+  if(!S.bridge){refreshTree();return;}
+  try{
+    const r=await fetch(`${BRIDGE}/files`);
+    if(r.ok){const d=await r.json();_tree=buildTreeFromPaths(d.files);}
+  }catch{}
+  refreshTree();
+  if(_tree.length>0){
+    const first=_tree[0].t==='file'?_tree[0].id:(_tree[0].children&&_tree[0].children[0]?.id);
+    if(first)openFile(first);
+  }
+}
+init();
 </script>
