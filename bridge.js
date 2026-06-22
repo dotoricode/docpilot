@@ -50,6 +50,18 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // GET /status — claude/codex 설치 여부 반환
+  if (req.method === 'GET' && url.pathname === '/status') {
+    const check = cmd => new Promise(resolve => {
+      const p = spawn('which', [cmd], { stdio: ['ignore', 'pipe', 'ignore'] });
+      p.on('close', code => resolve(code === 0));
+    });
+    const [claude, codex] = await Promise.all([check('claude'), check('codex')]);
+    res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ claude, codex }));
+    return;
+  }
+
   // GET /files — markdown 파일 트리 반환
   if (req.method === 'GET' && url.pathname === '/files') {
     try {
@@ -110,14 +122,35 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /instruct — claude 실행 후 SSE 스트리밍
+  // POST /instruct — claude + codex 병렬 실행 후 SSE 스트리밍
   if (req.method === 'POST' && url.pathname === '/instruct') {
     let payload;
     try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
 
-    const { fileId, context, instruction, content } = payload;
+    const { fileId, context, instruction, content, combine, claudeProposed, codexProposed } = payload;
 
-    const prompt =
+    let prompt;
+    if (combine) {
+      prompt =
+`You are a documentation editor. Two AI agents have independently edited the same file based on the same instruction. Your task is to synthesize the best result by combining their strengths.
+
+File: ${fileId}
+
+Original instruction: ${instruction}
+
+Version A (Claude):
+\`\`\`
+${claudeProposed}
+\`\`\`
+
+Version B (Codex):
+\`\`\`
+${codexProposed}
+\`\`\`
+
+Synthesize the best final version by taking the strongest elements from each. Return ONLY the complete merged Markdown content — no explanation, no surrounding code fences, no preamble.`;
+    } else {
+      prompt =
 `You are editing a documentation file.
 
 File: ${fileId}
@@ -135,6 +168,7 @@ ${context}
 User instruction: ${instruction}
 
 Apply the instruction to the file. Return ONLY the complete updated raw Markdown content — no explanation, no surrounding code fences, no preamble. Just the updated file content starting from the first line.`;
+    }
 
     res.writeHead(200, {
       ...CORS,
@@ -147,52 +181,104 @@ Apply the instruction to the file. Return ONLY the complete updated raw Markdown
       try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
     };
 
-    console.log(`[${new Date().toLocaleTimeString()}] ${fileId} — "${instruction.slice(0, 60)}"`);
-
-    // claude를 직접 spawn — sh 경유 시 prompt 내 백틱이 command substitution으로 해석되는 버그 방지
-    const proc = spawn('claude', ['-p', prompt], {
-      env: process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
+    // codex 사용 가능 여부 확인
+    const hasCodex = await new Promise(resolve => {
+      const p = spawn('which', ['codex'], { stdio: ['ignore', 'pipe', 'ignore'] });
+      p.on('close', code => resolve(code === 0));
     });
 
-    let full = '';
+    const parallel = hasCodex;
+    send({ parallel });
+    console.log(`[${new Date().toLocaleTimeString()}] ${fileId} — "${instruction.slice(0, 60)}"${parallel ? ' [claude+codex]' : ''}`);
+
     let killed = false;
+    const procs = [];
 
-    proc.stdout.on('data', chunk => {
-      const text = chunk.toString();
-      full += text;
-      send({ chunk: text });
-    });
+    function runAgent(source, spawnArgs) {
+      const proc = spawn(spawnArgs[0], spawnArgs.slice(1), {
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      procs.push(proc);
 
-    proc.stderr.on('data', chunk => {
-      process.stderr.write(chunk);
-    });
+      let full = '';
+      let jsonBuf = '';
+      const isCodex = source === 'codex';
 
-    proc.on('close', (code, signal) => {
-      if (killed) return;
-      if (code === 0) {
-        send({ done: true, proposed: full });
-        console.log(`[${new Date().toLocaleTimeString()}] done (${full.split('\n').length} lines)`);
-      } else {
-        const reason = signal ? `signal ${signal}` : `exit code ${code}`;
-        send({ error: `claude 실패 (${reason}). stderr 확인 필요.` });
-      }
-      try { res.end(); } catch {}
-    });
+      proc.stdout.on('data', chunk => {
+        if (isCodex) {
+          // codex --json: JSONL 파싱, item.completed agent_message만 추출
+          jsonBuf += chunk.toString();
+          const lines = jsonBuf.split('\n');
+          jsonBuf = lines.pop();
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const ev = JSON.parse(line);
+              if (ev.type === 'item.completed' && ev.item?.type === 'agent_message') {
+                full += ev.item.text;
+                send({ source, chunk: ev.item.text });
+              }
+            } catch {}
+          }
+        } else {
+          const text = chunk.toString();
+          full += text;
+          send({ source, chunk: text });
+        }
+      });
 
-    proc.on('error', err => {
-      send({ error: `claude를 실행할 수 없습니다: ${err.message}\n\nclaude CLI가 PATH에 있는지 확인하세요.` });
-      try { res.end(); } catch {}
-    });
+      proc.stderr.on('data', chunk => process.stderr.write(chunk));
+
+      proc.on('close', (code, signal) => {
+        if (killed) return;
+        if (code === 0) {
+          send({ source, done: true, proposed: full });
+          console.log(`[${new Date().toLocaleTimeString()}] ${source} done (${full.split('\n').length} lines)`);
+        } else {
+          const reason = signal ? `signal ${signal}` : `exit code ${code}`;
+          send({ source, error: `${source} 실패 (${reason})` });
+        }
+        // 단일 모드면 스트림 종료
+        if (!parallel) try { res.end(); } catch {}
+      });
+
+      proc.on('error', err => {
+        send({ source, error: `${source} 실행 실패: ${err.message}` });
+        if (!parallel) try { res.end(); } catch {}
+      });
+    }
+
+    // claude는 항상 실행 (combine 모드는 claude 단독)
+    runAgent('claude', ['claude', '-p', prompt]);
+
+    // codex는 일반 모드에서 가능할 때만 병렬 실행
+    if (parallel && !combine) {
+      runAgent('codex', ['codex', 'exec', '--json', '--dangerously-bypass-approvals-and-sandbox', prompt]);
+    }
 
     // 90초 타임아웃
     const timer = setTimeout(() => {
-      if (!killed) { killed = true; proc.kill(); send({ error: '타임아웃 (90s) — claude가 응답하지 않습니다' }); try { res.end(); } catch {} }
+      if (!killed) {
+        killed = true;
+        procs.forEach(p => { try { p.kill(); } catch {} });
+        send({ error: '타임아웃 (90s)' });
+        try { res.end(); } catch {}
+      }
     }, 90000);
-    proc.on('close', () => clearTimeout(timer));
 
-    // req.on('close')는 body 전송 직후 오인 트리거되므로 res.on('close') 사용
-    res.on('close', () => { if (!killed) { killed = true; clearTimeout(timer); try { proc.kill(); } catch {} } });
+    // 병렬 모드: 둘 다 종료되면 SSE 닫기
+    if (parallel) {
+      let doneCount = 0;
+      const onDone = () => { if (++doneCount === 2 && !killed) { clearTimeout(timer); try { res.end(); } catch {} } };
+      procs.forEach(p => p.on('close', onDone));
+    } else {
+      procs[0].on('close', () => clearTimeout(timer));
+    }
+
+    res.on('close', () => {
+      if (!killed) { killed = true; clearTimeout(timer); procs.forEach(p => { try { p.kill(); } catch {} }); }
+    });
     return;
   }
 
