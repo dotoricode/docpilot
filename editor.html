@@ -33,6 +33,10 @@
   /* Amber — pin/warning */
   --am:#ffc533;
   --am-d:rgba(255,197,51,.14);
+  --cl:#ff9f43;
+  --cl-d:rgba(255,159,67,.14);
+  --cx:#57c1ff;
+  --cx-d:rgba(87,193,255,.15);
   --hi:#dfff00;
   --hi-d:rgba(223,255,0,.24);
   --hi-g:rgba(223,255,0,.45);
@@ -58,35 +62,43 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
   font-size:12px;color:var(--t3);overflow:hidden;white-space:nowrap}
 .cs{color:var(--t2)}.csl{color:var(--t3);margin:0 2px}
 .hright{display:flex;align-items:center;gap:10px}
-.bridge-status{display:flex;align-items:center;gap:6px;padding:4px 7px;border:1px solid var(--bd);
-  border-radius:999px;background:var(--s2);min-width:92px}
-.bridge-status.on{border-color:rgba(89,212,153,.30);background:var(--s2)}
-.bridge-status.off{border-color:rgba(255,97,97,.30);background:var(--rd-d)}
-.bridge-status.pending{border-color:rgba(255,197,51,.28);background:var(--am-d)}
+.bridge-status{display:flex;align-items:center;justify-content:center;gap:6px;
+  width:auto;min-width:96px;height:24px;padding:0 9px;border:1px solid var(--bd);
+  border-radius:999px;background:rgba(255,255,255,.035);flex-shrink:0}
+.tool-status{display:flex;align-items:center;justify-content:center;gap:7px;
+  width:132px;height:28px;padding:0 11px;border:1px solid var(--bd);
+  border-radius:999px;background:var(--s2);flex-shrink:0}
+.bridge-status.on{border-color:rgba(89,212,153,.24);background:rgba(89,212,153,.08)}
+.bridge-status.off{border-color:rgba(255,97,97,.24);background:rgba(255,97,97,.07)}
+.bridge-status.pending{border-color:rgba(255,197,51,.22);background:rgba(255,197,51,.07)}
 .bridge-status.on #blbl{color:var(--gn)}
 .bridge-status.off #blbl{color:var(--rd)}
 .bridge-status.pending #blbl{color:var(--am)}
-.bdot{width:8px;height:8px;border-radius:50%;background:var(--t3);flex-shrink:0;
+.bdot{width:6px;height:6px;border-radius:50%;background:var(--t3);flex-shrink:0;
   transition:background .3s,box-shadow .3s}
-.bdot.on{background:var(--gn);box-shadow:0 0 7px var(--gn)}
+.bdot.on{background:var(--gn);box-shadow:0 0 5px rgba(89,212,153,.55)}
 .bdot.off{background:var(--rd)}
-.bdot.pending{background:var(--am);box-shadow:0 0 7px var(--am)}
-#blbl{font-size:11px;color:var(--t2);font-weight:600;white-space:nowrap}
-.tool-status{display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;
-  border:1px solid var(--bd);border-radius:999px;background:var(--s2)}
-.tdot{width:7px;height:7px;border-radius:50%;background:var(--t3);flex-shrink:0;transition:background .3s,box-shadow .3s}
-.tdot.on.claude{background:var(--gn);box-shadow:0 0 6px var(--gn)}
-.tdot.on.codex{background:var(--gn);box-shadow:0 0 6px var(--gn)}
+.bdot.pending{background:var(--am);box-shadow:0 0 5px rgba(255,197,51,.50)}
+#blbl{font-size:11px;color:var(--t2);font-weight:700;white-space:nowrap}
+.tdot{width:8px;height:8px;border-radius:50%;background:var(--t3);flex-shrink:0;transition:background .3s,box-shadow .3s}
+.tdot.on.claude{background:var(--cl);box-shadow:0 0 7px var(--cl)}
+.tdot.on.codex{background:var(--cx);box-shadow:0 0 7px var(--cx)}
 .tdot.off{background:var(--rd);box-shadow:0 0 6px rgba(255,97,97,.35)}
 .tdot.pending{background:var(--am);box-shadow:0 0 6px var(--am)}
-.tool-main{font-size:11px;color:var(--t);font-family:var(--mono);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
-.tool-state{font-size:10px;color:var(--t3);font-family:var(--ui);font-weight:600;white-space:nowrap}
+.tool-main{font-size:11.5px;color:var(--t);font-family:var(--mono);font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.tool-state{font-size:11px;color:var(--t3);font-family:var(--ui);font-weight:700;white-space:nowrap}
 .tool-status.on{border-color:rgba(89,212,153,.30);background:var(--s2)}
 .tool-status.off{border-color:rgba(255,97,97,.30);background:var(--rd-d)}
 .tool-status.pending{border-color:rgba(255,197,51,.28);background:var(--am-d)}
 .tool-status.on .tool-state{color:var(--gn)}
 .tool-status.off .tool-state{color:var(--rd)}
 .tool-status.pending .tool-state{color:var(--am)}
+.tool-status.on#claude-status{border-color:rgba(255,159,67,.34);background:var(--cl-d)}
+.tool-status.on#claude-status .tool-main,
+.tool-status.on#claude-status .tool-state{color:var(--cl)}
+.tool-status.on#codex-status{border-color:rgba(87,193,255,.34);background:var(--cx-d)}
+.tool-status.on#codex-status .tool-main,
+.tool-status.on#codex-status .tool-state{color:var(--cx)}
 .tlbl{font-size:11px;color:var(--t3);font-family:var(--mono)}
 
 /* BUTTONS */
@@ -100,7 +112,10 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
 .mbtn{padding:4px 13px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;
   border:none;background:transparent;color:var(--t3);font-family:var(--ui);
   transition:background .1s,color .1s;text-transform:uppercase;letter-spacing:.06em}
-.mbtn.active{background:var(--s3);color:var(--t)}
+.mbtn.active{
+  background:var(--cy-d);color:var(--cy);
+  box-shadow:inset 0 0 0 1px rgba(87,193,255,.28);
+}
 .badge{display:inline-flex;align-items:center;justify-content:center;
   min-width:18px;height:18px;padding:0 5px;border-radius:9999px;font-size:10px;font-weight:700;
   background:var(--cy-d);color:var(--cy)}
@@ -117,9 +132,16 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
   transition:background .12s,color .12s,transform .2s}
 .pcol:hover{background:var(--s2);color:var(--t)}
 /* resizer */
-.rsz{width:3px;flex-shrink:0;cursor:col-resize;background:transparent;
-  transition:background .15s;z-index:10;position:relative}
-.rsz:hover,.rsz.dragging{background:var(--bd2)}
+.rsz{width:8px;flex-shrink:0;cursor:col-resize;background:transparent;
+  transition:background .15s;z-index:30;position:relative}
+.rsz::before{content:"";position:absolute;top:0;bottom:0;left:50%;width:1px;
+  transform:translateX(-50%);background:rgba(255,255,255,.08);
+  transition:background .15s,box-shadow .15s,width .15s}
+.rsz:hover{background:rgba(87,193,255,.04)}
+.rsz:hover::before,.rsz.dragging::before{width:2px;background:rgba(87,193,255,.72);
+  box-shadow:0 0 10px rgba(87,193,255,.26)}
+.rsz.dragging{background:rgba(87,193,255,.08)}
+body.resizing-panels,body.resizing-panels *{user-select:none!important}
 
 /* LEFT SIDEBAR */
 #tree{width:320px;min-width:48px;background:var(--s);border-right:1px solid var(--bd);
@@ -135,7 +157,10 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
 .left-tab-btn{flex:1;height:28px;border:1px solid transparent;border-radius:7px;background:transparent;
   color:var(--t3);font-family:var(--ui);font-size:11.5px;font-weight:600;cursor:pointer}
 .left-tab-btn:hover{background:var(--s2);color:var(--t)}
-.left-tab-btn.active{background:var(--s3);border-color:var(--bd);color:var(--t)}
+.left-tab-btn.active{
+  background:var(--cy-d);border-color:rgba(87,193,255,.34);color:var(--cy);
+  box-shadow:inset 0 0 0 1px rgba(87,193,255,.10);
+}
 .left-tab-count{font-family:var(--mono);font-size:10px;color:var(--cy);margin-left:4px}
 .left-pane{display:none!important;overflow-y:auto;flex:1;min-height:0}
 .left-pane.active{display:flex!important;flex-direction:column}
@@ -146,16 +171,15 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
   overflow-y:auto;padding:2px 0 8px;display:flex;flex-direction:column;gap:1px;pointer-events:auto}
 #toc-rail.hidden{display:none}
 #toc-list{display:flex;flex-direction:column;gap:1px;width:100%}
-.toc-item{display:block;width:100%;padding:4px 10px;font-size:11px;color:var(--t3);
-  cursor:pointer;border:none;background:none;text-align:left;
+.toc-item{display:block;width:100%;padding:4px 10px 4px 12px;font-size:11px;color:var(--t3);
+  cursor:pointer;border-left:2px solid transparent;border-top:none;border-right:none;border-bottom:none;background:none;text-align:left;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.45;
   transition:color .1s,background .1s;font-family:var(--ui)}
-.toc-h1{font-size:11.5px;font-weight:600;color:var(--t2);padding-left:10px}
-.toc-h2{padding-left:10px}
-.toc-h3{padding-left:20px;font-size:10.5px}
+.toc-h1{font-size:11.5px;font-weight:600;color:var(--t2);padding-left:12px}
+.toc-h2{padding-left:24px}
+.toc-h3{padding-left:36px;font-size:10.5px}
 .toc-item:hover{background:rgba(255,255,255,.04);color:var(--t)}
-.toc-item.toc-active{color:var(--cy);background:transparent;border-left:2px solid var(--cy);padding-left:8px}
-.toc-dbl-hint{font-size:9px;color:var(--t4);padding:4px 10px 0;opacity:.8}
+.toc-item.toc-active{color:var(--cy);background:transparent;border-left-color:var(--cy)}
 
 /* INSTRUCTIONS */
 #inst{width:260px;min-width:48px;background:var(--s);border-right:1px solid var(--bd);
@@ -203,9 +227,9 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
   font-size:11.5px;color:var(--t2);transition:background .1s,color .1s;
   border-radius:6px;margin:1px 5px;font-family:var(--mono)}
 .tfi:hover{background:var(--s2);color:var(--t)}
-.tfi.active{background:rgba(167,139,250,.18);color:var(--ac);border-left:2px solid var(--ac);padding-left:8px}
+.tfi.active{background:var(--cy-d);color:var(--cy);border-left:2px solid var(--cy);padding-left:8px}
 .tdot{width:4px;height:4px;border-radius:50%;background:var(--t3);flex-shrink:0}
-.tfi.active .tdot{background:var(--ac)}
+.tfi.active .tdot{background:var(--cy)}
 .tfnme{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* file icon */
 .ficon{width:12px;height:14px;flex-shrink:0;
@@ -216,7 +240,7 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
   center/contain no-repeat}
 
 /* EDITOR */
-#editor{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--g)}
+#editor{flex:1 0 360px;display:flex;flex-direction:column;overflow:hidden;background:var(--g);min-width:360px}
 #etbar{display:none;align-items:center;padding:0 14px;height:36px;border-bottom:1px solid var(--bd);
   gap:8px;flex-shrink:0;background:var(--s)}
 .tsep{width:1px;height:14px;background:var(--bd2)}
@@ -252,38 +276,54 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
 
 /* hover/selection highlight on clickable document blocks */
 #preview ::selection{background:var(--hi);color:#050608}
-#preview p,#preview li,#preview td,#preview th,
+#preview p,#preview li,#preview td,#preview th,#preview pre,#preview blockquote,
 #preview h1,#preview h2,#preview h3,#preview h4,#preview h5,#preview h6{
   transition:background .12s,box-shadow .12s,color .12s;
   cursor:var(--cursor-click);
   -webkit-box-decoration-break:clone;
   box-decoration-break:clone;
 }
-#preview p *,#preview li *,#preview td *,#preview th *,
+#preview p *,#preview li *,#preview td *,#preview th *,#preview pre *,#preview blockquote *,
 #preview h1 *,#preview h2 *,#preview h3 *,#preview h4 *,#preview h5 *,#preview h6 *{
   cursor:var(--cursor-click);
 }
-#preview p:hover,#preview li:hover,#preview td:hover,#preview th:hover,
+#preview p:hover,#preview li:hover,#preview td:hover,#preview th:hover,#preview pre:hover,#preview blockquote:hover,
 #preview h1:hover,#preview h2:hover,#preview h3:hover,#preview h4:hover,#preview h5:hover,#preview h6:hover,
-#preview .preview-picked{
-  background:linear-gradient(90deg,rgba(223,255,0,.30),rgba(0,229,255,.16));
-  box-shadow:0 0 0 1px rgba(223,255,0,.22),0 0 18px rgba(223,255,0,.14);
+#preview .preview-picked,
+#preview .chip-focus-block,
+#preview .draw-hit{
+  background:linear-gradient(90deg,rgba(223,255,0,.36),rgba(0,229,255,.18)) !important;
+  box-shadow:0 0 0 1px rgba(223,255,0,.45),0 0 18px rgba(223,255,0,.20) !important;
   border-radius:6px;
-  outline:1px solid rgba(223,255,0,.36);
+  outline:1px solid rgba(223,255,0,.48);
   outline-offset:1px;
 }
 #preview .preview-picked code,
-#preview :is(p,li,td,th,h1,h2,h3,h4,h5,h6):hover code{
+#preview .chip-focus-block code,
+#preview .draw-hit code,
+#preview :is(p,li,td,th,pre,blockquote,h1,h2,h3,h4,h5,h6):hover code{
   background:rgba(223,255,0,.20);
   color:#f4ff9a;
 }
+#preview .chip-focus-fragment{
+  background:linear-gradient(90deg,rgba(223,255,0,.42),rgba(0,229,255,.18));
+  box-shadow:0 0 0 1px rgba(223,255,0,.50),0 0 16px rgba(223,255,0,.18);
+  border-radius:5px;
+  padding:0 2px;
+  color:#f4ff9a;
+  -webkit-box-decoration-break:clone;
+  box-decoration-break:clone;
+}
+#preview .chip-focus-fragment code,
+#preview code .chip-focus-fragment{
+  background:rgba(223,255,0,.22);
+  color:#f4ff9a;
+}
 /* draw mode */
-#draw-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:200;pointer-events:none;display:none}
+#draw-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:200;pointer-events:none;display:none;touch-action:none}
 #draw-canvas.active{pointer-events:auto;cursor:none}
 .draw-hit{
-  background:linear-gradient(90deg,rgba(223,255,0,.36),rgba(0,229,255,.18)) !important;
-  box-shadow:0 0 0 1px rgba(223,255,0,.45),0 0 18px rgba(223,255,0,.20) !important;
-  border-radius:6px;transition:none !important;
+  transition:none !important;
 }
 /* draw button */
 #draw-btn{
@@ -312,75 +352,72 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
 
 /* CHIP FLOAT — 프리뷰 우측 상단 floating */
 #chip-float{
-  position:absolute;top:18px;right:20px;z-index:50;
+  position:sticky;top:18px;right:20px;z-index:50;
   display:none;flex-direction:column;align-items:flex-end;gap:7px;
-  pointer-events:none;max-width:260px;
+  pointer-events:none;max-width:260px;margin-left:auto;margin-right:20px;width:max-content;overflow:visible;
 }
 #chip-float.has-chips{display:flex}
-#chip-list{display:flex;flex-direction:column;align-items:flex-end;gap:5px;pointer-events:auto}
+#chip-list{display:flex;flex-direction:column;align-items:flex-end;gap:6px;pointer-events:auto}
 .chip{
-  display:inline-flex;align-items:center;gap:7px;
-  padding:7px 10px 7px 8px;
-  background:rgba(14,18,28,.88);
+  display:inline-flex;align-items:center;gap:8px;
+  padding:8px 10px 8px 8px;
+  background:rgba(87,193,255,.10);
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
-  border:1px solid rgba(255,255,255,.10);
-  border-radius:20px;
-  box-shadow:0 6px 24px rgba(0,0,0,.5);
-  cursor:pointer;font-size:12px;color:var(--t2);
+  border:1px solid rgba(87,193,255,.34);
+  border-radius:22px;
+  box-shadow:0 8px 26px rgba(87,193,255,.10),inset 0 0 0 1px rgba(255,255,255,.03);
+  cursor:pointer;font-size:12px;color:var(--t);
   transition:border-color .15s,background .15s,transform .1s,box-shadow .15s;
-  pointer-events:auto;max-width:240px;
+  pointer-events:auto;max-width:250px;
 }
 .chip:hover{
   transform:translateY(-1px);
-  border-color:rgba(255,255,255,.22);
-  color:var(--t);
-  box-shadow:0 8px 28px rgba(0,0,0,.55);
+  background:rgba(87,193,255,.14);
+  border-color:rgba(87,193,255,.50);
+  box-shadow:0 10px 30px rgba(87,193,255,.14),inset 0 0 0 1px rgba(255,255,255,.05);
 }
 .chip.active{
-  background:rgba(87,193,255,.14);
-  border-color:rgba(87,193,255,.45);
+  background:rgba(87,193,255,.16);
+  border-color:rgba(87,193,255,.62);
   color:var(--t);
-  box-shadow:0 4px 20px rgba(87,193,255,.15);
+  box-shadow:0 4px 22px rgba(87,193,255,.18),inset 0 0 0 1px rgba(255,255,255,.05);
 }
 .chip.active:hover{border-color:rgba(87,193,255,.7)}
-.chip.pinned:not(.active){border-color:rgba(255,197,51,.35);background:rgba(255,197,51,.06)}
 .chip-num{
-  width:17px;height:17px;border-radius:50%;flex-shrink:0;
-  background:rgba(255,255,255,.10);
-  font-size:9.5px;font-weight:700;color:var(--t3);
+  width:20px;height:20px;border-radius:50%;flex-shrink:0;
+  background:rgba(87,193,255,.22);
+  font-size:10px;font-weight:800;color:var(--cy);
   display:flex;align-items:center;justify-content:center;line-height:1;
 }
-.chip.active .chip-num{background:rgba(87,193,255,.25);color:var(--cy)}
-.chip-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:148px;font-size:11.5px}
-.chip-pin{
-  width:12px;height:14px;flex-shrink:0;cursor:pointer;
-  opacity:.22;transition:opacity .15s,background .15s,filter .15s;
-  background:var(--t3);
-  -webkit-mask:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 13'><ellipse cx='5' cy='3.8' rx='4.5' ry='2.8'/><rect x='4.3' y='6.5' width='1.4' height='6' rx='.7'/></svg>") center/contain no-repeat;
-  mask:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 13'><ellipse cx='5' cy='3.8' rx='4.5' ry='2.8'/><rect x='4.3' y='6.5' width='1.4' height='6' rx='.7'/></svg>") center/contain no-repeat;
-}
-.chip:hover .chip-pin{opacity:.6;background:var(--t2)}
-.chip.pinned .chip-pin{opacity:1;background:var(--am);filter:drop-shadow(0 0 3px var(--am))}
+.chip.active .chip-num{background:rgba(87,193,255,.30)}
+.chip-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:178px;font-size:12px;font-weight:600}
 .chip-x{
-  width:16px;height:16px;border-radius:50%;flex-shrink:0;
+  width:20px;height:20px;border-radius:50%;flex-shrink:0;
   display:flex;align-items:center;justify-content:center;
-  font-size:10px;font-style:normal;opacity:.35;
-  transition:opacity .1s,background .1s;line-height:1;cursor:pointer;
+  font-size:11px;font-style:normal;opacity:.55;color:rgba(205,205,205,.72);
+  transition:opacity .1s,background .1s,color .1s;line-height:1;cursor:pointer;
 }
-.chip-x:hover{opacity:1;background:rgba(255,97,97,.22);color:var(--rd)}
+.chip-x:hover{opacity:1;background:rgba(255,97,97,.16);color:var(--rd)}
 /* 지시 버튼 */
 #chip-instruct-btn{
   pointer-events:auto;
   display:none;align-items:center;gap:7px;
-  padding:8px 18px;border-radius:24px;border:none;cursor:pointer;
-  background:linear-gradient(135deg,var(--cy),#5B9EF8);
-  color:#fff;font-family:var(--ui);font-size:12.5px;font-weight:700;
+  padding:8px 18px;border-radius:24px;border:1px solid rgba(87,193,255,.35);cursor:pointer;
+  background:linear-gradient(135deg,rgba(87,193,255,.20),rgba(167,139,250,.22));
+  color:#eaf7ff;font-family:var(--ui);font-size:12.5px;font-weight:800;
   letter-spacing:.04em;
-  box-shadow:0 4px 20px rgba(56,189,248,.35);
-  transition:filter .15s,transform .1s;
+  box-shadow:0 8px 24px rgba(87,193,255,.12),inset 0 0 0 1px rgba(255,255,255,.05);
+  transition:filter .15s,transform .1s,border-color .15s,box-shadow .15s;
 }
-#chip-instruct-btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+#chip-instruct-btn:hover{filter:brightness(1.08);transform:translateY(-1px);border-color:rgba(87,193,255,.55);box-shadow:0 10px 28px rgba(87,193,255,.16),inset 0 0 0 1px rgba(255,255,255,.06)}
 #chip-instruct-btn.visible{display:inline-flex}
+#chip-instruct-btn .ai-mark{
+  display:inline-block;width:28px;height:18px;min-width:28px;padding:0;border:0;border-radius:0;
+  background:var(--cy);
+  -webkit-mask:url("assets/ai-mark-bond.png?v=1") center/contain no-repeat;
+  mask:url("assets/ai-mark-bond.png?v=1") center/contain no-repeat;
+  color:transparent;font-size:0;line-height:1;box-shadow:none;
+}
 
 /* INSTRUCT MODAL (중앙 대화창) */
 #imodal{
@@ -446,7 +483,7 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
 #rpanel.collapsed .pcol:hover{border-color:var(--bd2);color:var(--t);background:var(--s3)}
 #rphdr{display:flex;align-items:center;padding:0 14px;height:38px;
   border-bottom:1px solid var(--bd);flex-shrink:0;gap:8px}
-#rphdr-title{font-size:12px;font-weight:600;color:var(--t2);flex:1}
+#rphdr-title{font-size:12px;font-weight:600;color:var(--cy);flex:1}
 #rp-body{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
 .pempty{display:flex;flex-direction:column;align-items:center;justify-content:center;
   flex:1;gap:9px;color:var(--t3)}
@@ -525,11 +562,11 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
 #app [role="button"],
 #app [onclick],
 #app .btn,#app .mbtn,#app .pcol,#app .left-tab-btn,#app .toc-item,#app .inst-mini,
-#app .tfhd,#app .tfi,#app .chip,#app .chip-pin,#app .chip-x,#app #chip-instruct-btn,
+#app .tfhd,#app .tfi,#app .chip,#app .chip-x,#app #chip-instruct-btn,
 #app #imodal-cancel,#app #imodal-send,#app .japply,#app .jreject,#app .jprev,#app .jcombine,
-#preview p,#preview li,#preview td,#preview th,
+#preview p,#preview li,#preview td,#preview th,#preview pre,#preview blockquote,
 #preview h1,#preview h2,#preview h3,#preview h4,#preview h5,#preview h6,
-#preview p *,#preview li *,#preview td *,#preview th *,
+#preview p *,#preview li *,#preview td *,#preview th *,#preview pre *,#preview blockquote *,
 #preview h1 *,#preview h2 *,#preview h3 *,#preview h4 *,#preview h5 *,#preview h6 *{
   cursor:var(--cursor-click)!important;
 }
@@ -547,7 +584,6 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
   .toc-item{width:auto;max-width:130px;flex:0 0 auto;border-left:none;border-bottom:2px solid transparent;padding:4px 8px}
   .toc-h1,.toc-h2,.toc-h3{padding-left:8px;font-size:10.5px}
   .toc-item.toc-active{border-left:none;border-bottom-color:var(--cy);padding-left:8px}
-  .toc-dbl-hint{display:none}
 }
 
 /* PMODAL BODY inherits preview styles */
@@ -576,7 +612,7 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
     <div class="vsep"></div>
     <div id="crumb"><span style="color:var(--t3)">파일을 선택하세요</span></div>
     <div class="hright">
-      <div class="bridge-status pending" id="bridge-status" title="docpilot bridge 연결 상태">
+      <div class="bridge-status pending" id="bridge-status" title="로컬 문서 연결 상태">
         <div class="bdot pending" id="bdot"></div>
         <span id="blbl">확인 중</span>
       </div>
@@ -630,7 +666,7 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
         </div>
       </div>
     </aside>
-    <div class="rsz" id="tree-rsz" onmousedown="initResize('tree',event)"></div>
+    <div class="rsz" id="tree-rsz" onpointerdown="initResize('tree',event)" title="좌측 패널 폭 조절"></div>
 
     <section id="editor">
       <div id="etbar">
@@ -650,12 +686,11 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
         <div id="prev-wrap">
           <nav id="toc-rail" class="hidden" aria-label="문서 목차">
             <div id="toc-list"></div>
-            <div class="toc-dbl-hint">더블클릭 → 칩 추가</div>
           </nav>
           <!-- CHIP FLOAT -->
           <div id="chip-float">
             <div id="chip-list"></div>
-            <button id="chip-instruct-btn" onclick="openInstructModal()">✦ 지시하기</button>
+            <button id="chip-instruct-btn" onclick="openInstructModal()"><span class="ai-mark" aria-hidden="true">AI</span><span>지시하기</span></button>
           </div>
           <div id="preview"></div>
         </div>
@@ -667,7 +702,7 @@ html,body{height:100%;overflow:hidden;background:var(--g);color:var(--t);
       </div>
     </section>
 
-    <div class="rsz" id="rp-rsz" onmousedown="initResize('rpanel',event)"></div>
+    <div class="rsz" id="rp-rsz" onpointerdown="initResize('rpanel',event)" title="우측 패널 폭 조절"></div>
     <aside id="rpanel">
       <div id="rphdr">
         <button class="pcol" onclick="togglePanel('rpanel')" title="접기/펼치기">›</button>
@@ -827,17 +862,20 @@ let _rszEl=null,_rszX=0,_rszW=0,_rszRight=false;
 function initResize(id,e){
   e.preventDefault();
   _rszEl=document.getElementById(id);
+  _rszEl.classList.remove('collapsed');
   _rszX=e.clientX;
   _rszW=_rszEl.offsetWidth;
   _rszRight=(id==='rpanel');
+  document.body.classList.add('resizing-panels');
   document.getElementById(id==='rpanel'?'rp-rsz':'tree-rsz').classList.add('dragging');
-  document.addEventListener('mousemove',_doRsz);
-  document.addEventListener('mouseup',_endRsz);
+  document.addEventListener('pointermove',_doRsz);
+  document.addEventListener('pointerup',_endRsz);
+  document.addEventListener('pointercancel',_endRsz);
 }
 function _doRsz(e){
   if(!_rszEl)return;
   const dx=_rszRight?(_rszX-e.clientX):(e.clientX-_rszX);
-  const w=Math.max(60,Math.min(520,_rszW+dx));
+  const w=Math.max(72,Math.min(520,_rszW+dx));
   _rszEl.style.width=w+'px';
   _rszEl.style.minWidth=w+'px';
 }
@@ -846,8 +884,10 @@ function _endRsz(){
     document.querySelectorAll('.rsz.dragging').forEach(r=>r.classList.remove('dragging'));
     _rszEl=null;
   }
-  document.removeEventListener('mousemove',_doRsz);
-  document.removeEventListener('mouseup',_endRsz);
+  document.body.classList.remove('resizing-panels');
+  document.removeEventListener('pointermove',_doRsz);
+  document.removeEventListener('pointerup',_endRsz);
+  document.removeEventListener('pointercancel',_endRsz);
 }
 
 /* ── FILE ── */
@@ -865,9 +905,9 @@ async function openFile(id){
         const r=await fetch(`${BRIDGE}/file?id=${encodeURIComponent(id)}`);
         if(r.ok){const d=await r.json();S.content[id]=d.content;}
         else S.content[id]=`# ${id}\n\n(파일을 불러올 수 없습니다)`;
-      }catch{S.content[id]=`# ${id}\n\n(bridge 연결 오류)`;}
+      }catch{S.content[id]=`# ${id}\n\n(문서 연결 오류)`;}
     } else {
-      S.content[id]=`# ${id}\n\n(bridge가 꺼져 있습니다)`;
+      S.content[id]=`# ${id}\n\n(문서 연결이 꺼져 있습니다)`;
     }
   }
   renderEditor();refreshTree();renderToc();
@@ -960,13 +1000,13 @@ function setBridgeState(state){
   const dot=document.getElementById('bdot');
   const lbl=document.getElementById('blbl');
   const connected=state==='on';
-  const text=state==='pending'?'확인 중':connected?'Bridge 연결됨':'Bridge 끊김';
+  const text=state==='pending'?'확인 중':connected?'문서 연결됨':'문서 끊김';
   box.className='bridge-status '+state;
   dot.className='bdot '+state;
   lbl.textContent=text;
-  box.title=connected?'docpilot bridge가 연결되어 파일/AI 작업을 사용할 수 있습니다.':
-    state==='pending'?'docpilot bridge 연결을 확인하는 중입니다.':
-    'docpilot bridge에 연결되지 않았습니다. node bridge.js 서버를 확인하세요.';
+  box.title=connected?'로컬 문서와 AI 작업을 사용할 수 있습니다.':
+    state==='pending'?'로컬 문서 연결을 확인하는 중입니다.':
+    '로컬 문서에 연결되지 않았습니다. docpilot 서버를 확인하세요.';
 }
 function setToolState(tool,state){
   const box=document.getElementById(tool+'-status');
@@ -980,10 +1020,10 @@ function setToolState(tool,state){
   stateEl.textContent=text;
   box.title=state==='on'?`${name} CLI가 PATH에서 감지되었습니다.`:
     state==='off'?`${name} CLI가 PATH에서 감지되지 않았습니다.`:
-    state==='unknown'?`Bridge 상태 때문에 ${name} CLI를 확인할 수 없습니다.`:
+    state==='unknown'?`문서 연결 상태 때문에 ${name} CLI를 확인할 수 없습니다.`:
     `${name} CLI 상태 확인 중입니다.`;
 }
-setInterval(checkBridge,3000);checkBridge();
+setInterval(checkBridge,3000);
 
 /* ── INSTRUCTIONS ── */
 function activeInstructionCount(){
@@ -994,7 +1034,7 @@ function setInstructHint(){
   const n=activeInstructionCount();
   document.getElementById('imodal-hint').textContent=S.bridge
     ?`⌘↵ 전송  ·  활성 지침 ${n}개 적용`
-    :'⚠ bridge off — 지시 불가';
+    :'⚠ 문서 연결 필요 — 지시 불가';
 }
 
 async function loadInstructions(){
@@ -1149,12 +1189,22 @@ async function loadInstructionFromFile(){
 }
 
 /* ── CHIPS ── */
-function addChip(sel){
+function addChip(sel,meta={}){
   if(!S.file)return;
-  const chip={id:'c'+(S.cc++),fileId:S.file,sel,pinned:false,active:true};
+  const chip={id:'c'+(S.cc++),fileId:S.file,sel,source:meta.source||'block',active:true};
   S.chips.push(chip);
   renderChips();
   setTimeout(()=>document.getElementById('chip-ta')?.focus(),30);
+}
+
+function handleChipClick(id,e){
+  if(e?.ctrlKey||e?.metaKey){
+    e.preventDefault();
+    e.stopPropagation();
+    showChipFocus(id);
+    return;
+  }
+  toggleChip(id);
 }
 
 function toggleChip(id){
@@ -1163,17 +1213,19 @@ function toggleChip(id){
   renderChips();
 }
 
-function pinChip(id,e){
-  e.stopPropagation();
-  const c=S.chips.find(x=>x.id===id);if(!c)return;
-  c.pinned=!c.pinned;
+function removeChip(id,e){
+  e?.preventDefault();
+  e?.stopPropagation();
+  S.chips=S.chips.filter(x=>x.id!==id);
   renderChips();
 }
 
-function removeChip(id,e){
-  e.stopPropagation();
-  S.chips=S.chips.filter(x=>x.id!==id);
-  renderChips();
+function chipRightRemove(id,e){
+  if(e.button===2||e.which===3||e.buttons===2){
+    removeChip(id,e);
+    return false;
+  }
+  return true;
 }
 
 function selectAll(){
@@ -1187,16 +1239,20 @@ function renderChips(){
   const float=document.getElementById('chip-float');
   const list=document.getElementById('chip-list');
   const btn=document.getElementById('chip-instruct-btn');
-  if(!S.chips.length){float.classList.remove('has-chips');return;}
+  if(!S.chips.length){
+    float.classList.remove('has-chips');
+    list.innerHTML='';
+    btn.classList.remove('visible');
+    return;
+  }
   float.classList.add('has-chips');
   const activeCount=S.chips.filter(c=>c.active).length;
   btn.classList.toggle('visible',activeCount>0);
   list.innerHTML=S.chips.map((c,i)=>`
-    <div class="chip${c.active?' active':''}${c.pinned?' pinned':''}" onclick="toggleChip('${c.id}')">
+    <div class="chip${c.active?' active':''}" data-chip-id="${c.id}" onclick="handleChipClick('${c.id}',event)" onpointerdown="return chipRightRemove('${c.id}',event)" onmousedown="return chipRightRemove('${c.id}',event)" onmouseup="return chipRightRemove('${c.id}',event)" oncontextmenu="removeChip('${c.id}',event)" title="클릭: 활성 토글 / Ctrl/Cmd+클릭: 위치 강조 / 우클릭: 제거">
       <span class="chip-num">${i+1}</span>
-      <span class="chip-text">${esc(trunc(c.sel,22))}</span>
-      <span class="chip-pin" onclick="pinChip('${c.id}',event)" title="${c.pinned?'고정 해제':'고정'}"></span>
-      <span class="chip-x" onclick="removeChip('${c.id}',event)">✕</span>
+      <span class="chip-text">${esc(trunc(c.sel,28))}</span>
+      <span class="chip-x" onclick="removeChip('${c.id}',event)" title="제거">✕</span>
     </div>`).join('');
   // 모달이 열려있으면 ctx도 갱신
   if(document.getElementById('imodal').classList.contains('show'))renderModalCtx();
@@ -1204,8 +1260,9 @@ function renderChips(){
 
 /* ── SELECTION (drag) ── */
 let hadSel=false;
-const CLICKABLE_BLOCKS=new Set(['P','LI','H1','H2','H3','H4','H5','H6','TD','TH']);
-const CLICKABLE_BLOCK_SELECTOR='#preview p,#preview li,#preview h1,#preview h2,#preview h3,#preview h4,#preview h5,#preview h6,#preview td,#preview th';
+const CLICKABLE_BLOCKS=new Set(['P','LI','H1','H2','H3','H4','H5','H6','TD','TH','PRE','BLOCKQUOTE']);
+const CLICKABLE_BLOCK_SELECTOR='#preview p,#preview li,#preview pre,#preview blockquote,#preview h1,#preview h2,#preview h3,#preview h4,#preview h5,#preview h6,#preview td,#preview th';
+let _chipFocusTimer=null;
 
 function previewBlockForNode(node){
   const preview=document.getElementById('preview');
@@ -1235,6 +1292,106 @@ function markPreviewSelection(el){
   el.classList.add('preview-picked');
 }
 
+function clearPreviewPicked(){
+  document.querySelectorAll('#preview .preview-picked').forEach(x=>x.classList.remove('preview-picked'));
+}
+
+function normChipText(txt){
+  return (txt||'').replace(/\s+/g,' ').trim();
+}
+
+function clearChipFocus(){
+  if(_chipFocusTimer){clearTimeout(_chipFocusTimer);_chipFocusTimer=null;}
+  document.querySelectorAll('#preview .chip-focus-block').forEach(x=>x.classList.remove('chip-focus-block'));
+  document.querySelectorAll('#preview .chip-focus-fragment').forEach(span=>{
+    const parent=span.parentNode;
+    while(span.firstChild)parent.insertBefore(span.firstChild,span);
+    parent.removeChild(span);
+    parent.normalize();
+  });
+}
+
+function textNodeAt(nodes,abs){
+  let pos=0;
+  for(const n of nodes){
+    const next=pos+n.textContent.length;
+    if(abs<=next)return{node:n,offset:Math.max(0,Math.min(n.textContent.length,abs-pos))};
+    pos=next;
+  }
+  const last=nodes[nodes.length-1];
+  return last?{node:last,offset:last.textContent.length}:null;
+}
+
+function normalizedMap(txt){
+  let norm='',map=[],inWs=true;
+  for(let i=0;i<txt.length;i++){
+    const ch=txt[i];
+    if(/\s/.test(ch)){
+      if(!inWs){norm+=' ';map.push(i);inWs=true;}
+    }else{
+      norm+=ch;map.push(i);inWs=false;
+    }
+  }
+  if(norm.endsWith(' ')){norm=norm.slice(0,-1);map.pop();}
+  return{norm,map};
+}
+
+function highlightTextWithin(root,query){
+  const target=normChipText(query);
+  if(!target)return null;
+  const walker=document.createTreeWalker(root,4);
+  const nodes=[];
+  let node;
+  while((node=walker.nextNode()))nodes.push(node);
+  const raw=nodes.map(n=>n.textContent).join('');
+  const mapped=normalizedMap(raw);
+  const idx=mapped.norm.indexOf(target);
+  if(idx<0)return null;
+  const start=mapped.map[idx];
+  const end=mapped.map[idx+target.length-1]+1;
+  const startPos=textNodeAt(nodes,start);
+  const endPos=textNodeAt(nodes,end);
+  if(!startPos||!endPos)return null;
+  const range=document.createRange();
+  range.setStart(startPos.node,startPos.offset);
+  range.setEnd(endPos.node,endPos.offset);
+  const span=document.createElement('span');
+  span.className='chip-focus-fragment';
+  span.appendChild(range.extractContents());
+  range.insertNode(span);
+  return span;
+}
+
+function showChipFocus(id){
+  const chip=S.chips.find(x=>x.id===id);
+  if(!chip||chip.fileId!==S.file)return;
+  clearChipFocus();
+  clearPreviewPicked();
+  const preview=document.getElementById('preview');
+  const target=normChipText(chip.sel);
+  if(!target)return;
+  let first=null;
+  if(chip.source==='selection'){
+    for(const el of preview.querySelectorAll(CLICKABLE_BLOCK_SELECTOR)){
+      if(!normChipText(el.textContent).includes(target))continue;
+      first=highlightTextWithin(el,chip.sel);
+      if(first)break;
+    }
+  }
+  if(!first){
+    const parts=chip.source==='draw'?chip.sel.split('\n').map(normChipText).filter(Boolean):[target];
+    preview.querySelectorAll(CLICKABLE_BLOCK_SELECTOR).forEach(el=>{
+      const txt=normChipText(el.textContent);
+      if(parts.some(part=>txt===part||txt.includes(part))){
+        el.classList.add('chip-focus-block');
+        if(!first)first=el;
+      }
+    });
+  }
+  if(first)first.scrollIntoView({block:'center',behavior:'smooth'});
+  _chipFocusTimer=setTimeout(clearChipFocus,5000);
+}
+
 document.addEventListener('mouseup',e=>{
   if(e.target.closest('#chip-area'))return;
   const sel=window.getSelection();
@@ -1245,7 +1402,7 @@ document.addEventListener('mouseup',e=>{
   hadSel=true;
   markPreviewSelection(previewBlockForNode(sel.anchorNode));
   window.getSelection().removeAllRanges();
-  addChip(txt);
+  addChip(txt,{source:'selection'});
 });
 
 document.addEventListener('click',e=>{
@@ -1261,7 +1418,7 @@ document.addEventListener('click',e=>{
   const txt=el.textContent.trim();
   if(!txt||txt.length<3)return;
   markPreviewSelection(el);
-  addChip(txt);
+  addChip(txt,{source:'block'});
 });
 
 /* ── INSTRUCT MODAL ── */
@@ -1298,14 +1455,12 @@ function submitChips(){
     agents:{claude:{stream:'',proposed:null,done:false,error:null},codex:{stream:'',proposed:null,done:false,error:null}},
   };
   S.jobs.unshift(job);
-  // 비고정 활성 칩 제거
-  S.chips=S.chips.filter(c=>!(c.active&&!c.pinned));
-  // 고정 칩은 active 해제
-  S.chips.forEach(c=>{if(c.active)c.active=false;});
+  // 지시에 사용한 활성 칩은 처리 후 목록에서 제거한다.
+  S.chips=S.chips.filter(c=>!c.active);
   closeInstructModal();
   renderChips();renderJobs();syncB();
   if(S.bridge)executeJob(job.id);
-  else{job.state='error';job.stream='bridge가 연결되지 않았습니다.';renderJobs();}
+  else{job.state='error';job.stream='문서 연결이 필요합니다.';renderJobs();}
   setTimeout(()=>{
     const j=S.jobs.find(x=>x.id===job.id);
     if(j&&j.state==='working'){j.ctrl.abort();j.state='error';j.stream='타임아웃 (120s)';renderJobs();}
@@ -1578,20 +1733,14 @@ function renderToc(){
   document.getElementById('prev-wrap')?.classList.add('has-toc');
   list.innerHTML=headings.map((h,i)=>
     `<button class="toc-item toc-h${h.level}" onclick="tocItemClick(${i},event)"
-      title="${esc(h.text)} — 1클릭: 스크롤 / 2클릭: 칩 추가">${esc(h.text)}</button>`
+      title="${esc(h.text)}">${esc(h.text)}</button>`
   ).join('');
   updateTocActive();
 }
 
-let _tocClickTimer=null;
 function tocItemClick(idx,e){
-  if(_tocClickTimer){
-    clearTimeout(_tocClickTimer);
-    _tocClickTimer=null;
-    tocChip(idx,e);
-  }else{
-    _tocClickTimer=setTimeout(()=>{_tocClickTimer=null;tocScroll(idx);},230);
-  }
+  e.preventDefault();
+  tocScroll(idx);
 }
 
 function tocScroll(idx){
@@ -1606,22 +1755,6 @@ function tocScroll(idx){
       break;
     }
   }
-}
-
-function tocChip(idx,e){
-  e.preventDefault();
-  const headings=parseTocHeadings();
-  if(!headings[idx])return;
-  const src=S.content[S.file]||'';
-  const lines=src.split('\n');
-  const {level,lineIdx}=headings[idx];
-  let end=lines.length;
-  for(let i=lineIdx+1;i<lines.length;i++){
-    const m=lines[i].match(/^(#{1,3})\s/);
-    if(m&&m[1].length<=level){end=i;break;}
-  }
-  const section=lines.slice(lineIdx,end).join('\n').trim();
-  if(section)addChip(section);
 }
 
 /* ── DRAW MODE ── */
@@ -1742,7 +1875,7 @@ function _drawLaserPath(ctx){
 }
 
 function _highlightDrawHits(){
-  document.querySelectorAll('#preview p,#preview li,#preview h1,#preview h2,#preview h3,#preview td').forEach(el=>{
+  document.querySelectorAll(CLICKABLE_BLOCK_SELECTOR).forEach(el=>{
     el.classList.toggle('draw-hit',_pathHitsRect(_drawPath,el.getBoundingClientRect()));
   });
 }
@@ -1777,7 +1910,7 @@ function _finalizeDrawSel(){
   clearDrawHighlights();
   if(!hits.length)return;
   const texts=hits.map(el=>el.textContent.trim()).filter(t=>t.length>1);
-  if(texts.length)addChip(texts.join('\n'));
+  if(texts.length)addChip(texts.join('\n'),{source:'draw'});
 }
 
 function _drawFadeOut(){
@@ -1828,8 +1961,11 @@ function buildTreeFromPaths(paths){
 function refreshTree(){buildTree(_tree,document.getElementById('troot'));}
 
 Object.assign(window,{
+  addChip,
   addInstruction,
   applyJob,
+  chipRightRemove,
+  clearChipFocus,
   clearJobs,
   closeInstructModal,
   closePreview,
@@ -1837,18 +1973,19 @@ Object.assign(window,{
   deleteInstruction,
   doSave,
   editInstruction,
+  handleChipClick,
   initResize,
   loadInstructionFromFile,
   normalizeInstruction,
   openFile,
   openInstructModal,
-  pinChip,
   previewJob,
   rejectJob,
   removeChip,
   selectAll,
   setLeftTab,
   setMode,
+  showChipFocus,
   submitChips,
   tocItemClick,
   toggleChip,
@@ -1860,7 +1997,6 @@ Object.assign(window,{
 /* ── INIT ── */
 async function init(){
   await checkBridge();
-  if(!S.bridge){refreshTree();renderInstructions();return;}
   try{
     const r=await fetch(`${BRIDGE}/files`);
     if(r.ok){
@@ -1869,7 +2005,9 @@ async function init(){
       _tree=buildTreeFromPaths(S.files);
       renderInstructionFiles();
     }
-  }catch{}
+  }catch{
+    if(!S.bridge){refreshTree();renderInstructions();return;}
+  }
   await loadInstructions();
   refreshTree();
   if(_tree.length>0){
