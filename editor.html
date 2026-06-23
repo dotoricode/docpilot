@@ -293,9 +293,16 @@ body.resizing-panels,body.resizing-panels *{user-select:none!important}
 #preview .chip-focus-block,
 #preview .draw-hit{
   background:linear-gradient(90deg,rgba(223,255,0,.10),rgba(0,229,255,.055)),rgba(12,14,12,.86) !important;
-  box-shadow:-3px 0 0 var(--hi),0 0 0 1px rgba(223,255,0,.62),0 0 18px rgba(223,255,0,.20) !important;
+  box-shadow:inset 4px 0 0 var(--hi),0 0 0 1px rgba(223,255,0,.62),0 0 18px rgba(223,255,0,.20) !important;
   border-radius:6px;
   outline:none;
+}
+#preview :is(p,h1,h2,h3,h4,h5,h6):hover,
+#preview :is(p,h1,h2,h3,h4,h5,h6).preview-picked,
+#preview :is(p,h1,h2,h3,h4,h5,h6).chip-focus-block,
+#preview :is(p,h1,h2,h3,h4,h5,h6).draw-hit{
+  margin-left:-8px;
+  padding-left:8px;
 }
 #preview .preview-picked code,
 #preview .chip-focus-block code,
