@@ -429,9 +429,8 @@ body.resizing-panels,body.resizing-panels *{user-select:none!important}
 #chip-instruct-btn.visible{display:inline-flex}
 #chip-instruct-btn .ai-mark{
   display:inline-block;width:28px;height:18px;min-width:28px;padding:0;border:0;border-radius:0;
-  background:var(--cy);
-  -webkit-mask:url("assets/ai-mark-bond.png?v=1") center/contain no-repeat;
-  mask:url("assets/ai-mark-bond.png?v=1") center/contain no-repeat;
+  background:url("assets/ai-mark-bond.png?v=1") center/contain no-repeat;
+  filter:invert(73%) sepia(61%) saturate(951%) hue-rotate(158deg) brightness(104%) contrast(101%);
   color:transparent;font-size:0;line-height:1;box-shadow:none;
 }
 
@@ -707,7 +706,7 @@ body.resizing-panels,body.resizing-panels *{user-select:none!important}
           <!-- CHIP FLOAT -->
           <div id="chip-float">
             <div id="chip-list"></div>
-            <button id="chip-instruct-btn" onclick="openInstructModal()"><span class="ai-mark" aria-hidden="true">AI</span><span>지시하기</span></button>
+            <button id="chip-instruct-btn" onclick="openInstructModal()" aria-label="지시하기"><span class="ai-mark" aria-hidden="true"></span><span>지시하기</span></button>
           </div>
           <div id="preview"></div>
         </div>
