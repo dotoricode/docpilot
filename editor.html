@@ -287,11 +287,21 @@ body.resizing-panels,body.resizing-panels *{user-select:none!important}
 #preview h1 *,#preview h2 *,#preview h3 *,#preview h4 *,#preview h5 *,#preview h6 *{
   cursor:var(--cursor-click);
 }
-#preview p:hover,#preview li:hover,#preview td:hover,#preview th:hover,#preview pre:hover,#preview blockquote:hover,
+#preview p:hover,#preview li:hover,#preview td:hover,#preview th:hover,#preview blockquote:hover,
 #preview h1:hover,#preview h2:hover,#preview h3:hover,#preview h4:hover,#preview h5:hover,#preview h6:hover,
-#preview .preview-picked,
-#preview .chip-focus-block,
-#preview .draw-hit{
+#preview :is(p,li,td,th,blockquote,h1,h2,h3,h4,h5,h6).preview-picked,
+#preview :is(p,li,td,th,blockquote,h1,h2,h3,h4,h5,h6).chip-focus-block,
+#preview :is(p,li,td,th,blockquote,h1,h2,h3,h4,h5,h6).draw-hit{
+  background:linear-gradient(90deg,rgba(223,255,0,.34),rgba(0,229,255,.16)) !important;
+  box-shadow:0 0 0 1px rgba(223,255,0,.46),0 0 18px rgba(223,255,0,.18) !important;
+  border-radius:6px;
+  outline:1px solid rgba(223,255,0,.36);
+  outline-offset:1px;
+}
+#preview pre:hover,
+#preview pre.preview-picked,
+#preview pre.chip-focus-block,
+#preview pre.draw-hit{
   background:linear-gradient(90deg,rgba(223,255,0,.10),rgba(0,229,255,.055)),rgba(12,14,12,.86) !important;
   box-shadow:inset 4px 0 0 var(--hi),0 0 0 1px rgba(223,255,0,.62),0 0 18px rgba(223,255,0,.20) !important;
   border-radius:6px;
