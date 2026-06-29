@@ -10,7 +10,7 @@ const { pathToFileURL } = require('url');
 const PORT = 7474;
 const projectDir = path.resolve(__dirname, '..');
 const bridgePath = path.join(projectDir, 'bridge.js');
-const editorPath = path.join(projectDir, 'editor.html');
+const editorPath = path.join(projectDir, 'dist', 'renderer', 'index.html');
 const statePath = path.join(os.tmpdir(), 'docpilot-bridge-7474.json');
 const logPath = path.join(os.tmpdir(), 'docpilot-bridge.log');
 
@@ -19,7 +19,7 @@ const SKIP_DIRS = new Set(['.git', 'node_modules', '.next', 'dist', 'build', 've
 function usage() {
   console.log(`Usage: node scripts/launch-docpilot.js [path]
 
-Starts the docpilot bridge and opens editor.html.
+Starts the docpilot bridge and opens the React renderer.
 If path is omitted, docpilot searches the current directory for markdown folders.`);
 }
 
@@ -169,6 +169,9 @@ function startBridge(root) {
 }
 
 function openEditor() {
+  if (!fs.existsSync(editorPath)) {
+    throw new Error('React renderer bundle is missing. Run npm run renderer:build first.');
+  }
   const url = pathToFileURL(editorPath).href;
   let child;
   if (process.platform === 'win32') {

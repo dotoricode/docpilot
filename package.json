@@ -1,5 +1,82 @@
 {
+  "name": "docpilot",
+  "version": "1.0.21",
+  "description": "Local Markdown editor with AI assistance",
+  "main": "main.js",
+  "scripts": {
+    "prestart": "npm run renderer:build",
+    "start": "electron .",
+    "renderer:dev": "vite --config app/vite.config.ts",
+    "renderer:build": "vite build --config app/vite.config.ts",
+    "renderer:typecheck": "tsc --noEmit -p app/tsconfig.json",
+    "build": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg"
+  },
+  "build": {
+    "appId": "com.docpilot.app",
+    "productName": "DocPilot",
+    "asar": true,
+    "asarUnpack": [
+      "bridge.js",
+      "store.js",
+      "prompt-package.js",
+      "node_modules/node-pty/**"
+    ],
+    "files": [
+      "main.js",
+      "preload.js",
+      "store.js",
+      "start.html",
+      "bridge.js",
+      "prompt-package.js",
+      "shared/**",
+      "scripts/fake-agent.js",
+      "dist/renderer/**",
+      "assets/**",
+      "!assets/*.icns"
+    ],
+    "mac": {
+      "icon": "assets/docpilot.icns",
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "docpilot",
+      "window": {
+        "width": 540,
+        "height": 360
+      }
+    }
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0"
+  },
   "devDependencies": {
-    "playwright": "^1.61.0"
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/state": "^6.7.0",
+    "@codemirror/view": "^6.43.3",
+    "@tailwindcss/vite": "^4.3.1",
+    "@types/markdown-it": "^14.1.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "@xterm/xterm": "^6.0.0",
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3",
+    "markdown-it": "^14.2.0",
+    "playwright": "^1.61.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tailwindcss": "^4.3.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.0"
   }
 }
