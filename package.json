@@ -1,6 +1,6 @@
 {
   "name": "docpilot",
-  "version": "1.0.28",
+  "version": "1.0.27",
   "description": "Local Markdown editor with AI assistance",
   "main": "main.js",
   "scripts": {

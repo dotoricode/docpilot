@@ -27,13 +27,11 @@ type ReleaseNoteItem = {
 };
 
 const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
-  '1.0.28': [
+  '1.0.27': [
     {
       title: '들여쓰기 선택지를 간단하게 정리했습니다',
       body: '상단 Tab 메뉴와 명령 팔레트에서 스페이스 2칸, 스페이스 4칸, 탭 2칸, 탭 4칸을 바로 선택할 수 있습니다.',
     },
-  ],
-  '1.0.27': [
     {
       title: 'JSON과 JavaScript 파일을 작업할 수 있습니다',
       body: '파일 트리, 빠른 이동, 편집기에서 JSON과 JavaScript 파일을 열고 수정할 수 있습니다. JSON은 보기 모드에서 읽기 좋게 정렬해 보여줍니다.',
