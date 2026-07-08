@@ -385,6 +385,87 @@
     max-width: 420px;
   }
 
+  .release-stack {
+    display: grid;
+    gap: 18px;
+  }
+
+  .release-card {
+    padding: 20px;
+    border: 1px solid var(--dp-border);
+    border-radius: 18px;
+    background:
+      linear-gradient(135deg, rgba(245, 78, 0, 0.10), transparent 52%),
+      rgba(250, 250, 247, 0.035);
+  }
+
+  .release-card header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .release-card h2 {
+    margin: 0;
+    color: var(--dp-text-strong);
+    font-size: 24px;
+    letter-spacing: 0;
+    text-transform: none;
+    font-family: var(--dp-sans);
+  }
+
+  .release-badge {
+    flex: 0 0 auto;
+    border: 1px solid rgba(245, 78, 0, 0.38);
+    border-radius: 999px;
+    padding: 5px 10px;
+    color: var(--dp-accent-light);
+    background: rgba(245, 78, 0, 0.12);
+    font: 12px var(--dp-mono);
+  }
+
+  .release-items {
+    display: grid;
+    gap: 11px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .release-items li {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 12px;
+    padding: 13px 0 0;
+    border-top: 1px solid rgba(230, 229, 224, 0.10);
+  }
+
+  .release-items li:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .release-items .num {
+    color: var(--dp-faint);
+    font: 12px var(--dp-mono);
+  }
+
+  .release-items strong {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--dp-text-strong);
+    font-size: 15px;
+  }
+
+  .release-items p {
+    margin: 0;
+    color: var(--dp-muted);
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
   /* ── overview quick-nav cards ── */
   .quick-nav {
     display: grid;
@@ -490,10 +571,11 @@
 
 <nav class="toc">
   <div class="brand"><span class="dot"></span><span>DocPilot</span></div>
-  <div class="version">v1.0.24 · 사용 매뉴얼</div>
+  <div class="version">v1.0.27 · 사용 매뉴얼</div>
 
   <div class="section-label">시작하기</div>
   <a data-target="overview" class="active">개요</a>
+  <a data-target="whats-new">What's New</a>
   <a data-target="s1">폴더 열기 &amp; 워크플로우</a>
   <a data-target="s2">파일 트리</a>
 
@@ -526,7 +608,58 @@
       <li><a data-target="s5"><div class="quick-nav-icon">📐</div><strong>지침(Instructions) 관리</strong><span>복사할 때마다 자동으로 함께 붙는 규칙</span></a></li>
       <li><a data-target="s6"><div class="quick-nav-icon">🛡️</div><strong>Safety Model</strong><span>renderer/bridge 권한 경계</span></a></li>
       <li><a data-target="s7"><div class="quick-nav-icon">✅</div><strong>검증 명령</strong><span>커밋 전 실행할 스크립트 13종</span></a></li>
+      <li><a data-target="whats-new"><div class="quick-nav-icon">✨</div><strong>What's New</strong><span>1.0.25부터 1.0.27까지 달라진 점</span></a></li>
     </ul>
+  </div>
+
+  <div class="page" id="whats-new">
+    <span class="kicker">What's New</span>
+    <h1>1.0.25 → 1.0.27 변경사항</h1>
+    <p class="subtitle">최근 세 버전에서 문서 검토, Diff 확인, 편집기, 지침 관리 흐름이 어떻게 바뀌었는지 정리했습니다.</p>
+    <hr class="divider" />
+
+    <div class="release-stack">
+      <section class="release-card">
+        <header>
+          <h2>DocPilot 1.0.27</h2>
+          <span class="release-badge">현재 버전</span>
+        </header>
+        <ul class="release-items">
+          <li><span class="num">01</span><div><strong>들여쓰기 선택지를 간단하게 정리했습니다</strong><p>상단 Tab 메뉴와 명령 팔레트에서 스페이스 2칸, 스페이스 4칸, 탭 2칸, 탭 4칸을 바로 선택할 수 있습니다.</p></div></li>
+          <li><span class="num">02</span><div><strong>JSON과 JavaScript 파일을 작업할 수 있습니다</strong><p>파일 트리, 빠른 이동, 편집기에서 JSON과 JavaScript 파일을 열고 수정할 수 있습니다. JSON은 보기 모드에서 읽기 좋게 정렬해 보여줍니다.</p></div></li>
+          <li><span class="num">03</span><div><strong>프리뷰는 Markdown과 JSON에 집중했습니다</strong><p>JavaScript, YAML, 일반 텍스트 파일은 기본적으로 편집 모드로 열립니다. 프리뷰가 어울리는 문서와 데이터 파일에만 프리뷰 전환을 제공합니다.</p></div></li>
+          <li><span class="num">04</span><div><strong>편집기 색과 배경을 다시 맞췄습니다</strong><p>다크 테마 편집 배경을 덜 진하게 조정하고, 편집 모드 코드 색상을 프리뷰 코드블록과 더 가깝게 맞췄습니다.</p></div></li>
+          <li><span class="num">05</span><div><strong>들여쓰기 영역을 눈으로 확인할 수 있습니다</strong><p>선행 공백과 탭이 화면에 구분되어 보여, 파일마다 어떤 들여쓰기 기준을 쓰는지 편집 중 바로 확인할 수 있습니다.</p></div></li>
+        </ul>
+      </section>
+
+      <section class="release-card">
+        <header>
+          <h2>DocPilot 1.0.26</h2>
+          <span class="release-badge">검색 · 창 · 보기</span>
+        </header>
+        <ul class="release-items">
+          <li><span class="num">01</span><div><strong>새 창이 기존 프로젝트를 끊지 않습니다</strong><p>새 창에서 다른 폴더를 열어도 기존 창의 프로젝트와 브리지가 그대로 유지됩니다.</p></div></li>
+          <li><span class="num">02</span><div><strong>검색창을 찾기 중심으로 줄였습니다</strong><p>프리뷰와 편집 모드의 Cmd+F 창을 더 작게 정리하고, 다른 영역을 클릭하면 닫히도록 했습니다.</p></div></li>
+          <li><span class="num">03</span><div><strong>본문 폭 기본값을 넓혔습니다</strong><p>프리뷰 본문 폭은 처음부터 최대로 열리고, 슬라이더 트랙을 클릭해 바로 조절할 수 있습니다.</p></div></li>
+          <li><span class="num">04</span><div><strong>라이트 테마 코드블록을 보정했습니다</strong><p>라이트 테마에서도 네이비 코드블록 안의 타입, 함수명, 매개변수가 잘 보이도록 색을 다시 맞췄습니다.</p></div></li>
+        </ul>
+      </section>
+
+      <section class="release-card">
+        <header>
+          <h2>DocPilot 1.0.25</h2>
+          <span class="release-badge">Diff · 지침 · 복사</span>
+        </header>
+        <ul class="release-items">
+          <li><span class="num">01</span><div><strong>작은 Diff만 보이게 했습니다</strong><p>표 한 줄이나 목록 한 항목만 바뀐 경우, 그 부분만 빨강/초록으로 표시합니다. 문서 전체가 바뀐 것처럼 보이던 화면을 줄였습니다.</p></div></li>
+          <li><span class="num">02</span><div><strong>긴 문서에서 변경 위치를 먼저 볼 수 있습니다</strong><p>Diff 오른쪽 레일에 변경 지점이 표시됩니다. 레일을 보고 어디쯤을 확인해야 하는지 파악한 뒤 스크롤하면 됩니다.</p></div></li>
+          <li><span class="num">03</span><div><strong>라이트 테마 Diff를 다시 맞췄습니다</strong><p>줄 번호 색을 낮추고, 편집 모드 raw diff의 배경과 글자색을 조정했습니다. 밝은 화면에서도 삭제/추가 줄을 구분할 수 있습니다.</p></div></li>
+          <li><span class="num">04</span><div><strong>지침 프리셋이 현재 상태를 따라갑니다</strong><p>지침을 끄거나 삭제하면 활성 프리셋 표시도 함께 정리됩니다. 파일에서 불러온 지침은 복사나 에이전트 요청 전에 최신 내용을 다시 읽습니다.</p></div></li>
+          <li><span class="num">05</span><div><strong>프리뷰 복사 동작을 분리했습니다</strong><p>문단을 클릭하면 바로 참고 칩에 추가하고 복사합니다. 드래그로 범위를 잡았을 때만 선택 복사 메뉴가 열립니다.</p></div></li>
+        </ul>
+      </section>
+    </div>
   </div>
 
   <div class="page" id="s1">
