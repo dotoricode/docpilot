@@ -466,6 +466,61 @@
     line-height: 1.65;
   }
 
+  .deploy-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 18px 0 0;
+  }
+
+  .deploy-actions a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    border: 1px solid rgba(245, 78, 0, 0.34);
+    border-radius: 999px;
+    padding: 0 15px;
+    color: var(--dp-text-strong);
+    background: rgba(245, 78, 0, 0.13);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 650;
+  }
+
+  .deploy-actions a.secondary {
+    border-color: var(--dp-border-strong);
+    background: rgba(250, 250, 247, 0.045);
+    color: var(--dp-muted);
+  }
+
+  .deploy-meta {
+    display: grid;
+    gap: 8px;
+    margin: 18px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .deploy-meta li {
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr);
+    gap: 12px;
+    color: var(--dp-muted);
+    font-size: 14px;
+  }
+
+  .deploy-meta strong {
+    color: var(--dp-faint);
+    font-family: var(--dp-mono);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .deploy-meta a {
+    color: var(--dp-accent-light);
+    text-decoration: none;
+  }
+
   /* ── overview quick-nav cards ── */
   .quick-nav {
     display: grid;
@@ -576,6 +631,7 @@
   <div class="section-label">시작하기</div>
   <a data-target="overview" class="active">개요</a>
   <a data-target="whats-new">What's New</a>
+  <a data-target="deploy">배포 &amp; 다운로드</a>
   <a data-target="s1">폴더 열기 &amp; 워크플로우</a>
   <a data-target="s2">파일 트리</a>
 
@@ -609,6 +665,7 @@
       <li><a data-target="s6"><div class="quick-nav-icon">🛡️</div><strong>Safety Model</strong><span>renderer/bridge 권한 경계</span></a></li>
       <li><a data-target="s7"><div class="quick-nav-icon">✅</div><strong>검증 명령</strong><span>커밋 전 실행할 스크립트 13종</span></a></li>
       <li><a data-target="whats-new"><div class="quick-nav-icon">✨</div><strong>What's New</strong><span>1.0.25부터 1.0.27까지 달라진 점</span></a></li>
+      <li><a data-target="deploy"><div class="quick-nav-icon">⬇️</div><strong>배포 &amp; 다운로드</strong><span>최신 DMG와 릴리즈 자산</span></a></li>
     </ul>
   </div>
 
@@ -659,6 +716,50 @@
           <li><span class="num">05</span><div><strong>프리뷰 복사 동작을 분리했습니다</strong><p>문단을 클릭하면 바로 참고 칩에 추가하고 복사합니다. 드래그로 범위를 잡았을 때만 선택 복사 메뉴가 열립니다.</p></div></li>
         </ul>
       </section>
+    </div>
+  </div>
+
+  <div class="page" id="deploy">
+    <span class="kicker">Deploy</span>
+    <h1>배포 &amp; 다운로드</h1>
+    <p class="subtitle">현재 배포된 DocPilot 앱은 <code>v1.0.27</code>입니다. macOS에서는 DMG를 내려받아 기존 앱에 덮어 설치하면 됩니다.</p>
+    <hr class="divider" />
+
+    <div class="subsection">
+      <h2>Download</h2>
+      <h3><span class="emoji">⬇️</span>최신 macOS DMG</h3>
+      <p>아래 버튼은 GitHub Release의 최신 <code>DocPilot-1.0.27.dmg</code> 자산으로 연결됩니다.</p>
+      <div class="deploy-actions">
+        <a href="https://github.com/dotoricode/docpilot/releases/download/v1.0.27/DocPilot-1.0.27.dmg">DocPilot 1.0.27 DMG 다운로드</a>
+        <a class="secondary" href="https://github.com/dotoricode/docpilot/releases/tag/v1.0.27">GitHub Release 보기</a>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <h2>Install</h2>
+      <h3><span class="emoji">🧩</span>설치 방법</h3>
+      <ol class="steps">
+        <li><code>DocPilot-1.0.27.dmg</code>를 내려받는다</li>
+        <li>DMG를 열고 <strong>DocPilot.app</strong>을 Applications 폴더로 드래그한다</li>
+        <li>기존 앱이 있으면 대체 설치한다</li>
+        <li>앱을 다시 열면 v1.0.27 개선사항 안내가 처음 한 번 표시된다</li>
+      </ol>
+    </div>
+
+    <div class="subsection">
+      <h2>Release Assets</h2>
+      <h3><span class="emoji">📦</span>배포 자산</h3>
+      <ul class="deploy-meta">
+        <li><strong>Version</strong><span>1.0.27</span></li>
+        <li><strong>DMG</strong><a href="https://github.com/dotoricode/docpilot/releases/download/v1.0.27/DocPilot-1.0.27.dmg">DocPilot-1.0.27.dmg</a></li>
+        <li><strong>Blockmap</strong><a href="https://github.com/dotoricode/docpilot/releases/download/v1.0.27/DocPilot-1.0.27.dmg.blockmap">DocPilot-1.0.27.dmg.blockmap</a></li>
+        <li><strong>Update YAML</strong><a href="https://github.com/dotoricode/docpilot/releases/download/v1.0.27/latest-mac.yml">latest-mac.yml</a></li>
+        <li><strong>Release</strong><a href="https://github.com/dotoricode/docpilot/releases/tag/v1.0.27">github.com/dotoricode/docpilot/releases/tag/v1.0.27</a></li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <strong>Note:</strong> 현재 DMG는 개발용 배포 설정에 따라 코드서명 없이 빌드되어 있습니다. macOS 보안 경고가 뜨면 Finder에서 앱을 우클릭한 뒤 열기를 선택하세요.
     </div>
   </div>
 
