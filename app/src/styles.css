@@ -177,10 +177,25 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  border: 0;
+  background: transparent;
   color: #f4f5f7;
+  cursor: pointer;
   font-weight: 900;
   letter-spacing: 0.04em;
+  padding: 0;
   text-transform: uppercase;
+  -webkit-app-region: no-drag;
+}
+
+.app-logo:hover {
+  color: #ffffff;
+}
+
+.app-logo:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.72);
+  outline-offset: 4px;
+  border-radius: 4px;
 }
 
 .logo-dot {

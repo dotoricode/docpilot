@@ -52,6 +52,10 @@ const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
       title: '파일트리 마지막 항목도 편하게 우클릭할 수 있습니다',
       body: '파일트리 하단에 여유 공간을 두고 메뉴 위치를 보정해, 맨 아래 파일에서도 경로 복사 같은 메뉴가 잘리지 않습니다.',
     },
+    {
+      title: '홈 이동과 주요 단축키를 정리했습니다',
+      body: '좌측 상단 DocPilot 로고로 홈 화면에 돌아갈 수 있고, Cmd+P 빠른 이동과 Cmd+Shift+P 명령 팔레트 사용법을 매뉴얼에 보강했습니다.',
+    },
   ],
   '1.0.26': [
     {
@@ -691,6 +695,28 @@ export function App() {
     setReleaseNotice(null);
   }
 
+  function goHome() {
+    if (dirtyFileIds.length) {
+      setOpenError('저장되지 않은 변경사항이 있어 홈으로 이동하지 않았습니다. 먼저 저장하거나 탭을 닫아주세요.');
+      return;
+    }
+
+    openPathRef.current = '';
+    secondaryOpenPathRef.current = '';
+    setBuffer(createFileBuffer());
+    setSecondaryBuffer(createFileBuffer());
+    setOpenTabs([]);
+    setSecondaryOpenTabs([]);
+    setActiveTabId('');
+    setSecondaryActiveTabId('');
+    setActivePane('primary');
+    setReviewDiff(null);
+    setSelectedContext(null);
+    setContextChips([]);
+    setQuickOpenOpen(false);
+    setOpenError('');
+  }
+
   function startPanelResize(event: ReactMouseEvent<HTMLDivElement>) {
     event.preventDefault();
     if (leftCollapsed) return;
@@ -788,7 +814,9 @@ export function App() {
     >
       <div className="app-topbar window-drag-region">
         <div className="topbar-left">
-          <div className="app-logo"><span className="logo-dot" />DocPilot</div>
+          <button className="app-logo" type="button" onClick={goHome} aria-label="홈으로 이동">
+            <span className="logo-dot" />DocPilot
+          </button>
           <span className="topbar-chip" title={workspaceRoot}>root: {folderName(workspaceRoot) || '...'}</span>
           <span className="topbar-crumb">{buffer.path || '파일을 선택하세요'}</span>
         </div>

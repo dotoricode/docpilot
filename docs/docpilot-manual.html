@@ -637,7 +637,7 @@
   <a data-target="s2">파일 트리</a>
 
   <div class="section-label">편집</div>
-  <a data-target="s3">Markdown 편집기</a>
+  <a data-target="s3">문서 편집기</a>
 
   <div class="section-label">Agent 연동</div>
   <a data-target="s4">복사해서 Agent에게 전달</a>
@@ -655,12 +655,12 @@
   <div class="page active" id="overview">
     <span class="kicker">User Manual</span>
     <h1>DocPilot 사용 매뉴얼</h1>
-    <p class="subtitle">로컬 마크다운 문서를 프리뷰·스플릿·diff로 보고, 지침을 걸어두고, 필요한 부분을 클릭하거나 드래그하면 <code>File: 경로 + Lines: N-M + 내용</code>이 그대로 복사됩니다. 터미널의 Claude Code나 Codex에 붙여넣기만 하면 됩니다 — 파일 위치를 직접 찾아 알려줄 필요가 없습니다.</p>
+    <p class="subtitle">로컬 문서를 프리뷰·스플릿·diff로 보고, 지침을 걸어두고, 필요한 부분을 클릭하거나 드래그하면 <code>File: 경로 + Lines: N-M + 내용</code>이 그대로 복사됩니다. 터미널의 Claude Code나 Codex에 붙여넣기만 하면 됩니다 — 파일 위치를 직접 찾아 알려줄 필요가 없습니다.</p>
     <hr class="divider" />
     <ul class="quick-nav">
       <li><a data-target="s1"><div class="quick-nav-icon">📂</div><strong>폴더 열기 &amp; 워크플로우</strong><span>문서 폴더 선택부터 편집까지 흐름</span></a></li>
       <li><a data-target="s2"><div class="quick-nav-icon">🗂️</div><strong>파일 트리</strong><span>탐색, 우클릭 메뉴, 최근 폴더</span></a></li>
-      <li><a data-target="s3"><div class="quick-nav-icon">📝</div><strong>Markdown 편집기</strong><span>편집·미리보기·분할 보기, 단축키</span></a></li>
+      <li><a data-target="s3"><div class="quick-nav-icon">📝</div><strong>문서 편집기</strong><span>빠른 이동, 명령 팔레트, 편집·미리보기·분할 보기</span></a></li>
       <li><a data-target="s4"><div class="quick-nav-icon">📋</div><strong>복사해서 Agent에게 전달</strong><span>클릭/드래그 복사, 위치·라인 자동 포함</span></a></li>
       <li><a data-target="s5"><div class="quick-nav-icon">📐</div><strong>지침(Instructions) 관리</strong><span>복사할 때마다 자동으로 함께 붙는 규칙</span></a></li>
       <li><a data-target="s6"><div class="quick-nav-icon">🛡️</div><strong>Safety Model</strong><span>renderer/bridge 권한 경계</span></a></li>
@@ -689,6 +689,7 @@
           <li><span class="num">04</span><div><strong>편집기 색과 배경을 다시 맞췄습니다</strong><p>다크 테마 편집 배경을 덜 진하게 조정하고, 편집 모드 코드 색상을 프리뷰 코드블록과 더 가깝게 맞췄습니다.</p></div></li>
           <li><span class="num">05</span><div><strong>들여쓰기 영역을 눈으로 확인할 수 있습니다</strong><p>선행 공백과 탭이 화면에 구분되어 보여, 파일마다 어떤 들여쓰기 기준을 쓰는지 편집 중 바로 확인할 수 있습니다.</p></div></li>
           <li><span class="num">06</span><div><strong>파일트리 마지막 항목도 편하게 우클릭할 수 있습니다</strong><p>파일트리 하단에 여유 공간을 두고 메뉴 위치를 보정해, 맨 아래 파일에서도 경로 복사 같은 메뉴가 잘리지 않습니다.</p></div></li>
+          <li><span class="num">07</span><div><strong>홈 이동과 주요 단축키를 정리했습니다</strong><p>좌측 상단 DocPilot 로고로 홈 화면에 돌아갈 수 있고, Cmd+P 빠른 이동과 Cmd+Shift+P 명령 팔레트 사용법을 매뉴얼에 보강했습니다.</p></div></li>
         </ul>
       </section>
 
@@ -774,14 +775,14 @@
     <div class="subsection">
       <h2>Start</h2>
       <h3><span class="emoji">📂</span>폴더 열기</h3>
-      <p>시작 화면에서 로컬 마크다운 폴더를 선택하면 나머지는 자동으로 이어집니다.</p>
+      <p>시작 화면에서 로컬 문서 폴더를 선택하면 나머지는 자동으로 이어집니다.</p>
       <figure class="shot compact">
         <img src="assets/manual/start-screen.png" alt="DocPilot 시작 화면, 최근 폴더 목록과 폴더 열기 버튼" loading="lazy" />
         <figcaption>시작 화면 — 최근 폴더 목록 + 폴더 열기</figcaption>
       </figure>
       <ol class="steps">
         <li>시작 화면에서 <strong>폴더 열기</strong>를 누른다</li>
-        <li>편집할 마크다운 문서가 있는 로컬 폴더를 선택한다</li>
+        <li>편집할 문서가 있는 로컬 폴더를 선택한다</li>
         <li>DocPilot이 해당 경로를 workspace root로 지정하고 bridge 프로세스를 그 경로 기준으로 띄운다</li>
         <li>React editor 창이 자동으로 열린다</li>
       </ol>
@@ -794,6 +795,13 @@
         <li><strong>workspace root.</strong> 선택한 폴더 경로가 이후 모든 파일 조회의 기준이 된다.</li>
         <li><strong>최근 작업공간 기록.</strong> 연 폴더가 시작 화면의 최근 폴더 목록에 자동으로 남는다.</li>
       </ul>
+    </div>
+
+    <div class="subsection">
+      <h2>탐색</h2>
+      <h3><span class="emoji">🏠</span>상단 DocPilot 로고로 홈 이동</h3>
+      <p>좌측 상단의 <strong>DocPilot</strong> 로고를 누르면 열린 파일과 분할 화면을 비우고 홈 상태로 돌아갑니다. 작업 폴더 연결은 유지되므로 파일 트리에서 바로 다시 문서를 고를 수 있습니다.</p>
+      <div class="callout"><strong>Boundary:</strong> 저장되지 않은 변경사항이 있으면 홈 이동을 막고 안내 메시지를 표시합니다. 먼저 저장하거나 해당 탭을 닫은 뒤 다시 누르세요.</div>
     </div>
 
     <div class="subsection">
@@ -818,7 +826,7 @@
   <div class="page" id="s2">
     <span class="kicker">Getting Started</span>
     <h1>파일 트리</h1>
-    <p class="subtitle">Workspace Sidebar는 선택한 폴더 하위의 마크다운 문서를 트리 구조로 보여줍니다.</p>
+    <p class="subtitle">Workspace Sidebar는 선택한 폴더 하위의 문서를 트리 구조로 보여줍니다. Markdown, JSON, JavaScript, YAML 파일은 확장자에 맞는 아이콘으로 구분됩니다.</p>
     <hr class="divider" />
 
     <div class="subsection">
@@ -828,6 +836,7 @@
         <li>폴더와 파일을 트리에서 펼치고 클릭해 연다</li>
         <li>검색창에 이름을 입력해 파일을 좁혀 찾는다</li>
         <li><strong>펼침 / 접기</strong> 버튼으로 트리 전체를 한 번에 열고 닫는다</li>
+        <li>수정된 파일과 닫힌 폴더 안의 수정 상태는 오른쪽 점으로 표시된다</li>
       </ul>
       <figure class="shot">
         <img src="assets/manual/file-tree-preview.png" alt="파일 트리와 프리뷰가 함께 표시된 편집 화면" loading="lazy" />
@@ -870,22 +879,24 @@
     <div class="subsection">
       <h2>실제 사례</h2>
       <h3><span class="emoji">💡</span>새 폴더를 만들고 문서를 정리하기</h3>
-      <p>빈 영역을 우클릭해 <strong>폴더 만들기</strong>로 하위 폴더를 만들고, 그 폴더를 다시 우클릭해 <strong>파일 만들기</strong>로 문서를 추가합니다. 이름을 잘못 지었다면 <strong>이름 바꾸기</strong>로 바로 고칠 수 있습니다.</p>
+      <p>빈 영역을 우클릭해 <strong>폴더 만들기</strong>로 하위 폴더를 만들면 예시 문서가 함께 만들어져 트리에 바로 표시됩니다. 그 폴더를 다시 우클릭해 <strong>파일 만들기</strong>로 문서를 추가합니다. 이름을 입력하지 않고 다른 곳을 클릭하거나 <code>Esc</code>를 누르면 생성 전 상태로 돌아갑니다.</p>
     </div>
   </div>
 
   <div class="page" id="s3">
     <span class="kicker">Editing</span>
-    <h1>Markdown 편집기</h1>
-    <p class="subtitle">CodeMirror 6 기반 에디터와 markdown-it 프리뷰를 함께 제공합니다.</p>
+    <h1>문서 편집기</h1>
+    <p class="subtitle">CodeMirror 6 기반 에디터와 Markdown/JSON 프리뷰를 함께 제공합니다. JavaScript, YAML, 일반 텍스트 파일은 편집 중심으로 다룹니다.</p>
     <hr class="divider" />
 
     <div class="subsection">
       <h2>Start</h2>
       <h3><span class="emoji">📝</span>편집 · 미리보기</h3>
       <ul class="feature-points">
-        <li>CodeMirror 6 기반 Markdown 문법 하이라이트로 편집한다</li>
-        <li>markdown-it 기반 프리뷰가 수정 즉시 렌더링 결과를 반영한다</li>
+        <li>CodeMirror 6 기반 문법 하이라이트로 Markdown, JSON, JavaScript 파일을 편집한다</li>
+        <li>Markdown은 markdown-it 기반 프리뷰가 수정 즉시 렌더링 결과를 반영한다</li>
+        <li>JSON은 프리뷰에서 pretty JSON으로 정렬되어 읽기 쉽게 표시된다</li>
+        <li>JavaScript, YAML, 일반 텍스트는 기본적으로 편집 모드로 열린다</li>
       </ul>
       <figure class="shot">
         <img src="assets/manual/edit-mode.png" alt="CodeMirror 편집 모드로 마크다운 원문을 수정하는 화면" loading="lazy" />
@@ -894,9 +905,60 @@
     </div>
 
     <div class="subsection">
+      <h2>탐색</h2>
+      <h3><span class="emoji">🔎</span>빠른 파일 이동 — <code>⌘P</code></h3>
+      <p><code>⌘P</code>(Cmd+P) / <code>Ctrl+P</code>를 누르면 현재 워크스페이스의 파일을 이름으로 바로 찾을 수 있습니다. 최근에 연 파일은 결과 위쪽에 먼저 표시됩니다.</p>
+      <table class="dp-table">
+        <thead>
+          <tr><th>동작</th><th>결과</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>⌘P</code> / <code>Ctrl+P</code></td><td>빠른 파일 이동 창 열기</td></tr>
+          <tr><td>검색어 입력</td><td>파일명과 경로 기준으로 결과 필터링</td></tr>
+          <tr><td><code>Enter</code></td><td>선택된 파일 열기</td></tr>
+          <tr><td><code>Esc</code></td><td>빠른 이동 창 닫기</td></tr>
+        </tbody>
+      </table>
+      <div class="callout"><strong>Tip:</strong> 빠른 이동 창이 열린 상태에서 <code>⌘D</code> 또는 <code>⌘⇧D</code>를 누르면 선택된 파일을 바로 분할 영역으로 열 수 있습니다.</div>
+    </div>
+
+    <div class="subsection">
+      <h2>명령</h2>
+      <h3><span class="emoji">⌘</span>명령 팔레트 — <code>⌘⇧P</code></h3>
+      <p><code>⌘⇧P</code>(Cmd+Shift+P) / <code>Ctrl+Shift+P</code>를 누르면 편집기 명령 팔레트가 열립니다. 현재는 들여쓰기 설정과 들여쓰기 변환 명령을 제공합니다.</p>
+      <table class="dp-table">
+        <thead>
+          <tr><th>명령</th><th>동작</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Indent Using Spaces</td><td>스페이스 들여쓰기로 전환하고 2칸 또는 4칸을 선택</td></tr>
+          <tr><td>Indent Using Tabs</td><td>탭 들여쓰기로 전환하고 2칸 또는 4칸 폭을 선택</td></tr>
+          <tr><td>Convert Indentation to Spaces</td><td>현재 문서의 선행 탭을 스페이스 기준으로 변환</td></tr>
+          <tr><td>Convert Indentation to Tabs</td><td>현재 문서의 선행 스페이스를 탭 기준으로 변환</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subsection">
+      <h2>들여쓰기</h2>
+      <h3><span class="emoji">··</span>언어별 기본값과 가이드</h3>
+      <p>DocPilot은 파일 확장자에 따라 권장 들여쓰기 기본값을 적용하고, 선행 공백과 탭을 화면에서 구분해 보여줍니다.</p>
+      <table class="dp-table">
+        <thead>
+          <tr><th>파일 종류</th><th>기본 들여쓰기</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Markdown, JSON, JavaScript, YAML</td><td>Spaces 2</td></tr>
+          <tr><td>Python, Kotlin/Java/Swift/C 계열</td><td>Spaces 4</td></tr>
+          <tr><td>Go, Makefile</td><td>Tab 4</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subsection">
       <h2>비교</h2>
       <h3><span class="emoji">⚖️</span>분할 보기 옵션</h3>
-      <p>두 번째 문서를 열어 나란히 비교(compare)할 수 있고, 분할 방향을 고를 수 있습니다.</p>
+      <p>두 번째 문서를 열어 나란히 비교(compare)할 수 있고, 분할 방향을 고를 수 있습니다. 각 분할 영역은 독립된 파일 탭을 가지며, 탭은 같은 영역 안에서 드래그해 순서를 바꿀 수 있습니다.</p>
       <figure class="shot">
         <img src="assets/manual/split-view.png" alt="두 문서를 좌우로 나란히 여는 분할 보기 화면" loading="lazy" />
         <figcaption>분할 보기 — 두 문서 좌우 비교</figcaption>
@@ -908,6 +970,8 @@
         <tbody>
           <tr><td>가로 분할</td><td>두 문서를 좌우로 나란히 배치</td></tr>
           <tr><td>세로 분할</td><td>두 문서를 위아래로 배치</td></tr>
+          <tr><td><code>⌘D</code> / <code>Ctrl+D</code></td><td>현재 파일 또는 빠른 이동 선택 파일을 좌우 분할로 열기</td></tr>
+          <tr><td><code>⌘⇧D</code> / <code>Ctrl+Shift+D</code></td><td>현재 파일 또는 빠른 이동 선택 파일을 상하 분할로 열기</td></tr>
         </tbody>
       </table>
     </div>
@@ -923,7 +987,12 @@
       <h3><span class="emoji">⌨️</span>단축키</h3>
       <ul class="feature-points">
         <li><code>⌘S</code> / <code>Ctrl+S</code> — 현재 파일 저장</li>
-        <li><code>⌘F</code> / <code>Ctrl+F</code> — 프리뷰 모드에서 찾기 창 열기</li>
+        <li><code>⌘F</code> / <code>Ctrl+F</code> — 현재 모드에서 찾기 창 열기</li>
+        <li><code>⌘P</code> / <code>Ctrl+P</code> — 빠른 파일 이동</li>
+        <li><code>⌘⇧P</code> / <code>Ctrl+Shift+P</code> — 명령 팔레트 열기</li>
+        <li><code>⌘D</code> / <code>Ctrl+D</code> — 좌우 분할로 열기</li>
+        <li><code>⌘⇧D</code> / <code>Ctrl+Shift+D</code> — 상하 분할로 열기</li>
+        <li><code>⌘W</code> / <code>Ctrl+W</code> — 현재 열린 페이지 닫기. 마지막 페이지이고 분할 상태이면 해당 pane을 닫기</li>
       </ul>
     </div>
 
