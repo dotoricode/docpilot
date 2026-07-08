@@ -6783,7 +6783,8 @@ body.resizing-panels * {
 /* Workspace tree pass: keep rows light, indented, and icon-led. */
 .file-list.workspace-tree {
   gap: 0;
-  padding: 6px 6px 14px;
+  padding: 6px 6px 120px;
+  scroll-padding-bottom: 120px;
 }
 
 .workspace-tree-node,

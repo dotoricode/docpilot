@@ -145,7 +145,7 @@ export function WorkspaceSidebar({ activeFile, dirtyFileIds = [], refreshSignal,
   function openTreeMenu(event: MouseEvent, node: FileTreeNode) {
     event.preventDefault();
     event.stopPropagation();
-    setTreeMenu({ ...contextMenuPosition(event), node });
+    setTreeMenu({ ...contextMenuPosition(event, treeMenuItemCount(node, Boolean(onOpenFileInSplit))), node });
   }
 
   function openBlankTreeMenu(event: MouseEvent) {
@@ -158,7 +158,7 @@ export function WorkspaceSidebar({ activeFile, dirtyFileIds = [], refreshSignal,
     ) return;
     event.preventDefault();
     event.stopPropagation();
-    setTreeMenu({ ...contextMenuPosition(event), node: null });
+    setTreeMenu({ ...contextMenuPosition(event, 4), node: null });
   }
 
   function startEditingNode(node: Pick<FileTreeNode, 'id' | 'name' | 'type'>, openAfterRename = node.type === 'file', isNew = false) {
@@ -756,9 +756,17 @@ function pathFileName(fileId: string) {
   return parts[parts.length - 1] || fileId || 'untitled.md';
 }
 
-function contextMenuPosition(event: MouseEvent) {
+function treeMenuItemCount(node: FileTreeNode, hasSplitAction: boolean) {
+  if (node.type === 'folder') {
+    return node.workspaceRoot ? 4 : 6;
+  }
+
+  return hasSplitAction ? 6 : 5;
+}
+
+function contextMenuPosition(event: MouseEvent, itemCount: number) {
   const menuWidth = 170;
-  const menuHeight = 116;
+  const menuHeight = itemCount * 28 + Math.max(0, itemCount - 1) * 3 + 10;
   const margin = 8;
   return {
     x: Math.max(margin, Math.min(event.clientX, window.innerWidth - menuWidth - margin)),
