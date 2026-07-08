@@ -1140,9 +1140,18 @@ export function EditorPane({
         {buffer.conflictState !== 'clean' ? <span className="conflict-pill">{buffer.conflictState}</span> : null}
         <label className="indent-mode-control" title="Tab 입력 방식">
           <span>Tab</span>
-          <select value={indentMode} onChange={event => setIndentMode(event.currentTarget.value === 'tabs' ? 'tabs' : 'spaces')}>
-            <option value="spaces">Spaces {tabSize}</option>
-            <option value="tabs">Tab {tabSize}</option>
+          <select
+            value={`${indentMode}:${tabSize === 4 ? 4 : 2}`}
+            onChange={event => {
+              const [nextMode, nextSize] = event.currentTarget.value.split(':');
+              setIndentMode(nextMode === 'tabs' ? 'tabs' : 'spaces');
+              setTabSize(nextSize === '4' ? 4 : 2);
+            }}
+          >
+            <option value="spaces:2">Spaces 2</option>
+            <option value="spaces:4">Spaces 4</option>
+            <option value="tabs:2">Tab 2</option>
+            <option value="tabs:4">Tab 4</option>
           </select>
         </label>
         {canPreviewBody ? (
@@ -2105,8 +2114,7 @@ function editorCommandItems(options: {
 }
 
 function tabSizeCommandItems(pendingMode: IndentMode, currentTabSize: number, applySettings: (size: number) => void, closeCommandPalette: () => void): CommandItem[] {
-  return Array.from({ length: 8 }, (_, index) => {
-    const size = index + 1;
+  return [2, 4].map(size => {
     return {
       id: `tab-size-${size}`,
       label: String(size),
