@@ -120,8 +120,14 @@ async function waitForPing(port, deadline = Date.now() + 5000) {
     const sessionId = created.session.id;
     const events = await postTurn(port, sessionId);
     assert(events.some(event => event.type === 'turn.started'), 'turn.started event missing');
-    assert(events.some(event => event.type === 'turn.delta' && event.text.includes('fake claude response')), 'turn.delta fake response missing');
     assert(events.some(event => event.type === 'turn.done'), 'turn.done event missing');
+    const deltaEvents = events.filter(event => event.type === 'turn.delta');
+    const streamedText = deltaEvents.map(event => event.text || '').join('');
+    assert(streamedText.includes('fake claude response'), 'turn.delta fake response missing');
+    const firstDoneIndex = events.findIndex(event => event.type === 'turn.done');
+    const secondDeltaIndex = events.findIndex((event, index) => index > events.findIndex(item => item.type === 'turn.delta') && event.type === 'turn.delta');
+    assert(deltaEvents.length >= 2, `claude stream should emit multiple intermediate deltas, got ${deltaEvents.length}`);
+    assert(secondDeltaIndex !== -1 && secondDeltaIndex < firstDoneIndex, 'multiple claude deltas must arrive before turn.done');
     for (let idx = 0; idx < 6; idx += 1) {
       await postTurn(port, sessionId, `후속 테스트 ${idx}`);
     }
@@ -150,6 +156,9 @@ async function waitForPing(port, deadline = Date.now() + 5000) {
     const afterSnapshot = await requestJson(port, 'GET', '/workspace-snapshot');
     assert(beforeSnapshot.files.every(file => file.id !== 'agent-output.md'), 'baseline should not include fake output before turn');
     assert(afterSnapshot.files.some(file => file.id === 'agent-output.md' && file.content.includes('Fake Agent Change')), 'snapshot should include fake output after turn');
+    const closed = await requestJson(port, 'DELETE', `/sessions/${encodeURIComponent(sessionId)}`);
+    assert.strictEqual(closed.ok, true, 'session close should succeed');
+    assert(!closed.sessions.some(session => session.id === sessionId), 'closed session should be removed from default session list');
   } finally {
     proc.kill();
     fs.rmSync(workspace, { recursive: true, force: true });

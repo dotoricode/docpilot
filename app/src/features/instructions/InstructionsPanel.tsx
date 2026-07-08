@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import {
   applyInstructionSet,
   deleteInstruction,
@@ -27,6 +27,7 @@ const emptyState: InstructionState = {
 };
 
 export function InstructionsPanel() {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [state, setState] = useState<InstructionState>(emptyState);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -45,14 +46,18 @@ export function InstructionsPanel() {
     refresh();
   }, []);
 
-  function applyData(data: Partial<InstructionState>) {
-    setState({
-      instructions: Array.isArray(data.instructions) ? data.instructions : [],
-      projectSets: Array.isArray(data.projectSets) ? data.projectSets : [],
-      globalSets: Array.isArray(data.globalSets) ? data.globalSets : [],
-      activeSetId: data.activeSetId || '',
-      globalActiveSetId: data.globalActiveSetId || '',
-    });
+  function applyData(data: Partial<InstructionState> & { sets?: InstructionSet[] }) {
+    setState(previous => ({
+      instructions: Array.isArray(data.instructions) ? data.instructions : previous.instructions,
+      projectSets: Array.isArray(data.projectSets)
+        ? data.projectSets
+        : Array.isArray(data.sets)
+          ? data.sets
+          : previous.projectSets,
+      globalSets: Array.isArray(data.globalSets) ? data.globalSets : previous.globalSets,
+      activeSetId: typeof data.activeSetId === 'string' ? data.activeSetId : previous.activeSetId,
+      globalActiveSetId: typeof data.globalActiveSetId === 'string' ? data.globalActiveSetId : previous.globalActiveSetId,
+    }));
   }
 
   async function refresh() {
@@ -82,6 +87,23 @@ export function InstructionsPanel() {
     await mutate(() => saveInstruction({ title: title.trim() || nextBody.split(/\r?\n/)[0]?.slice(0, 80) || '지침', body: nextBody, active: true }));
     setTitle('');
     setBody('');
+  }
+
+  async function importInstructionFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file) return;
+    setBusy(true);
+    try {
+      const content = await file.text();
+      setTitle(stripInstructionFileExtension(file.name) || file.name || '불러온 지침');
+      setBody(content);
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function toggleInstruction(item: Instruction) {
@@ -130,8 +152,19 @@ export function InstructionsPanel() {
       </div>
       <div className="instruction-form">
         <input value={title} placeholder="지침 이름" onChange={event => setTitle(event.target.value)} />
-        <textarea value={body} placeholder="새 지침을 입력하세요." onChange={event => setBody(event.target.value)} />
-        <button type="button" disabled={busy || !body.trim()} onClick={addInstruction}>지침 저장</button>
+        <textarea value={body} placeholder="에이전트가 따라야 할 지침을 입력하거나 파일을 불러오세요." onChange={event => setBody(event.target.value)} />
+        <div className="instruction-form-actions">
+          <button type="button" disabled={busy} onClick={() => fileInputRef.current?.click()}>파일 불러오기</button>
+          <button type="button" disabled={busy || !body.trim()} onClick={addInstruction}>지침 저장</button>
+        </div>
+        <input
+          ref={fileInputRef}
+          className="instruction-file-input"
+          data-testid="instruction-file-input"
+          type="file"
+          accept=".md,.markdown,.mdown,.txt,.text,.yaml,.yml,.json,.js,.mjs,.cjs,text/markdown,text/plain,application/yaml,text/yaml,application/json,text/javascript,application/javascript"
+          onChange={importInstructionFile}
+        />
       </div>
       <div className="instruction-preset-form">
         <input value={setName} placeholder="프리셋 이름" onChange={event => setSetName(event.target.value)} />
@@ -153,4 +186,8 @@ export function InstructionsPanel() {
       </div>
     </section>
   );
+}
+
+function stripInstructionFileExtension(fileName: string) {
+  return fileName.replace(/\.(md|markdown|mdown|txt|text|yaml|yml|json|js|mjs|cjs)$/i, '').trim();
 }

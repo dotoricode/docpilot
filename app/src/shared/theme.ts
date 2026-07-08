@@ -4,6 +4,7 @@ export type ThemePreference = AppSettings['theme'];
 export type EffectiveTheme = 'dark' | 'light';
 
 export function resolveThemePreference(preference: ThemePreference): EffectiveTheme {
+  if (preference === 'light') return 'light';
   if (preference === 'system' && window.matchMedia?.('(prefers-color-scheme: light)').matches) return 'light';
   return 'dark';
 }

@@ -1,6 +1,6 @@
 {
   "name": "docpilot",
-  "version": "1.0.21",
+  "version": "1.0.27",
   "description": "Local Markdown editor with AI assistance",
   "main": "main.js",
   "scripts": {
@@ -19,6 +19,8 @@
       "bridge.js",
       "store.js",
       "prompt-package.js",
+      "shared/core/**",
+      "scripts/fake-agent.js",
       "node_modules/node-pty/**"
     ],
     "files": [
@@ -56,13 +58,19 @@
     }
   },
   "dependencies": {
+    "highlight.js": "^11.11.1",
     "node-pty": "^1.1.0"
   },
   "devDependencies": {
     "@codemirror/commands": "^6.10.4",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/search": "^6.7.1",
     "@codemirror/state": "^6.7.0",
     "@codemirror/view": "^6.43.3",
+    "@lezer/highlight": "^1.2.3",
     "@tailwindcss/vite": "^4.3.1",
     "@types/markdown-it": "^14.1.2",
     "@types/react": "^19.2.17",

@@ -64,7 +64,6 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
     <img class="logo-icon" src="assets/icon.png" onerror="this.style.display='none'">
     <div>
       <div class="logo-name">docpilot</div>
-      <div class="logo-ver" id="version-badge">v...</div>
     </div>
   </div>
   <div class="section-label">최근 폴더</div>
@@ -135,13 +134,6 @@ document.getElementById('open-btn').onclick = async () => {
 };
 
 render();
-
-(async () => {
-  try {
-    const version = await dp.getAppVersion();
-    if (version) document.getElementById('version-badge').textContent = `v${version}`;
-  } catch {}
-})();
 </script>
 </body>
 </html>

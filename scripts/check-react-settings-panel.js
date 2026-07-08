@@ -22,7 +22,7 @@ assert(bridge.includes("url.pathname === '/settings'"), 'bridge must expose /set
 assert(bridge.includes("url.pathname === '/diagnostics'"), 'bridge must expose /diagnostics');
 assert(bridge.includes("settings.agentCommandMode === 'custom'"), 'agent spawn must respect custom command mode');
 assert(bridge.includes('codexExecArgs(codexCommand)'), 'codex command must be configurable');
-assert(bridge.includes("[claudeCommand, '-p', prompt]"), 'claude command must be configurable');
+assert(bridge.includes('claudePrintArgs(claudeCommand, prompt)'), 'claude command must be configurable');
 
 assert(client.includes('export type AppSettings'), 'bridge client must export AppSettings');
 assert(client.includes('getSettings'), 'bridge client must expose getSettings');

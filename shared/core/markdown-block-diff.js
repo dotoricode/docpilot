@@ -34,17 +34,26 @@ function markdownPreviewBlocks(src) {
     if (/^\s*[-*]\s+/.test(lines[i])) {
       const part = [];
       while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) part.push(lines[i++]);
-      push(part); continue;
+      part.forEach(line => push([line]));
+      continue;
     }
     if (/^\s*\d+\.\s+/.test(lines[i])) {
       const part = [];
       while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) part.push(lines[i++]);
-      push(part); continue;
+      part.forEach(line => push([line]));
+      continue;
     }
     if (/^\|.+\|\s*$/.test(lines[i])) {
       const part = [];
       while (i < lines.length && /^\|.+\|\s*$/.test(lines[i])) part.push(lines[i++]);
-      push(part); continue;
+      const hasSeparator = part.length > 1 && /^(\s*\|?\s*:?-{3,}:?\s*)+\|\s*$/.test(part[1]);
+      if (hasSeparator) {
+        push(part.slice(0, 2));
+        part.slice(2).forEach(line => push([line]));
+      } else {
+        part.forEach(line => push([line]));
+      }
+      continue;
     }
     const part = [];
     while (

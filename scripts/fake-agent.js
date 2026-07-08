@@ -27,6 +27,40 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => {
   input += chunk;
 });
+
+function writeChunked(text) {
+  const delayMs = Math.max(0, Number(process.env.DOCPILOT_FAKE_AGENT_DELAY_MS || 0));
+  const chunkSize = Math.max(1, Number(process.env.DOCPILOT_FAKE_AGENT_CHUNK_SIZE || 0));
+  if (!delayMs || !chunkSize || text.length <= chunkSize) {
+    process.stdout.write(text);
+    return;
+  }
+  let offset = 0;
+  const writeNext = () => {
+    if (offset >= text.length) return;
+    process.stdout.write(text.slice(offset, offset + chunkSize));
+    offset += chunkSize;
+    if (offset < text.length) setTimeout(writeNext, delayMs);
+  };
+  writeNext();
+}
+
+function writeLines(lines) {
+  const delayMs = Math.max(0, Number(process.env.DOCPILOT_FAKE_AGENT_DELAY_MS || 0));
+  if (!delayMs) {
+    for (const line of lines) process.stdout.write(line);
+    return;
+  }
+  let index = 0;
+  const writeNext = () => {
+    if (index >= lines.length) return;
+    process.stdout.write(lines[index]);
+    index += 1;
+    if (index < lines.length) setTimeout(writeNext, delayMs);
+  };
+  writeNext();
+}
+
 process.stdin.on('end', () => {
   const summary = input.replace(/\s+/g, ' ').trim().slice(0, 80) || '(empty prompt)';
   const writeFile = process.env.DOCPILOT_FAKE_AGENT_WRITE_FILE;
@@ -38,7 +72,7 @@ process.stdin.on('end', () => {
     ? `\n<docpilot-artifact kind="patch" file="${artifactFile}">\n# Fake Artifact\n\n${summary}\n</docpilot-artifact>\n`
     : '';
   if (agent === 'codex') {
-    process.stdout.write(`${JSON.stringify({
+    writeChunked(`${JSON.stringify({
       type: 'item.completed',
       item: {
         type: 'agent_message',
@@ -46,6 +80,22 @@ process.stdin.on('end', () => {
       },
     })}\n`);
   } else {
-    process.stdout.write(`fake claude response: ${summary}${artifactText}\n`);
+    const text = `fake claude response: ${summary}${artifactText}\n`;
+    const chunks = ['fake claude ', 'response: ', `${summary}${artifactText}\n`];
+    writeLines([
+      `${JSON.stringify({ type: 'system', subtype: 'init', session_id: 'fake' })}\n`,
+      ...chunks.map(chunk => `${JSON.stringify({
+        type: 'stream_event',
+        event: {
+          type: 'content_block_delta',
+          delta: { type: 'text_delta', text: chunk },
+        },
+      })}\n`),
+      `${JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text }] },
+      })}\n`,
+      `${JSON.stringify({ type: 'result', subtype: 'success', result: text })}\n`,
+    ]);
   }
 });

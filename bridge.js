@@ -27,7 +27,8 @@ const SESSION_LOGS_DIR = path.join(DOCPILOT_DIR, 'session-logs');
 const GLOBAL_DOCPILOT_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'docpilot');
 const GLOBAL_INSTRUCTION_SETS_FILE = path.join(GLOBAL_DOCPILOT_DIR, 'instruction-sets.json');
 const HIDDEN_DIRS = new Set(['.git', '.docpilot', 'node_modules', '.next', 'dist', 'build', 'coverage']);
-const DOC_EXTENSIONS = new Set(['.md', '.markdown', '.mdown', '.txt', '.text']);
+const DOC_EXTENSIONS = new Set(['.md', '.markdown', '.mdown', '.txt', '.text', '.yaml', '.yml', '.json', '.js', '.mjs', '.cjs']);
+const FOLDER_STARTER_DOC_NAME = 'edit-me.md';
 const ASSETS_DIR = path.join(__dirname, 'assets');
 const agentProcesses = new AgentProcessManager();
 const terminalSessions = new Map();
@@ -137,6 +138,21 @@ function resolveWorkspaceDirectoryId(dirId) {
   return { id: rel, abs, rel, root: { id: '', name: path.basename(ROOT) || ROOT, path: ROOT }, isWorkspaceRoot: false };
 }
 
+function recoverableTrashPath(resolved) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const baseName = path.basename(resolved.abs);
+  for (let index = 0; index < 1000; index += 1) {
+    const trashRoot = path.join(resolved.root.path, '.docpilot', 'trash', index === 0 ? stamp : `${stamp}-${index}`);
+    const target = path.join(trashRoot, baseName);
+    if (!fs.existsSync(target)) return target;
+  }
+  return path.join(resolved.root.path, '.docpilot', 'trash', `${stamp}-${crypto.randomUUID()}`, baseName);
+}
+
+function isWorkspaceRootResolved(resolved) {
+  return resolved.abs === resolved.root.path;
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -236,6 +252,18 @@ function codexExecArgs(command = 'codex') {
   ];
 }
 
+function claudePrintArgs(command = 'claude', prompt = '') {
+  return [
+    command,
+    '-p',
+    '--output-format',
+    'stream-json',
+    '--include-partial-messages',
+    '--verbose',
+    prompt,
+  ];
+}
+
 function fakeAgentPath() {
   return path.join(__dirname, 'scripts', 'fake-agent.js');
 }
@@ -257,10 +285,17 @@ function sessionSpawnSpec(session, prompt) {
   const claudeCommand = useCustomCommands ? settings.claudeCommand : 'claude';
   const codexCommand = useCustomCommands ? settings.codexCommand : 'codex';
   return {
-    spawnArgs: session.agent === 'codex' ? codexExecArgs(codexCommand) : [claudeCommand, '-p', prompt],
+    spawnArgs: session.agent === 'codex' ? codexExecArgs(codexCommand) : claudePrintArgs(claudeCommand, prompt),
     stdinText: session.agent === 'codex' ? prompt : '',
     requiresCommand: session.agent === 'codex' ? codexCommand : claudeCommand,
   };
+}
+
+function textFromClaudeContent(content) {
+  if (!Array.isArray(content)) return '';
+  return content
+    .map(part => part && part.type === 'text' ? String(part.text || '') : '')
+    .join('');
 }
 
 function detectOptionalModule(name) {
@@ -370,7 +405,7 @@ function defaultSettingsStore() {
 
 function normalizeSettingsInput(input = {}) {
   const previous = defaultSettingsStore();
-  const theme = ['dark', 'system'].includes(input.theme) ? input.theme : previous.theme;
+  const theme = ['dark', 'light', 'system'].includes(input.theme) ? input.theme : previous.theme;
   const agentCommandMode = input.agentCommandMode === 'custom' ? 'custom' : 'auto';
   const claudeCommand = String(input.claudeCommand || previous.claudeCommand).trim().slice(0, 240) || previous.claudeCommand;
   const codexCommand = String(input.codexCommand || previous.codexCommand).trim().slice(0, 240) || previous.codexCommand;
@@ -457,6 +492,71 @@ function writeInstructionsStore(store) {
   fs.writeFileSync(INSTRUCTIONS_FILE, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
 }
 
+function parseInstructionSource(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+
+  const copiedContextMatch = text.match(/(?:^|\n)File:\s*([^\n]+)\nLines?:\s*(\d+)(?:-(\d+))?/i);
+  if (copiedContextMatch) {
+    return {
+      file: copiedContextMatch[1].trim(),
+      lineStart: Number(copiedContextMatch[2]),
+      lineEnd: Number(copiedContextMatch[3] || copiedContextMatch[2]),
+    };
+  }
+
+  const refMatch = text.match(/^(.+?)(?::(\d+)(?:-(\d+))?)?$/);
+  if (!refMatch) return null;
+  const file = refMatch[1].trim();
+  if (!file || /[\n\r]/.test(file)) return null;
+  return {
+    file,
+    lineStart: refMatch[2] ? Number(refMatch[2]) : undefined,
+    lineEnd: refMatch[3] ? Number(refMatch[3]) : refMatch[2] ? Number(refMatch[2]) : undefined,
+  };
+}
+
+function readInstructionSourceBody(source) {
+  if (!source?.file) return '';
+  const absolute = path.isAbsolute(source.file)
+    ? path.resolve(source.file)
+    : path.resolve(ROOT, source.file);
+  if (!absolute.startsWith(ROOT + path.sep) && absolute !== ROOT) return '';
+  if (!fs.existsSync(absolute) || !fs.statSync(absolute).isFile()) return '';
+
+  const content = fs.readFileSync(absolute, 'utf8');
+  if (!source.lineStart || !source.lineEnd) return content.trim();
+
+  const lines = content.split(/\r?\n/);
+  const start = Math.max(1, source.lineStart);
+  const end = Math.max(start, source.lineEnd);
+  return lines.slice(start - 1, end).join('\n').trim();
+}
+
+function hydrateInstructionSources(store) {
+  let changed = false;
+  const instructions = (store.instructions || []).map(item => {
+    const source = parseInstructionSource(item.sourceRef) || parseInstructionSource(item.body);
+    if (!source) return item;
+
+    const body = readInstructionSourceBody(source);
+    if (!body || body.trim() === String(item.body || '').trim()) return item;
+    changed = true;
+    return { ...item, body, updatedAt: new Date().toISOString() };
+  });
+
+  return {
+    store: { ...store, instructions },
+    changed,
+  };
+}
+
+function readHydratedInstructionsStore(options = {}) {
+  const hydrated = hydrateInstructionSources(readInstructionsStore());
+  if (options.persist && hydrated.changed) writeInstructionsStore(hydrated.store);
+  return hydrated.store;
+}
+
 function readGlobalInstructionSetsStore() {
   try {
     const data = JSON.parse(fs.readFileSync(GLOBAL_INSTRUCTION_SETS_FILE, 'utf8'));
@@ -473,6 +573,18 @@ function readGlobalInstructionSetsStore() {
 function writeGlobalInstructionSetsStore(store) {
   fs.mkdirSync(GLOBAL_DOCPILOT_DIR, { recursive: true });
   fs.writeFileSync(GLOBAL_INSTRUCTION_SETS_FILE, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
+}
+
+function instructionStatePayload(project = readInstructionsStore(), global = readGlobalInstructionSetsStore()) {
+  project = hydrateInstructionSources(project).store;
+  return {
+    instructions: project.instructions || [],
+    projectSets: project.sets || [],
+    sets: project.sets || [],
+    globalSets: global.sets || [],
+    activeSetId: project.activeSetId || '',
+    globalActiveSetId: global.activeSetId || '',
+  };
 }
 
 function normalizeInstructionSetInput(input, activeInstructions) {
@@ -519,7 +631,7 @@ function normalizeInstructionInput(input) {
 }
 
 function activeInstructionsText() {
-  const active = readInstructionsStore().instructions.filter(i => i.active && i.body);
+  const active = readHydratedInstructionsStore({ persist: true }).instructions.filter(i => i.active && i.body);
   if (!active.length) return '';
   return active.map((item, idx) =>
     `[Instruction ${idx + 1}: ${item.title}]\n${item.body.trim()}`
@@ -527,7 +639,7 @@ function activeInstructionsText() {
 }
 
 function activeInstructionsTextCompact(maxPerInstruction = 700) {
-  const active = readInstructionsStore().instructions.filter(i => i.active && i.body);
+  const active = readHydratedInstructionsStore({ persist: true }).instructions.filter(i => i.active && i.body);
   if (!active.length) return '';
   return active.map((item, idx) => {
     const body = String(item.body || '').trim().replace(/\s+/g, ' ');
@@ -924,7 +1036,12 @@ async function collectProjectFiles() {
       } else if (DOC_EXTENSIONS.has(path.extname(name).toLowerCase())) {
         const id = prefix ? `${prefix}/${relPath}` : relPath;
         files.push(id);
-        signatureParts.push(`${id}:${stat.mtimeMs}:${stat.size}`);
+        let contentHash = '';
+        try {
+          const content = await fs.promises.readFile(abs);
+          contentHash = crypto.createHash('sha1').update(content).digest('hex');
+        } catch {}
+        signatureParts.push(`${id}:${stat.mtimeMs}:${stat.size}:${contentHash}`);
         hasVisibleDoc = true;
       }
     }
@@ -1376,6 +1493,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
       res.end(JSON.stringify(snapshot));
     } catch (err) {
+      console.error('file-delete failed:', err);
       res.writeHead(500, CORS);
       res.end(JSON.stringify({ error: err.message }));
     }
@@ -1752,6 +1870,7 @@ const server = http.createServer(async (req, res) => {
     let killed = false;
     let full = '';
     let jsonBuf = '';
+    let claudeFinalText = '';
     let outputSeen = false;
     function markSessionIdle() {
       const fresh = readSessionsStore();
@@ -1783,6 +1902,12 @@ const server = http.createServer(async (req, res) => {
         elapsedMs: Date.now() - turnStartedAt,
       });
     }, 2000);
+    function sendAssistantDelta(text) {
+      if (!text) return;
+      outputSeen = true;
+      full += text;
+      send({ type: 'turn.delta', sessionId, turnId, text });
+    }
     proc.stdout.on('data', chunk => {
       if (session.agent === 'codex') {
         jsonBuf += chunk.toString();
@@ -1793,17 +1918,36 @@ const server = http.createServer(async (req, res) => {
           try {
             const ev = JSON.parse(line);
             if (ev.type === 'item.completed' && ev.item?.type === 'agent_message') {
-              outputSeen = true;
-              full += ev.item.text;
-              send({ type: 'turn.delta', sessionId, turnId, text: ev.item.text });
+              sendAssistantDelta(ev.item.text);
             }
           } catch {}
         }
       } else {
-        const text = chunk.toString();
-        outputSeen = true;
-        full += text;
-        send({ type: 'turn.delta', sessionId, turnId, text });
+        jsonBuf += chunk.toString();
+        const lines = jsonBuf.split('\n');
+        jsonBuf = lines.pop();
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const ev = JSON.parse(line);
+            if (ev.type === 'stream_event') {
+              const streamEvent = ev.event || {};
+              const delta = streamEvent.delta || {};
+              const contentBlock = streamEvent.content_block || {};
+              if (streamEvent.type === 'content_block_delta' && delta.type === 'text_delta') {
+                sendAssistantDelta(String(delta.text || ''));
+              } else if (streamEvent.type === 'content_block_start' && contentBlock.type === 'text' && contentBlock.text) {
+                sendAssistantDelta(String(contentBlock.text || ''));
+              }
+            } else if (ev.type === 'assistant') {
+              claudeFinalText = textFromClaudeContent(ev.message?.content);
+            } else if (ev.type === 'result' && ev.result) {
+              claudeFinalText = String(ev.result || claudeFinalText);
+            }
+          } catch {
+            sendAssistantDelta(line.endsWith('\n') ? line : `${line}\n`);
+          }
+        }
       }
     });
     proc.stderr.on('data', chunk => process.stderr.write(chunk));
@@ -1814,6 +1958,7 @@ const server = http.createServer(async (req, res) => {
       const fresh = readSessionsStore();
       const freshSession = fresh.sessions.find(item => item.id === sessionId);
       if (code === 0) {
+        if (!full && claudeFinalText) full = claudeFinalText;
         const assistantMessage = {
           id: crypto.randomUUID(),
           turnId,
@@ -1897,15 +2042,8 @@ const server = http.createServer(async (req, res) => {
 
   // GET /instructions — project instruction registry
   if (req.method === 'GET' && url.pathname === '/instructions') {
-    const project = readInstructionsStore();
-    const global = readGlobalInstructionSetsStore();
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ...project,
-      projectSets: project.sets || [],
-      globalSets: global.sets || [],
-      globalActiveSetId: global.activeSetId || '',
-    }));
+    res.end(JSON.stringify(instructionStatePayload()));
     return;
   }
 
@@ -1917,13 +2055,20 @@ const server = http.createServer(async (req, res) => {
     if (!next) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'instruction body required' })); return; }
 
     const store = readInstructionsStore();
+    const global = readGlobalInstructionSetsStore();
     const index = store.instructions.findIndex(item => item.id === next.id);
+    const previous = index === -1 ? null : store.instructions[index];
     if (index === -1) store.instructions.push(next);
     else store.instructions[index] = { ...store.instructions[index], ...next };
+    if (previous && previous.active !== next.active) {
+      if (store.activeSetId?.startsWith('global:')) global.activeSetId = '';
+      store.activeSetId = '';
+    }
     writeInstructionsStore(store);
+    if (previous && previous.active !== next.active) writeGlobalInstructionSetsStore(global);
 
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, instruction: next, instructions: store.instructions, sets: store.sets || [], activeSetId: store.activeSetId || '' }));
+    res.end(JSON.stringify({ ok: true, instruction: next, ...instructionStatePayload(store, global) }));
     return;
   }
 
@@ -1932,14 +2077,20 @@ const server = http.createServer(async (req, res) => {
     let payload;
     try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
     const store = readInstructionsStore();
+    const global = readGlobalInstructionSetsStore();
+    if ((store.instructions || []).some(item => item.id === payload.id && item.active)) {
+      if (store.activeSetId?.startsWith('global:')) global.activeSetId = '';
+      store.activeSetId = '';
+    }
     store.instructions = store.instructions.filter(item => item.id !== payload.id);
     store.sets = (store.sets || []).map(set => ({
       ...set,
       instructionIds: (set.instructionIds || []).filter(id => id !== payload.id),
     }));
     writeInstructionsStore(store);
+    writeGlobalInstructionSetsStore(global);
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, instructions: store.instructions, sets: store.sets || [], activeSetId: store.activeSetId || '' }));
+    res.end(JSON.stringify({ ok: true, ...instructionStatePayload(store, global) }));
     return;
   }
 
@@ -1948,7 +2099,8 @@ const server = http.createServer(async (req, res) => {
     let payload;
     try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
     const project = readInstructionsStore();
-    const active = project.instructions.filter(i => payload.instructionIds?.includes(i.id) || i.active);
+    const requestedIds = Array.isArray(payload.instructionIds) ? new Set(payload.instructionIds) : null;
+    const active = project.instructions.filter(i => (requestedIds ? requestedIds.has(i.id) : i.active) && i.active);
     const next = normalizeInstructionSetInput(payload, active);
     if (!next) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'set name and active instructions required' })); return; }
 
@@ -1969,17 +2121,8 @@ const server = http.createServer(async (req, res) => {
       writeInstructionsStore(project);
     }
 
-    const global = readGlobalInstructionSetsStore();
-    const fresh = readInstructionsStore();
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: true,
-      instructions: fresh.instructions,
-      projectSets: fresh.sets || [],
-      globalSets: global.sets || [],
-      activeSetId: fresh.activeSetId || '',
-      globalActiveSetId: global.activeSetId || '',
-    }));
+    res.end(JSON.stringify({ ok: true, ...instructionStatePayload() }));
     return;
   }
 
@@ -2036,14 +2179,7 @@ const server = http.createServer(async (req, res) => {
     writeInstructionsStore(project);
 
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: true,
-      instructions: project.instructions,
-      projectSets: project.sets || [],
-      globalSets: global.sets || [],
-      activeSetId: project.activeSetId || '',
-      globalActiveSetId: global.activeSetId || '',
-    }));
+    res.end(JSON.stringify({ ok: true, ...instructionStatePayload(project, global) }));
     return;
   }
 
@@ -2067,14 +2203,7 @@ const server = http.createServer(async (req, res) => {
       writeInstructionsStore(project);
     }
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: true,
-      instructions: project.instructions,
-      projectSets: project.sets || [],
-      globalSets: global.sets || [],
-      activeSetId: project.activeSetId || '',
-      globalActiveSetId: global.activeSetId || '',
-    }));
+    res.end(JSON.stringify({ ok: true, ...instructionStatePayload(project, global) }));
     return;
   }
 
@@ -2231,6 +2360,7 @@ ${raw}
     if (fs.existsSync(abs)) { res.writeHead(409, CORS); res.end(JSON.stringify({ error: 'folder already exists' })); return; }
     try {
       fs.mkdirSync(abs, { recursive: false });
+      fs.writeFileSync(path.join(abs, FOLDER_STARTER_DOC_NAME), `# ${rawName}\n\n수정이 필요한 예시 문서입니다.\n`, 'utf8');
       const id = fileIdForResolvedAbs(abs, dir.root);
       const { files, folders, roots } = await collectProjectFiles();
       scheduleProjectChange('folder-created');
@@ -2242,18 +2372,29 @@ ${raw}
     return;
   }
 
-  // POST /file-rename — rename one visible workspace file in-place
+  // POST /file-rename — rename one visible workspace file or folder in-place
   if (req.method === 'POST' && url.pathname === '/file-rename') {
     let payload;
     try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
-    const resolved = resolveWorkspaceFileId(payload.id);
+    const resolved = resolveWorkspaceFileId(payload.id) || resolveWorkspaceDirectoryId(payload.id);
     const rawName = String(payload.name || '').trim().replace(/\\/g, '/');
     if (!resolved || !rawName || rawName.includes('/')) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'invalid rename request' })); return; }
-    const currentExt = path.extname(resolved.abs);
-    const parsed = path.parse(rawName);
-    const nextName = parsed.ext ? rawName : `${rawName}${currentExt || '.md'}`;
-    const nextExt = path.extname(nextName).toLowerCase();
-    if (!DOC_EXTENSIONS.has(nextExt)) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'unsupported file extension' })); return; }
+    if (isWorkspaceRootResolved(resolved)) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'cannot rename workspace root' })); return; }
+    const stat = fs.existsSync(resolved.abs) ? fs.lstatSync(resolved.abs) : null;
+    if (!stat) { res.writeHead(404, CORS); res.end(JSON.stringify({ error: 'not found' })); return; }
+    const nextName = stat.isDirectory()
+      ? rawName
+      : (path.parse(rawName).ext ? rawName : `${rawName}${path.extname(resolved.abs) || '.md'}`);
+    if (stat.isDirectory() && (nextName.startsWith('.') || HIDDEN_DIRS.has(nextName))) {
+      res.writeHead(400, CORS);
+      res.end(JSON.stringify({ error: 'invalid folder name' }));
+      return;
+    }
+    if (!stat.isDirectory() && !DOC_EXTENSIONS.has(path.extname(nextName).toLowerCase())) {
+      res.writeHead(400, CORS);
+      res.end(JSON.stringify({ error: 'unsupported file extension' }));
+      return;
+    }
     const nextAbs = path.resolve(path.dirname(resolved.abs), nextName);
     if (!nextAbs.startsWith(resolved.root.path + path.sep) && nextAbs !== resolved.root.path) { res.writeHead(403, CORS); res.end(); return; }
     if (fs.existsSync(nextAbs)) { res.writeHead(409, CORS); res.end(JSON.stringify({ error: 'target already exists' })); return; }
@@ -2266,6 +2407,56 @@ ${raw}
       res.end(JSON.stringify({ ok: true, id, files, folders, roots }));
     } catch (err) {
       res.writeHead(500, CORS); res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
+  // POST /file-delete — move one visible workspace file or folder to recoverable trash
+  if (req.method === 'POST' && url.pathname === '/file-delete') {
+    let payload;
+    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    const resolved = resolveWorkspaceFileId(payload.id) || resolveWorkspaceDirectoryId(payload.id);
+    const permanent = payload.permanent === true;
+    if (!resolved || isWorkspaceRootResolved(resolved)) {
+      res.writeHead(400, CORS);
+      res.end(JSON.stringify({ error: 'invalid delete request' }));
+      return;
+    }
+    let stat;
+    try { stat = fs.lstatSync(resolved.abs); } catch {
+      res.writeHead(404, CORS);
+      res.end(JSON.stringify({ error: 'not found' }));
+      return;
+    }
+    if (stat.isSymbolicLink()) {
+      res.writeHead(400, CORS);
+      res.end(JSON.stringify({ error: 'cannot delete symlink' }));
+      return;
+    }
+    try {
+      let trashId = '';
+      if (permanent) {
+        fs.rmSync(resolved.abs, { recursive: stat.isDirectory(), force: false });
+      } else {
+        const trashPath = recoverableTrashPath(resolved);
+        fs.mkdirSync(path.dirname(trashPath), { recursive: true });
+        fs.renameSync(resolved.abs, trashPath);
+        trashId = path.relative(resolved.root.path, trashPath).replace(/\\/g, '/');
+      }
+      const { files, folders, roots } = await collectProjectFiles();
+      scheduleProjectChange(permanent ? 'file-discarded' : 'file-deleted');
+      res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: true,
+        deletedId: resolved.id,
+        trashId,
+        files,
+        folders,
+        roots,
+      }));
+    } catch (err) {
+      res.writeHead(500, CORS);
+      res.end(JSON.stringify({ error: err.message }));
     }
     return;
   }

@@ -70,7 +70,7 @@ Paragraph one.
 - b
 `;
 const blocks = markdownPreviewBlocks(markdown);
-assert.strictEqual(blocks.length, 4);
+assert.strictEqual(blocks.length, 6);
 assert.strictEqual(markdownLineSig('| a | b |'), 'table');
 
 const diffRows = markdownBlockDiffRows(markdown, markdown.replace('파란색', '빨간색'));

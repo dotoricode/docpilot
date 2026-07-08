@@ -1,0 +1,961 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DocPilot 사용 매뉴얼</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --dp-bg: #171713;
+    --dp-bg-deep: #11110f;
+    --dp-surface: #20201c;
+    --dp-surface-2: #292922;
+    --dp-hover: rgba(250, 250, 247, 0.075);
+    --dp-border: rgba(230, 229, 224, 0.14);
+    --dp-border-strong: rgba(230, 229, 224, 0.22);
+    --dp-text: #efeee8;
+    --dp-text-strong: #fafaf7;
+    --dp-muted: #c7c3ba;
+    --dp-faint: #a09c92;
+    --dp-accent: #f54e00;
+    --dp-accent-light: #ff8a5c;
+    --dp-accent-soft: rgba(245, 78, 0, 0.16);
+    --dp-accent-active: #d04200;
+    --dp-radius: 8px;
+    --dp-mono: "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+    --dp-sans: "Space Grotesk", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    color: var(--dp-text);
+    font-family: var(--dp-sans);
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background:
+      radial-gradient(circle at top left, var(--dp-accent-soft), transparent 26%),
+      radial-gradient(circle at 84% 6%, rgba(245, 78, 0, 0.08), transparent 24%),
+      var(--dp-bg);
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    min-height: 100vh;
+  }
+
+  /* ── TOC sidebar ── */
+  nav.toc {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 28px 18px;
+    background: var(--dp-surface);
+    border-right: 1px solid var(--dp-border);
+  }
+
+  nav.toc .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 22px;
+    padding: 0 6px;
+  }
+
+  nav.toc .brand .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--dp-accent);
+    box-shadow: 0 0 0 3px var(--dp-accent-soft);
+  }
+
+  nav.toc .brand span {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    font-size: 15px;
+    color: var(--dp-text-strong);
+  }
+
+  nav.toc .version {
+    padding: 0 6px 18px;
+    font-size: 11px;
+    color: var(--dp-faint);
+    font-family: var(--dp-mono);
+  }
+
+  nav.toc a {
+    display: block;
+    padding: 11px 14px;
+    margin: 3px 0;
+    border-radius: 12px;
+    color: var(--dp-text);
+    text-decoration: none;
+    font-size: 14.5px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease, transform 0.12s ease;
+  }
+
+  nav.toc a:hover {
+    background: var(--dp-hover);
+    transform: translateX(2px);
+  }
+
+  nav.toc a.active {
+    background: rgba(245, 78, 0, 0.2);
+    color: var(--dp-accent-light);
+    font-weight: 600;
+  }
+
+  nav.toc .section-label {
+    margin: 34px 0 8px;
+    padding: 0 12px;
+    font-family: var(--dp-mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--dp-faint);
+  }
+
+  nav.toc .section-label:first-of-type {
+    margin-top: 4px;
+  }
+
+  /* ── Main column ── */
+  main {
+    padding: 56px 64px 120px;
+    max-width: 900px;
+  }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .page .kicker {
+    display: inline-block;
+    font-family: var(--dp-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dp-accent-light);
+    margin-bottom: 16px;
+  }
+
+  .page h1 {
+    font-size: 38px;
+    line-height: 1.15;
+    margin: 0 0 14px;
+    color: var(--dp-text-strong);
+    letter-spacing: -0.01em;
+  }
+
+  .page h1 code {
+    font-size: 0.68em;
+    vertical-align: 2px;
+  }
+
+  .page .subtitle {
+    font-size: 16px;
+    color: var(--dp-muted);
+    max-width: 640px;
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  .page .divider {
+    border: none;
+    border-top: 1px solid var(--dp-border);
+    margin: 28px 0 40px;
+  }
+
+  .subsection {
+    margin: 0 0 44px;
+  }
+
+  .subsection h2 {
+    font-family: var(--dp-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dp-faint);
+    margin: 0 0 14px;
+  }
+
+  .subsection h3 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 19px;
+    margin: 0 0 10px;
+    color: var(--dp-text-strong);
+  }
+
+  .subsection h3 .emoji {
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  .subsection p {
+    color: var(--dp-muted);
+    font-size: 14.5px;
+    line-height: 1.75;
+    max-width: 680px;
+    margin: 0 0 14px;
+  }
+
+  ul.feature-points,
+  ol.steps {
+    margin: 0 0 4px;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 9px;
+    max-width: 680px;
+    counter-reset: step;
+  }
+
+  ol.steps { padding-left: 0; }
+
+  ul.feature-points li,
+  ol.steps li {
+    position: relative;
+    padding-left: 26px;
+    font-size: 14px;
+    color: var(--dp-muted);
+    line-height: 1.6;
+  }
+
+  ul.feature-points li strong,
+  ol.steps li strong {
+    color: var(--dp-text-strong);
+  }
+
+  ul.feature-points li::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 8px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--dp-accent);
+  }
+
+  ol.steps li {
+    counter-increment: step;
+  }
+
+  ol.steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    background: var(--dp-surface-2);
+    border: 1px solid var(--dp-border-strong);
+    color: var(--dp-accent-light);
+    font-family: var(--dp-mono);
+    font-size: 10.5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  code {
+    font-family: var(--dp-mono);
+    background: rgba(245, 78, 0, 0.12);
+    color: var(--dp-accent-light);
+    padding: 0.12rem 0.42rem;
+    border-radius: 5px;
+    font-size: 0.86em;
+  }
+
+  /* ── code block with copy ── */
+  .code-block-wrap {
+    position: relative;
+    max-width: 680px;
+    margin: 0 0 24px;
+  }
+
+  .code-block-wrap pre {
+    margin: 0;
+    background: var(--dp-bg-deep);
+    border: 1px solid var(--dp-border);
+    border-radius: 12px;
+    padding: 20px 22px;
+    overflow-x: auto;
+  }
+
+  .code-block-wrap pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--dp-muted);
+    font-size: 12.5px;
+    line-height: 1.8;
+  }
+
+  .code-copy {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-family: var(--dp-mono);
+    font-size: 11px;
+    padding: 5px 10px;
+    border: 1px solid var(--dp-border-strong);
+    border-radius: 6px;
+    background: var(--dp-surface-2);
+    color: var(--dp-faint);
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .code-copy:hover {
+    color: var(--dp-text-strong);
+    border-color: var(--dp-accent);
+  }
+
+  table.dp-table {
+    width: 100%;
+    max-width: 680px;
+    border-collapse: collapse;
+    margin: 0 0 28px;
+    font-size: 13.5px;
+  }
+
+  table.dp-table th,
+  table.dp-table td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--dp-border);
+  }
+
+  table.dp-table th {
+    color: var(--dp-faint);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+
+  table.dp-table td {
+    color: var(--dp-text);
+  }
+
+  table.dp-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* ── screenshots ── */
+  figure.shot {
+    margin: 0 0 28px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--dp-border-strong);
+    background: var(--dp-bg-deep);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+    max-width: 680px;
+  }
+
+  figure.shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  figure.shot figcaption {
+    padding: 10px 16px;
+    font-size: 12px;
+    color: var(--dp-faint);
+    border-top: 1px solid var(--dp-border);
+    font-family: var(--dp-mono);
+  }
+
+  figure.shot.compact {
+    max-width: 420px;
+  }
+
+  /* ── overview quick-nav cards ── */
+  .quick-nav {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .quick-nav a {
+    display: block;
+    padding: 18px 20px;
+    border: 1px solid var(--dp-border);
+    border-radius: 12px;
+    background: rgba(41, 41, 34, 0.4);
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  }
+
+  .quick-nav a:hover {
+    transform: translateY(-3px);
+    border-color: rgba(245, 78, 0, 0.4);
+    background: var(--dp-surface-2);
+  }
+
+  .quick-nav .quick-nav-icon {
+    font-size: 20px;
+    margin-bottom: 10px;
+  }
+
+  .quick-nav strong {
+    display: block;
+    color: var(--dp-text-strong);
+    font-size: 14.5px;
+    margin-bottom: 4px;
+  }
+
+  .quick-nav span {
+    display: block;
+    color: var(--dp-faint);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+
+  /* ── callouts ── */
+  .callout {
+    border: 1px solid var(--dp-border-strong);
+    background: rgba(41, 41, 34, 0.5);
+    border-radius: 12px;
+    padding: 15px 18px;
+    margin: 0 0 28px;
+    max-width: 680px;
+    color: var(--dp-muted);
+    font-size: 13.5px;
+    line-height: 1.7;
+  }
+
+  .callout strong {
+    color: var(--dp-text-strong);
+  }
+
+  .callout--warn {
+    display: flex;
+    gap: 12px;
+    border-color: rgba(255, 189, 46, 0.4);
+    background: rgba(255, 189, 46, 0.07);
+  }
+
+  .callout--warn .callout-icon {
+    flex-shrink: 0;
+    font-size: 17px;
+  }
+
+  .callout--warn p {
+    margin: 0;
+  }
+
+  footer.end {
+    margin-top: 60px;
+    padding-top: 28px;
+    border-top: 1px solid var(--dp-border);
+    color: var(--dp-faint);
+    font-size: 12.5px;
+  }
+
+  @media (max-width: 860px) {
+    body { grid-template-columns: 1fr; }
+    nav.toc { position: relative; height: auto; }
+    main { padding: 40px 20px 80px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .quick-nav a:hover,
+    nav.toc a:hover {
+      transform: none;
+    }
+  }
+</style>
+</head>
+<body>
+
+<nav class="toc">
+  <div class="brand"><span class="dot"></span><span>DocPilot</span></div>
+  <div class="version">v1.0.24 · 사용 매뉴얼</div>
+
+  <div class="section-label">시작하기</div>
+  <a data-target="overview" class="active">개요</a>
+  <a data-target="s1">폴더 열기 &amp; 워크플로우</a>
+  <a data-target="s2">파일 트리</a>
+
+  <div class="section-label">편집</div>
+  <a data-target="s3">Markdown 편집기</a>
+
+  <div class="section-label">Agent 연동</div>
+  <a data-target="s4">복사해서 Agent에게 전달</a>
+  <a data-target="s5">지침(Instructions) 관리</a>
+
+  <div class="section-label">안전</div>
+  <a data-target="s6">Safety Model</a>
+
+  <div class="section-label">검증</div>
+  <a data-target="s7">검증 명령</a>
+</nav>
+
+<main>
+
+  <div class="page active" id="overview">
+    <span class="kicker">User Manual</span>
+    <h1>DocPilot 사용 매뉴얼</h1>
+    <p class="subtitle">로컬 마크다운 문서를 프리뷰·스플릿·diff로 보고, 지침을 걸어두고, 필요한 부분을 클릭하거나 드래그하면 <code>File: 경로 + Lines: N-M + 내용</code>이 그대로 복사됩니다. 터미널의 Claude Code나 Codex에 붙여넣기만 하면 됩니다 — 파일 위치를 직접 찾아 알려줄 필요가 없습니다.</p>
+    <hr class="divider" />
+    <ul class="quick-nav">
+      <li><a data-target="s1"><div class="quick-nav-icon">📂</div><strong>폴더 열기 &amp; 워크플로우</strong><span>문서 폴더 선택부터 편집까지 흐름</span></a></li>
+      <li><a data-target="s2"><div class="quick-nav-icon">🗂️</div><strong>파일 트리</strong><span>탐색, 우클릭 메뉴, 최근 폴더</span></a></li>
+      <li><a data-target="s3"><div class="quick-nav-icon">📝</div><strong>Markdown 편집기</strong><span>편집·미리보기·분할 보기, 단축키</span></a></li>
+      <li><a data-target="s4"><div class="quick-nav-icon">📋</div><strong>복사해서 Agent에게 전달</strong><span>클릭/드래그 복사, 위치·라인 자동 포함</span></a></li>
+      <li><a data-target="s5"><div class="quick-nav-icon">📐</div><strong>지침(Instructions) 관리</strong><span>복사할 때마다 자동으로 함께 붙는 규칙</span></a></li>
+      <li><a data-target="s6"><div class="quick-nav-icon">🛡️</div><strong>Safety Model</strong><span>renderer/bridge 권한 경계</span></a></li>
+      <li><a data-target="s7"><div class="quick-nav-icon">✅</div><strong>검증 명령</strong><span>커밋 전 실행할 스크립트 13종</span></a></li>
+    </ul>
+  </div>
+
+  <div class="page" id="s1">
+    <span class="kicker">Getting Started</span>
+    <h1>폴더 열기 &amp; <code>편집 → 저장</code> 워크플로우</h1>
+    <p class="subtitle">문서 폴더를 선택하는 순간부터 저장까지 이어지는 전체 흐름을 정리합니다.</p>
+    <hr class="divider" />
+
+    <div class="subsection">
+      <h2>Start</h2>
+      <h3><span class="emoji">📂</span>폴더 열기</h3>
+      <p>시작 화면에서 로컬 마크다운 폴더를 선택하면 나머지는 자동으로 이어집니다.</p>
+      <figure class="shot compact">
+        <img src="assets/manual/start-screen.png" alt="DocPilot 시작 화면, 최근 폴더 목록과 폴더 열기 버튼" loading="lazy" />
+        <figcaption>시작 화면 — 최근 폴더 목록 + 폴더 열기</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>시작 화면에서 <strong>폴더 열기</strong>를 누른다</li>
+        <li>편집할 마크다운 문서가 있는 로컬 폴더를 선택한다</li>
+        <li>DocPilot이 해당 경로를 workspace root로 지정하고 bridge 프로세스를 그 경로 기준으로 띄운다</li>
+        <li>React editor 창이 자동으로 열린다</li>
+      </ol>
+    </div>
+
+    <div class="subsection">
+      <h2>산출물</h2>
+      <h3><span class="emoji">📌</span>폴더를 열면 만들어지는 것</h3>
+      <ul class="feature-points">
+        <li><strong>workspace root.</strong> 선택한 폴더 경로가 이후 모든 파일 조회의 기준이 된다.</li>
+        <li><strong>최근 작업공간 기록.</strong> 연 폴더가 시작 화면의 최근 폴더 목록에 자동으로 남는다.</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h2>권장 루프</h2>
+      <h3><span class="emoji">🔁</span>편집 사이클</h3>
+      <p>파일을 열고 고치고 저장하는 흐름은 짧게 반복됩니다.</p>
+      <ol class="steps">
+        <li>파일 트리에서 문서를 연다</li>
+        <li>CodeMirror 에디터에서 수정한다</li>
+        <li><code>⌘S</code> / <code>Ctrl+S</code>로 저장한다 (수정 상태일 때만 동작)</li>
+        <li>프리뷰에서 렌더링 결과를 확인하고 필요하면 다시 수정한다</li>
+      </ol>
+    </div>
+
+    <div class="subsection">
+      <h2>실제 사례</h2>
+      <h3><span class="emoji">💡</span>새 문서를 만들어 저장하기</h3>
+      <p>파일 트리를 우클릭해 <strong>파일 만들기</strong>로 새 문서를 추가하고, 내용을 작성한 뒤 <code>⌘S</code>로 저장하면 즉시 디스크에 반영됩니다. 저장 전 상태는 상단에 "저장 안 됨"으로 표시됩니다.</p>
+    </div>
+  </div>
+
+  <div class="page" id="s2">
+    <span class="kicker">Getting Started</span>
+    <h1>파일 트리</h1>
+    <p class="subtitle">Workspace Sidebar는 선택한 폴더 하위의 마크다운 문서를 트리 구조로 보여줍니다.</p>
+    <hr class="divider" />
+
+    <div class="subsection">
+      <h2>Start</h2>
+      <h3><span class="emoji">🗂️</span>탐색</h3>
+      <ul class="feature-points">
+        <li>폴더와 파일을 트리에서 펼치고 클릭해 연다</li>
+        <li>검색창에 이름을 입력해 파일을 좁혀 찾는다</li>
+        <li><strong>펼침 / 접기</strong> 버튼으로 트리 전체를 한 번에 열고 닫는다</li>
+      </ul>
+      <figure class="shot">
+        <img src="assets/manual/file-tree-preview.png" alt="파일 트리와 프리뷰가 함께 표시된 편집 화면" loading="lazy" />
+        <figcaption>파일 트리 + 프리뷰</figcaption>
+      </figure>
+    </div>
+
+    <div class="subsection">
+      <h2>비교</h2>
+      <h3><span class="emoji">🖱️</span>우클릭 메뉴 — 대상별로 다르다</h3>
+      <p>트리를 우클릭하면 대상(빈 영역/폴더/파일)에 따라 다른 메뉴가 뜹니다.</p>
+      <figure class="shot">
+        <img src="assets/manual/tree-context-menu.png" alt="폴더를 우클릭했을 때 뜨는 컨텍스트 메뉴" loading="lazy" />
+        <figcaption>폴더 우클릭 메뉴</figcaption>
+      </figure>
+      <table class="dp-table">
+        <thead>
+          <tr><th>대상</th><th>사용 가능한 메뉴</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>빈 영역</td><td>파일 만들기, 폴더 만들기, 워크스페이스 추가, Finder에서 열기</td></tr>
+          <tr><td>폴더</td><td>파일 만들기, 폴더 만들기, 이름 바꾸기, 폴더 삭제, Finder에서 열기, 경로 복사</td></tr>
+          <tr><td>파일</td><td>분할로 열기, 파일 만들기, 이름 바꾸기, 파일 삭제, Finder에서 위치 열기, 경로 복사</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subsection">
+      <h2>권한/제한</h2>
+      <h3><span class="emoji">🔐</span>접근 경계</h3>
+      <div class="callout"><strong>Boundary:</strong> renderer(React 화면)는 파일시스템에 직접 접근하지 않는다. 모든 조회·생성·삭제 요청은 bridge(Electron 메인 프로세스)를 거친다.</div>
+    </div>
+
+    <div class="subsection">
+      <h2>산출물</h2>
+      <h3><span class="emoji">🕒</span>최근 폴더</h3>
+      <p>최근에 열었던 작업 폴더 목록을 기록해 다음 실행 때 바로 이어서 작업할 수 있습니다.</p>
+    </div>
+
+    <div class="subsection">
+      <h2>실제 사례</h2>
+      <h3><span class="emoji">💡</span>새 폴더를 만들고 문서를 정리하기</h3>
+      <p>빈 영역을 우클릭해 <strong>폴더 만들기</strong>로 하위 폴더를 만들고, 그 폴더를 다시 우클릭해 <strong>파일 만들기</strong>로 문서를 추가합니다. 이름을 잘못 지었다면 <strong>이름 바꾸기</strong>로 바로 고칠 수 있습니다.</p>
+    </div>
+  </div>
+
+  <div class="page" id="s3">
+    <span class="kicker">Editing</span>
+    <h1>Markdown 편집기</h1>
+    <p class="subtitle">CodeMirror 6 기반 에디터와 markdown-it 프리뷰를 함께 제공합니다.</p>
+    <hr class="divider" />
+
+    <div class="subsection">
+      <h2>Start</h2>
+      <h3><span class="emoji">📝</span>편집 · 미리보기</h3>
+      <ul class="feature-points">
+        <li>CodeMirror 6 기반 Markdown 문법 하이라이트로 편집한다</li>
+        <li>markdown-it 기반 프리뷰가 수정 즉시 렌더링 결과를 반영한다</li>
+      </ul>
+      <figure class="shot">
+        <img src="assets/manual/edit-mode.png" alt="CodeMirror 편집 모드로 마크다운 원문을 수정하는 화면" loading="lazy" />
+        <figcaption>편집 모드 — CodeMirror 원문 편집</figcaption>
+      </figure>
+    </div>
+
+    <div class="subsection">
+      <h2>비교</h2>
+      <h3><span class="emoji">⚖️</span>분할 보기 옵션</h3>
+      <p>두 번째 문서를 열어 나란히 비교(compare)할 수 있고, 분할 방향을 고를 수 있습니다.</p>
+      <figure class="shot">
+        <img src="assets/manual/split-view.png" alt="두 문서를 좌우로 나란히 여는 분할 보기 화면" loading="lazy" />
+        <figcaption>분할 보기 — 두 문서 좌우 비교</figcaption>
+      </figure>
+      <table class="dp-table">
+        <thead>
+          <tr><th>옵션</th><th>동작</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>가로 분할</td><td>두 문서를 좌우로 나란히 배치</td></tr>
+          <tr><td>세로 분할</td><td>두 문서를 위아래로 배치</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subsection">
+      <h2>권한/제한</h2>
+      <h3><span class="emoji">⚠️</span>충돌 감지</h3>
+      <div class="callout"><strong>Boundary:</strong> 편집 중인 파일이 외부 프로그램에 의해 바뀌면 자동 덮어쓰지 않고 conflict로 표시한다. 저장 단축키(<code>⌘S</code>)는 편집 모드에서 수정된 상태일 때만 동작한다.</div>
+    </div>
+
+    <div class="subsection">
+      <h2>권장 루프</h2>
+      <h3><span class="emoji">⌨️</span>단축키</h3>
+      <ul class="feature-points">
+        <li><code>⌘S</code> / <code>Ctrl+S</code> — 현재 파일 저장</li>
+        <li><code>⌘F</code> / <code>Ctrl+F</code> — 프리뷰 모드에서 찾기 창 열기</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h2>실제 사례</h2>
+      <h3><span class="emoji">💡</span>두 문서를 비교하며 편집하기</h3>
+      <p>분할 보기를 켜고 두 번째 문서를 연 뒤, 방향을 가로/세로로 바꿔가며 원본과 새 문서를 나란히 보고 옮겨 적습니다. 편집 중이던 파일에 리뷰 대기 중인 변경이 있으면, diff 토글로 저장 전/후 내용을 바로 비교할 수 있습니다.</p>
+    </div>
+  </div>
+
+  <div class="page" id="s4">
+    <span class="kicker">Copy &amp; Send</span>
+    <h1>복사해서 <code>Agent</code>에게 전달</h1>
+    <p class="subtitle">프리뷰에서 클릭하거나 드래그하면 파일 위치, 라인 번호, 내용이 함께 클립보드에 복사됩니다. 여기서 말하는 Agent는 터미널에서 따로 띄운 Claude Code나 Codex 같은 외부 CLI 세션입니다 — 앱 내장 기능이 아닙니다.</p>
+    <hr class="divider" />
+
+    <div class="subsection">
+      <h2>Start</h2>
+      <h3><span class="emoji">👆</span>클릭 한 번으로 복사</h3>
+      <p>프리뷰에서 문단·리스트·표·코드블록 같은 블록을 클릭하면 즉시 클립보드에 복사되고 우측 하단에 "복사됨" 표시가 뜹니다.</p>
+      <figure class="shot">
+        <img src="assets/manual/click-copy-toast.png" alt="프리뷰 블록을 클릭하면 참고 목록에 추가되고 복사됨 표시가 뜨는 화면" loading="lazy" />
+        <figcaption>블록 클릭 — 참고 목록 추가 + 우측 하단 "복사됨"</figcaption>
+      </figure>
+      <p>복사되는 형식은 항상 같습니다.</p>
+      <div class="code-block-wrap">
+        <pre><code>File: guides/architecture.md
+Lines: 5-7
+
+(선택한 내용)</code></pre>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <h2>비교</h2>
+      <h3><span class="emoji">🖱️</span>클릭 vs 드래그</h3>
+      <p>블록 전체가 필요하면 클릭, 블록 중 일부만 필요하면 드래그로 범위를 고릅니다.</p>
+      <figure class="shot">
+        <img src="assets/manual/drag-copy-popup.png" alt="프리뷰에서 텍스트를 드래그해 범위를 선택하면 뜨는 복사 팝오버" loading="lazy" />
+        <figcaption>드래그 선택 — 복사 팝오버</figcaption>
+      </figure>
+      <table class="dp-table">
+        <thead>
+          <tr><th>동작</th><th>결과</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>블록 클릭</td><td>블록 전체를 즉시 복사, "복사됨" 표시</td></tr>
+          <tr><td>드래그 선택</td><td>선택한 범위만 팝오버로 확인 후 "복사" 또는 "선택 내용 전체 복사"</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subsection">
+      <h2>산출물</h2>
+      <h3><span class="emoji">🗂️</span>여러 개 모아서 한 번에 복사</h3>
+      <p>클릭·드래그로 고른 내용은 우측 참고 목록에 chip으로 쌓입니다. 하나씩 복사하지 않고 모아뒀다가 한 번에 복사할 수 있습니다.</p>
+      <figure class="shot">
+        <img src="assets/manual/context-chip-rail.png" alt="여러 개의 참고 항목이 chip으로 쌓인 참고 목록" loading="lazy" />
+        <figcaption>참고 목록 — 4개 항목이 쌓인 상태</figcaption>
+      </figure>
+      <ul class="feature-points">
+        <li><strong>복사.</strong> 쌓인 항목 전체를 한 번에 클립보드로 복사한다</li>
+        <li><strong>모두 제거.</strong> 참고 목록을 비운다</li>
+        <li>chip의 <code>×</code>로 항목을 하나씩 뺄 수 있다</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h2>권한/제한</h2>
+      <div class="callout"><strong>Boundary:</strong> 활성 지침이 하나라도 있으면, 복사되는 텍스트 맨 앞에 "활성 지침을 먼저 확인하고 반영하라"는 안내와 지침 목록이 자동으로 붙는다. 활성 지침이 없으면 본문만 복사된다. 자세한 지침 설정은 <a data-target="s5">지침(Instructions) 관리</a> 참고.</div>
+    </div>
+
+    <div class="subsection">
+      <h2>실제 사례</h2>
+      <h3><span class="emoji">💡</span>파일 위치를 몰라도 되는 이유</h3>
+      <p>마크다운 문서의 특정 문단을 Agent에게 고쳐달라고 할 때, 예전에는 몇 번째 줄인지 직접 찾아서 알려줘야 했습니다. 지금은 프리뷰에서 그 문단을 클릭만 하면 <code>File</code> 경로와 <code>Lines</code> 번호가 이미 붙은 채로 복사되므로, 터미널의 Agent 세션에 붙여넣기만 하면 됩니다.</p>
+    </div>
+  </div>
+
+  <div class="page" id="s5">
+    <span class="kicker">Copy &amp; Send</span>
+    <h1>지침(Instructions) 관리</h1>
+    <p class="subtitle">Agent에게 항상 전달할 규칙을 등록해두면, 복사할 때마다 자동으로 함께 붙습니다.</p>
+    <hr class="divider" />
+
+    <div class="subsection">
+      <h2>Start</h2>
+      <h3><span class="emoji">➕</span>지침 추가</h3>
+      <ol class="steps">
+        <li>왼쪽 <strong>지침</strong> 탭으로 전환한다</li>
+        <li>지침 이름과 본문을 입력하거나, <strong>파일 불러오기</strong>로 <code>.md</code> / <code>.txt</code> / <code>.yaml</code> 파일 내용을 채운다</li>
+        <li><strong>지침 저장</strong>을 누르면 목록에 추가되고 바로 활성(ON) 상태가 된다</li>
+      </ol>
+      <figure class="shot">
+        <img src="assets/manual/instructions-panel.png" alt="지침 탭에서 활성 지침 하나가 등록된 화면" loading="lazy" />
+        <figcaption>지침 탭 — 활성 지침 1개 등록된 상태</figcaption>
+      </figure>
+    </div>
+
+    <div class="subsection">
+      <h2>비교</h2>
+      <h3><span class="emoji">⚖️</span>개별 지침 vs 프리셋</h3>
+      <table class="dp-table">
+        <thead>
+          <tr><th>단위</th><th>동작</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>개별 지침</td><td>ON/OFF 버튼으로 즉시 켜고 끈다. 켜진 지침만 복사 시 포함된다.</td></tr>
+          <tr><td>프리셋</td><td>저장 시점에 켜져 있던 지침들을 프로젝트/전역 범위로 묶어 저장. <strong>적용</strong> 버튼으로 그 조합을 한 번에 전환한다.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subsection">
+      <h2>권한/제한</h2>
+      <div class="callout"><strong>Boundary:</strong> 켜진 지침이 하나도 없으면 프리셋 저장 버튼이 비활성화된다. 프리셋은 항상 "저장 시점에 활성이었던 지침들"만 묶는다 — 나중에 개별 지침을 껐다 켜도 이미 저장된 프리셋 구성은 바뀌지 않는다.</div>
+    </div>
+
+    <div class="subsection">
+      <h2>산출물</h2>
+      <h3><span class="emoji">🔢</span>활성 지침 표시</h3>
+      <ul class="feature-points">
+        <li>지침 탭 상단에 <strong>N active</strong>로 현재 켜진 지침 개수가 표시된다</li>
+        <li>켜진 지침은 <a data-target="s4">복사해서 Agent에게 전달</a>할 때마다 텍스트 맨 앞에 이름과 함께 자동으로 나열된다</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h2>실제 사례</h2>
+      <h3><span class="emoji">💡</span>매번 다시 설명하지 않기</h3>
+      <p>"커밋 메시지는 한국어로" 같은 규칙을 지침으로 저장해두면, 이후 프리뷰에서 아무 내용이나 클릭·드래그로 복사할 때마다 이 규칙이 맨 위에 자동으로 붙습니다. Agent에게 매번 다시 설명할 필요가 없습니다.</p>
+    </div>
+  </div>
+
+  <div class="page" id="s6">
+    <span class="kicker">Safety</span>
+    <h1>Safety Model</h1>
+    <p class="subtitle">DocPilot은 renderer(React UI)와 파일시스템 접근을 분리해 예기치 않은 파일 손상을 막습니다.</p>
+    <hr class="divider" />
+
+    <div class="subsection">
+      <h2>권한/제한</h2>
+      <h3><span class="emoji">🔒</span>권한 경계</h3>
+      <div class="callout"><strong>Boundary:</strong> Renderer는 filesystem/process에 직접 접근할 수 없다. 모든 파일 작업은 Bridge를 거치고, Bridge는 workspace root guard로 범위 밖 접근을 차단한다.</div>
+      <ul class="feature-points">
+        <li><strong>renderer</strong> — React 화면. 파일시스템/프로세스 권한이 없다.</li>
+        <li><strong>bridge</strong> — Electron 메인 프로세스. 파일 조회·생성·삭제를 대신 수행한다.</li>
+        <li><strong>workspace root guard</strong> — 열린 폴더 밖의 경로 접근을 막는다.</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h2>산출물</h2>
+      <h3><span class="emoji">📦</span>패키징 범위</h3>
+      <ul class="feature-points">
+        <li>패키지에는 React renderer만 포함되며 legacy browser editor는 제외한다</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h2>실제 사례</h2>
+      <h3><span class="emoji">💡</span>외부에서 파일이 바뀌었을 때</h3>
+      <p>편집 중인 문서를 다른 프로그램(예: 텍스트 편집기, git checkout)이 건드리면 DocPilot은 그 변경을 자동으로 덮어쓰지 않습니다. 대신 conflict 리뷰로 표시해, 디스크의 변경 내용을 확인한 뒤 사용자가 직접 반영 여부를 결정하게 합니다.</p>
+    </div>
+  </div>
+
+  <div class="page" id="s7">
+    <span class="kicker">Verify</span>
+    <h1>검증 명령</h1>
+    <p class="subtitle">변경 사항을 커밋하기 전에 아래 스크립트로 renderer 빌드, 타입, 핵심 흐름을 확인합니다.</p>
+    <hr class="divider" />
+
+    <div class="subsection">
+      <h2>Start</h2>
+      <div class="code-block-wrap">
+        <button type="button" class="code-copy" data-copy-target="verify-code">Copy</button>
+        <pre><code id="verify-code">npm run renderer:typecheck
+npm run renderer:build
+node scripts/check-core-modules.js
+node scripts/check-prompt-package.js
+node scripts/check-agent-session-bridge.js
+node scripts/check-fake-agent-session.js
+node scripts/check-project-chat-wrapper.js
+node scripts/check-terminal-session.js
+node scripts/check-react-renderer-smoke.js
+node scripts/check-react-editor-workflow.js
+node scripts/check-react-external-conflict.js
+node scripts/check-editor-navigation-guard.js
+node scripts/check-packaged-app.js</code></pre>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <h2>산출물</h2>
+      <h3><span class="emoji">🔍</span>각 스크립트가 확인하는 것</h3>
+      <ul class="feature-points">
+        <li><code>renderer:typecheck</code> — TypeScript 타입 오류 검사</li>
+        <li><code>renderer:build</code> — Vite 프로덕션 빌드 성공 여부</li>
+        <li><code>check-core-modules.js</code> — context mode 계산 유틸리티 단위 테스트</li>
+        <li><code>check-prompt-package.js</code> — 세션 프롬프트 패키지 빌드 로직 검증</li>
+        <li><code>check-agent-session-bridge.js</code> — 세션 브릿지 IPC 동작 검증</li>
+        <li><code>check-fake-agent-session.js</code> — 가짜 세션으로 브릿지 흐름 검증</li>
+        <li><code>check-project-chat-wrapper.js</code> — 프로젝트 챗 래퍼 동작 검증</li>
+        <li><code>check-terminal-session.js</code> — 터미널 세션 생성·입출력 이벤트 검증</li>
+        <li><code>check-react-renderer-smoke.js</code> — Playwright로 렌더러 기동 스모크 테스트</li>
+        <li><code>check-react-editor-workflow.js</code> — 파일 열기·편집·저장 E2E 테스트</li>
+        <li><code>check-react-external-conflict.js</code> — 외부 파일 변경 시 conflict 리뷰 표시 검증</li>
+        <li><code>check-editor-navigation-guard.js</code> — 프리뷰 링크 클릭 시 앱 셸 밖으로 이동하지 않는지 검증</li>
+        <li><code>check-packaged-app.js</code> — 패키징된 DMG/앱 리소스 존재 여부 검증</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h2>권장 루프</h2>
+      <p>위 순서 그대로 실행합니다. 타입/빌드 오류부터 잡고, 단위 테스트 → E2E → 패키징 검증 순으로 좁은 범위에서 넓은 범위로 넘어갑니다.</p>
+    </div>
+
+    <div class="subsection">
+      <h2>실제 사례</h2>
+      <h3><span class="emoji">💡</span>실패했을 때</h3>
+      <p>스크립트 하나가 실패하면 그 지점에서 멈추고 원인을 고친 뒤, 처음부터 다시 전체 목록을 실행합니다. 뒷단(E2E, 패키징) 스크립트는 앞단(타입, 단위 테스트)이 깨진 상태에서는 신뢰할 수 없습니다.</p>
+    </div>
+
+    <div class="callout callout--warn">
+      <span class="callout-icon">⚠️</span>
+      <p>위 스크립트를 모두 통과해야 커밋합니다.</p>
+    </div>
+  </div>
+
+  <footer class="end">DocPilot 사용 매뉴얼 · docs/manual.html</footer>
+</main>
+
+<script>
+  const tabLinks = Array.from(document.querySelectorAll('nav.toc a[data-target]'));
+  const pages = Array.from(document.querySelectorAll('.page'));
+
+  function activate(id) {
+    const target = pages.some(p => p.id === id) ? id : 'overview';
+    pages.forEach(p => p.classList.toggle('active', p.id === target));
+    tabLinks.forEach(l => l.classList.toggle('active', l.dataset.target === target));
+    window.scrollTo(0, 0);
+  }
+
+  document.querySelectorAll('[data-target]').forEach(el => {
+    el.addEventListener('click', event => {
+      event.preventDefault();
+      const id = el.dataset.target;
+      activate(id);
+      history.replaceState(null, '', '#' + id);
+    });
+  });
+
+  document.querySelectorAll('.code-copy').forEach(button => {
+    button.addEventListener('click', async () => {
+      const codeEl = document.getElementById(button.dataset.copyTarget);
+      try {
+        await navigator.clipboard.writeText(codeEl.textContent);
+        const original = button.textContent;
+        button.textContent = 'Copied';
+        setTimeout(() => { button.textContent = original; }, 1500);
+      } catch (err) {
+        button.textContent = 'Copy failed';
+      }
+    });
+  });
+
+  activate(location.hash.replace('#', ''));
+</script>
+
+</body>
+</html>

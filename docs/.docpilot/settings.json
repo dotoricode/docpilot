@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "autosave": false,
+  "theme": "dark",
+  "agentCommandMode": "auto",
+  "claudeCommand": "claude",
+  "codexCommand": "codex",
+  "fileWatcherIgnore": "",
+  "recentWorkspaces": [
+    "/Users/youngsang.kwon/01_private/docpilot/docs"
+  ]
+}

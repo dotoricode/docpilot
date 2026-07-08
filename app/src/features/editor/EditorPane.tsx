@@ -1,11 +1,41 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
-import { EditorState } from '@codemirror/state';
-import { EditorView, keymap } from '@codemirror/view';
-import { defaultKeymap } from '@codemirror/commands';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type WheelEvent } from 'react';
+import { Compartment, EditorState, RangeSetBuilder, type Extension } from '@codemirror/state';
+import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, highlightActiveLine, keymap, lineNumbers, type DecorationSet, type ViewUpdate } from '@codemirror/view';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { javascript as codeMirrorJavascript } from '@codemirror/lang-javascript';
+import { json as codeMirrorJson } from '@codemirror/lang-json';
+import { HighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language';
 import { markdown } from '@codemirror/lang-markdown';
+import { closeSearchPanel, search, searchKeymap } from '@codemirror/search';
+import { tags as syntaxTags } from '@lezer/highlight';
 import MarkdownIt from 'markdown-it';
+import type { RenderRule } from 'markdown-it/lib/renderer.mjs';
+import Token from 'markdown-it/lib/token.mjs';
+import hljs from 'highlight.js/lib/core';
+import bash from 'highlight.js/lib/languages/bash';
+import c from 'highlight.js/lib/languages/c';
+import cpp from 'highlight.js/lib/languages/cpp';
+import css from 'highlight.js/lib/languages/css';
+import dart from 'highlight.js/lib/languages/dart';
+import go from 'highlight.js/lib/languages/go';
+import java from 'highlight.js/lib/languages/java';
+import javascript from 'highlight.js/lib/languages/javascript';
+import json from 'highlight.js/lib/languages/json';
+import kotlin from 'highlight.js/lib/languages/kotlin';
+import markdownHighlight from 'highlight.js/lib/languages/markdown';
+import objectivec from 'highlight.js/lib/languages/objectivec';
+import python from 'highlight.js/lib/languages/python';
+import ruby from 'highlight.js/lib/languages/ruby';
+import rust from 'highlight.js/lib/languages/rust';
+import sql from 'highlight.js/lib/languages/sql';
+import swift from 'highlight.js/lib/languages/swift';
+import typescript from 'highlight.js/lib/languages/typescript';
+import xml from 'highlight.js/lib/languages/xml';
+import yaml from 'highlight.js/lib/languages/yaml';
 import { markdownBlockDiffRows, markdownPreviewBlocks } from '../../../../shared/core/markdown-block-diff';
 import { readWorkspaceFileBase } from '../../shared/bridge-client';
+import { copyTextWithActiveInstructions } from '../../shared/copy-with-instructions';
+import { formatContextLocation } from '../../shared/context-format';
 
 type FileBuffer = {
   path: string;
@@ -18,9 +48,42 @@ type EditorPaneProps = {
   buffer: FileBuffer;
   error: string;
   saving: boolean;
-  onSelectionChange: (selection: { fileId: string; text: string; from: number; to: number } | null) => void;
+  primaryFileTabs?: ReactNode;
+  secondaryFileTabs?: ReactNode;
+  reviewDiff?: { fileId: string; before: string; signal: number } | null;
+  secondaryBuffer?: FileBuffer;
+  activePreviewPane: 'primary' | 'secondary';
+  splitOrientation: 'horizontal' | 'vertical';
+  contextChips: ContextChipView[];
+  onSelectionChange: (selection: { fileId: string; text: string; from: number; to: number; lineStart?: number; lineEnd?: number } | null) => void;
+  onPreviewContextPick: (selection: { fileId: string; text: string; from: number; to: number; lineStart?: number; lineEnd?: number }) => void;
+  onRemoveContextChip: (id: string) => void;
+  onCopyContextChips: () => void;
+  onClearContextChips: () => void;
   onChange: (content: string) => void;
   onSave: () => void;
+  onCloseSecondary: (activePane?: 'primary' | 'secondary') => void;
+  onOpenCurrentInSplit: () => void;
+  onActivePreviewPaneChange: (pane: 'primary' | 'secondary') => void;
+  onSplitOrientationChange: (orientation: 'horizontal' | 'vertical') => void;
+};
+
+type ContextChipView = {
+  id: string;
+  fileId: string;
+  text: string;
+  from: number;
+  to: number;
+  lineStart?: number;
+  lineEnd?: number;
+};
+
+type PreviewContext = Omit<ContextChipView, 'id'>;
+
+type PreviewCopyTarget = PreviewContext & {
+  pane: 'primary' | 'secondary';
+  x: number;
+  y: number;
 };
 
 type DiffRow = {
@@ -37,46 +100,357 @@ type LineDiffRow = {
   newText?: string;
 };
 
+type SemanticType = 'contract' | 'observed' | 'meaning' | 'risk' | 'note';
+
+type SemanticRule = {
+  prefix: string;
+  type: SemanticType;
+  label: string;
+};
+
+type IndentMode = 'spaces' | 'tabs';
+type CommandPaletteMode = 'commands' | 'tab-size';
+
+type CommandItem = {
+  id: string;
+  label: string;
+  detail?: string;
+  run: () => void;
+};
+
+const SEMANTIC_RULES: SemanticRule[] = [
+  { prefix: '관련 계약:', type: 'contract', label: '관련 계약' },
+  { prefix: '관찰된 선택:', type: 'observed', label: '관찰된 선택' },
+  { prefix: '의미:', type: 'meaning', label: '의미' },
+  { prefix: '주의:', type: 'risk', label: '주의' },
+  { prefix: '위험:', type: 'risk', label: '위험' },
+  { prefix: '참고:', type: 'note', label: '참고' },
+];
+
+const RISK_KEYWORDS = [
+  'Admin Console credential',
+  'credential',
+  'secret',
+  'password',
+  '보안 탐지 알고리즘',
+  '기록하지 않는다',
+];
+
 const emptyDocument = `# DocPilot
 
 왼쪽에서 Markdown 파일을 선택하세요.
 `;
 
+const PREVIEW_WIDTH_MIN = 480;
+const PREVIEW_WIDTH_MAX = 1200;
+const PREVIEW_WIDTH_STEP = 20;
+
+registerHighlightLanguages();
+
 const markdownRenderer = new MarkdownIt({
   html: false,
+  highlight: (code, language) => renderHighlightedCode(code, language),
   linkify: true,
   typographer: false,
 });
 
-export function EditorPane({ buffer, error, saving, onSelectionChange, onChange, onSave }: EditorPaneProps) {
+markdownRenderer.renderer.rules.fence = (tokens, index) => {
+  const token = tokens[index];
+  const lineStart = Array.isArray(token.map) ? token.map[0] + 2 : undefined;
+  const lineEnd = Array.isArray(token.map) ? Math.max(lineStart || 0, token.map[1] - 1) : undefined;
+  return `${renderHighlightedCode(token.content, token.info, lineStart, lineEnd)}\n`;
+};
+
+markdownRenderer.renderer.rules.code_block = (tokens, index) => {
+  const token = tokens[index];
+  const lineStart = Array.isArray(token.map) ? token.map[0] + 1 : undefined;
+  const lineEnd = Array.isArray(token.map) ? Math.max(lineStart || 0, token.map[1]) : undefined;
+  return `${renderCodeBlock(escapeHtml(token.content), 'text', false, lineStart, lineEnd)}\n`;
+};
+
+// `html: false` above blocks all raw HTML (previewHtml goes straight into
+// dangerouslySetInnerHTML with no sanitizer, and the renderer exposes
+// window.docpilot to page script — arbitrary HTML would be a real XSS-to-IPC
+// hole). This rule whitelists exactly the `<details><summary>...</summary>` /
+// `</details>` collapsible-section pattern instead of flipping that option.
+markdownRenderer.block.ruler.before('fence', 'docpilot_details', (state, startLine, endLine, silent) => {
+  const startText = state.src.slice(state.bMarks[startLine] + state.tShift[startLine], state.eMarks[startLine]).trim();
+  if (startText !== '<details>') return false;
+
+  let summaryLine = -1;
+  let summaryText = '';
+  let closeLine = -1;
+  for (let line = startLine + 1; line < endLine; line += 1) {
+    const lineText = state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]).trim();
+    if (summaryLine === -1) {
+      if (lineText.length === 0) continue;
+      const match = /^<summary>([\s\S]*)<\/summary>$/.exec(lineText);
+      if (!match) return false;
+      summaryLine = line;
+      summaryText = match[1];
+      continue;
+    }
+    if (lineText === '</details>') {
+      closeLine = line;
+      break;
+    }
+  }
+  if (closeLine === -1) return false;
+  if (silent) return true;
+
+  const openToken = state.push('docpilot_details_open', 'details', 1);
+  openToken.map = [startLine, closeLine + 1];
+
+  const summaryToken = state.push('html_block', '', 0);
+  summaryToken.content = `<summary>${renderDetailsSummary(summaryText)}</summary>\n`;
+  summaryToken.map = [summaryLine, summaryLine + 1];
+
+  state.md.block.tokenize(state, summaryLine + 1, closeLine);
+
+  state.push('docpilot_details_close', 'details', -1);
+  state.line = closeLine + 1;
+  return true;
+});
+
+markdownRenderer.renderer.rules.docpilot_details_open = () => '<details>\n';
+markdownRenderer.renderer.rules.docpilot_details_close = () => '</details>\n';
+
+/** Escapes everything in a `<summary>` line except whitelisted `<code>...</code>` spans. */
+function renderDetailsSummary(text: string) {
+  const codeSpan = /<code>([\s\S]*?)<\/code>/g;
+  let result = '';
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = codeSpan.exec(text))) {
+    result += escapeHtml(text.slice(lastIndex, match.index));
+    result += `<code>${escapeHtml(match[1])}</code>`;
+    lastIndex = codeSpan.lastIndex;
+  }
+  result += escapeHtml(text.slice(lastIndex));
+  return result;
+}
+
+const lineLabeledOpenRule: RenderRule = (tokens, index, options, _env, self) => {
+  addTokenLineAttrs(tokens[index]);
+  return self.renderToken(tokens, index, options);
+};
+
+for (const ruleName of ['heading_open', 'paragraph_open', 'list_item_open', 'table_open', 'blockquote_open'] as const) {
+  markdownRenderer.renderer.rules[ruleName] = lineLabeledOpenRule;
+}
+
+markdownRenderer.core.ruler.after('inline', 'docpilot_semantic_paragraphs', state => {
+  for (let index = 0; index < state.tokens.length - 2; index += 1) {
+    const open = state.tokens[index];
+    const inline = state.tokens[index + 1];
+    const close = state.tokens[index + 2];
+    if (open.type !== 'paragraph_open' || inline.type !== 'inline' || close.type !== 'paragraph_close') continue;
+    const plainText = inline.content.trim();
+    const rule = SEMANTIC_RULES.find(item => plainText.startsWith(item.prefix));
+    if (rule) {
+      const childrenWithoutPrefix = removePrefixFromInlineTokens(inline.children || [], rule.prefix);
+      open.attrJoin('class', `md-semantic-line md-semantic-line--${rule.type}`);
+      inline.children = [
+        makeHtmlInline(`<span class="md-semantic-label">${escapeHtml(rule.label)}</span><span class="md-semantic-content">`),
+        ...(rule.type === 'risk' ? highlightRiskKeywordsInInlineTokens(childrenWithoutPrefix) : childrenWithoutPrefix),
+        makeHtmlInline('</span>'),
+      ];
+    }
+  }
+});
+
+const editorCursorTheme = EditorView.theme({
+  '&.cm-editor': {
+    caretColor: '#f4f6f8',
+  },
+  '.cm-content': {
+    caretColor: '#f4f6f8',
+  },
+  '.cm-cursor, .cm-dropCursor': {
+    borderLeftColor: '#f4f6f8',
+    borderLeftWidth: '2px',
+  },
+  '.cm-activeLine': {
+    backgroundColor: 'rgba(87, 193, 255, 0.10)',
+  },
+  '.cm-focused .cm-activeLine': {
+    backgroundColor: 'rgba(87, 193, 255, 0.16)',
+  },
+});
+
+const editorSyntaxHighlighting = syntaxHighlighting(HighlightStyle.define([
+  { tag: [syntaxTags.keyword, syntaxTags.operatorKeyword, syntaxTags.modifier], color: 'var(--cm-syntax-keyword)' },
+  { tag: [syntaxTags.atom, syntaxTags.bool, syntaxTags.null, syntaxTags.number, syntaxTags.integer, syntaxTags.float], color: 'var(--cm-syntax-constant)' },
+  { tag: [syntaxTags.string, syntaxTags.special(syntaxTags.string), syntaxTags.regexp], color: 'var(--cm-syntax-string)' },
+  { tag: [syntaxTags.comment, syntaxTags.lineComment, syntaxTags.blockComment], color: 'var(--cm-syntax-comment)', fontStyle: 'italic' },
+  { tag: [syntaxTags.definition(syntaxTags.variableName), syntaxTags.function(syntaxTags.variableName), syntaxTags.function(syntaxTags.propertyName)], color: 'var(--cm-syntax-function)' },
+  { tag: [syntaxTags.variableName, syntaxTags.self, syntaxTags.standard(syntaxTags.variableName)], color: 'var(--cm-syntax-variable)' },
+  { tag: [syntaxTags.propertyName, syntaxTags.attributeName], color: 'var(--cm-syntax-property)' },
+  { tag: [syntaxTags.typeName, syntaxTags.className, syntaxTags.namespace], color: 'var(--cm-syntax-type)' },
+  { tag: [syntaxTags.operator, syntaxTags.punctuation, syntaxTags.separator, syntaxTags.bracket], color: 'var(--cm-syntax-punctuation)' },
+  { tag: syntaxTags.invalid, color: 'var(--cm-syntax-invalid)', textDecoration: 'underline wavy var(--cm-syntax-invalid)' },
+]), { fallback: true });
+
+export function EditorPane({
+  buffer,
+  error,
+  saving,
+  primaryFileTabs,
+  secondaryFileTabs,
+  reviewDiff,
+  secondaryBuffer,
+  activePreviewPane,
+  splitOrientation,
+  contextChips,
+  onSelectionChange,
+  onPreviewContextPick,
+  onRemoveContextChip,
+  onCopyContextChips,
+  onClearContextChips,
+  onChange,
+  onSave,
+  onCloseSecondary,
+  onOpenCurrentInSplit,
+  onActivePreviewPaneChange,
+  onSplitOrientationChange,
+}: EditorPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLElement | null>(null);
+  const secondaryPreviewRef = useRef<HTMLElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const activePreviewPaneRef = useRef<'primary' | 'secondary'>(activePreviewPane);
+  const rangeSelectionHandledRef = useRef(false);
   const lastExternalDocRef = useRef('');
   const pathRef = useRef(buffer.path);
-  const [mode, setMode] = useState<'preview' | 'edit'>('preview');
+  const findInputRef = useRef<HTMLInputElement | null>(null);
+  const previewFindShouldScrollRef = useRef(false);
+  const pendingModeLineRef = useRef<number | null>(null);
+  const languageCompartment = useMemo(() => new Compartment(), []);
+  const indentCompartment = useMemo(() => new Compartment(), []);
+  const [indentMode, setIndentMode] = useState<IndentMode>(() => readIndentSettings(buffer.path).mode);
+  const [tabSize, setTabSize] = useState(() => readIndentSettings(buffer.path).tabSize);
+  const [pendingIndentMode, setPendingIndentMode] = useState<IndentMode>('spaces');
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandPaletteMode, setCommandPaletteMode] = useState<CommandPaletteMode>('commands');
+  const [commandQuery, setCommandQuery] = useState('');
+  const [commandIndex, setCommandIndex] = useState(0);
+  const [mode, setMode] = useState<'preview' | 'edit'>(() => isPreviewableFile(buffer.path) ? 'preview' : 'edit');
   const [diffOn, setDiffOn] = useState(false);
   const [diffSplit, setDiffSplit] = useState(false);
   const [baseContent, setBaseContent] = useState('');
-  const [previewWidth, setPreviewWidth] = useState(820);
+  const [previewWidth, setPreviewWidth] = useState(PREVIEW_WIDTH_MAX);
   const [selectedPreviewIndex, setSelectedPreviewIndex] = useState<number | null>(null);
   const [activeHeadingIndex, setActiveHeadingIndex] = useState(0);
+  const [wholeDocumentSelected, setWholeDocumentSelected] = useState(false);
+  const [showPreviewLineNumbers, setShowPreviewLineNumbers] = useState(() => window.localStorage.getItem('docpilot:preview-line-numbers') !== '0');
+  const [previewCopyTarget, setPreviewCopyTarget] = useState<PreviewCopyTarget | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState('');
+  const [previewFindOpen, setPreviewFindOpen] = useState(false);
+  const [previewFindQuery, setPreviewFindQuery] = useState('');
+  const [previewFindIndex, setPreviewFindIndex] = useState(0);
+  const [previewFindMatchCount, setPreviewFindMatchCount] = useState(0);
+  const [previewFindScrollVersion, setPreviewFindScrollVersion] = useState(0);
+  const [previewSplitRatio, setPreviewSplitRatio] = useState(0.5);
 
   const visibleContent = buffer.path ? buffer.editorContent : emptyDocument;
-  const frontmatter = useMemo(() => parseFrontmatter(visibleContent), [visibleContent]);
-  const previewSource = frontmatter.body || visibleContent;
-  const previewHtml = useMemo(() => markdownRenderer.render(previewSource), [previewSource]);
-  const headings = useMemo(() => parseHeadings(previewSource), [previewSource]);
+  const secondaryVisibleContent = secondaryBuffer?.path ? secondaryBuffer.editorContent : '';
+  const canPreviewBody = isPreviewableFile(buffer.path);
+  const canPreviewSecondaryBody = isPreviewableFile(secondaryBuffer?.path || '');
+  const markdownPreviewBody = isMarkdownPreviewFile(buffer.path);
+  const previewAsSource = isSourcePreviewFile(buffer.path);
+  const secondaryPreviewAsSource = isSourcePreviewFile(secondaryBuffer?.path || '');
+  const frontmatter = useMemo(() => markdownPreviewBody ? parseFrontmatter(visibleContent) : { entries: [], body: visibleContent }, [markdownPreviewBody, visibleContent]);
+  const secondaryFrontmatter = useMemo(
+    () => isMarkdownPreviewFile(secondaryBuffer?.path || '') ? parseFrontmatter(secondaryVisibleContent) : { entries: [], body: secondaryVisibleContent },
+    [secondaryBuffer?.path, secondaryVisibleContent],
+  );
+  const previewSource = previewAsSource ? visibleContent : frontmatter.body || visibleContent;
+  const secondaryPreviewSource = secondaryPreviewAsSource ? secondaryVisibleContent : secondaryFrontmatter.body || secondaryVisibleContent;
+  const previewHtml = useMemo(
+    () => renderPreviewHtml(previewSource, buffer.path),
+    [previewSource, buffer.path],
+  );
+  const secondaryPreviewHtml = useMemo(
+    () => renderPreviewHtml(secondaryPreviewSource, secondaryBuffer?.path || ''),
+    [secondaryPreviewSource, secondaryBuffer?.path],
+  );
+  const headings = useMemo(() => markdownPreviewBody ? parseHeadings(previewSource) : [], [markdownPreviewBody, previewSource]);
   const diffRows = useMemo(() => markdownBlockDiffRows(baseContent, visibleContent), [baseContent, visibleContent]);
+  const compareOn = Boolean(secondaryBuffer?.path) && canPreviewBody && canPreviewSecondaryBody && !diffOn && mode !== 'edit';
+  const previewCompareStyle = {
+    '--preview-split-primary-size': `${Math.round(previewSplitRatio * 100)}%`,
+  } as CSSProperties;
+  const commandItems = commandPaletteMode === 'tab-size'
+    ? tabSizeCommandItems(pendingIndentMode, tabSize, size => {
+      setIndentMode(pendingIndentMode);
+      setTabSize(size);
+    }, closeCommandPalette)
+    : editorCommandItems({
+      indentMode,
+      tabSize,
+      setIndentMode,
+      setCommandPaletteMode,
+      setPendingIndentMode,
+      setCommandQuery,
+      setCommandIndex,
+      closeCommandPalette,
+      convertIndentation,
+    });
+  const commandResults = useMemo(
+    () => filterCommandItems(commandItems, commandQuery),
+    [commandItems, commandQuery],
+  );
+
+  useEffect(() => {
+    activePreviewPaneRef.current = activePreviewPane;
+  }, [activePreviewPane]);
 
   useEffect(() => {
     pathRef.current = buffer.path;
   }, [buffer.path]);
 
   useEffect(() => {
+    const settings = readIndentSettings(buffer.path);
+    setIndentMode(settings.mode);
+    setTabSize(settings.tabSize);
+  }, [buffer.path]);
+
+  useEffect(() => {
+    setMode(canPreviewBody ? 'preview' : 'edit');
+    setPreviewFindOpen(false);
+    setPreviewFindQuery('');
+    if (!canPreviewBody) setDiffOn(false);
+  }, [canPreviewBody, buffer.path]);
+
+  useEffect(() => {
+    window.localStorage.setItem('docpilot:preview-line-numbers', showPreviewLineNumbers ? '1' : '0');
+  }, [showPreviewLineNumbers]);
+
+  useEffect(() => {
+    if (!copyFeedback) return undefined;
+    const timer = window.setTimeout(() => setCopyFeedback(''), 1400);
+    return () => window.clearTimeout(timer);
+  }, [copyFeedback]);
+
+  useEffect(() => {
+    if (!previewFindOpen) return undefined;
+    const closeOnPointer = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('.preview-find-bar')) return;
+      closePreviewFind();
+    };
+    window.addEventListener('pointerdown', closeOnPointer, true);
+    return () => window.removeEventListener('pointerdown', closeOnPointer, true);
+  }, [previewFindOpen]);
+
+  useEffect(() => {
     let disposed = false;
     if (!diffOn || !buffer.path) {
       setBaseContent('');
+      return undefined;
+    }
+    if (reviewDiff?.fileId === buffer.path) {
+      setBaseContent(reviewDiff.before);
       return undefined;
     }
     readWorkspaceFileBase(buffer.path)
@@ -89,7 +463,14 @@ export function EditorPane({ buffer, error, saving, onSelectionChange, onChange,
     return () => {
       disposed = true;
     };
-  }, [buffer.path, diffOn]);
+  }, [buffer.path, diffOn, reviewDiff?.fileId, reviewDiff?.before, reviewDiff?.signal]);
+
+  useEffect(() => {
+    if (!reviewDiff || reviewDiff.fileId !== buffer.path) return;
+    setMode(isPreviewableFile(buffer.path) ? 'preview' : 'edit');
+    setDiffOn(true);
+    setBaseContent(reviewDiff.before);
+  }, [buffer.path, reviewDiff?.fileId, reviewDiff?.before, reviewDiff?.signal]);
 
   useEffect(() => {
     if (!hostRef.current) return undefined;
@@ -98,23 +479,18 @@ export function EditorPane({ buffer, error, saving, onSelectionChange, onChange,
       state: EditorState.create({
         doc: visibleContent,
         extensions: [
-          markdown(),
-          keymap.of(defaultKeymap),
+          languageCompartment.of(editorLanguageExtension(buffer.path)),
+          history(),
+          lineNumbers(),
+          drawSelection(),
+          highlightActiveLine(),
+          editorCursorTheme,
+          editorSyntaxHighlighting,
+          indentCompartment.of(editorIndentExtensions(indentMode, tabSize)),
+          search({ top: true }),
+          keymap.of([indentWithTab, ...searchKeymap, ...historyKeymap, ...defaultKeymap]),
           EditorView.lineWrapping,
           EditorView.updateListener.of(update => {
-            const selection = update.state.selection.main;
-            const activePath = pathRef.current;
-            if (!selection.empty && activePath) {
-              onSelectionChange({
-                fileId: activePath,
-                text: update.state.sliceDoc(selection.from, selection.to),
-                from: selection.from,
-                to: selection.to,
-              });
-            } else if (update.selectionSet) {
-              onSelectionChange(null);
-            }
-
             if (update.docChanged) {
               const next = update.state.doc.toString();
               lastExternalDocRef.current = next;
@@ -134,12 +510,101 @@ export function EditorPane({ buffer, error, saving, onSelectionChange, onChange,
 
   useEffect(() => {
     const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: languageCompartment.reconfigure(editorLanguageExtension(buffer.path)),
+    });
+  }, [buffer.path, languageCompartment]);
+
+  useEffect(() => {
+    writeIndentSettings(buffer.path, indentMode, tabSize);
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: indentCompartment.reconfigure(editorIndentExtensions(indentMode, tabSize)),
+    });
+  }, [indentCompartment, indentMode, tabSize]);
+
+  useEffect(() => {
+    const view = viewRef.current;
     if (!view || visibleContent === lastExternalDocRef.current) return;
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: visibleContent },
     });
     lastExternalDocRef.current = visibleContent;
   }, [visibleContent]);
+
+  useLayoutEffect(() => {
+    const targetLine = pendingModeLineRef.current;
+    if (!targetLine) return;
+    pendingModeLineRef.current = null;
+    window.requestAnimationFrame(() => {
+      if (mode === 'edit') {
+        scrollEditorToLine(targetLine);
+      } else {
+        scrollPreviewToLine(targetLine);
+      }
+    });
+  }, [mode, previewHtml, visibleContent]);
+
+  useEffect(() => {
+    const saveWithShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's') return;
+      if (mode !== 'edit' || !buffer.path || !buffer.dirtyByUser || saving) return;
+      event.preventDefault();
+      onSave();
+    };
+    window.addEventListener('keydown', saveWithShortcut);
+    return () => window.removeEventListener('keydown', saveWithShortcut);
+  }, [buffer.dirtyByUser, buffer.path, mode, onSave, saving]);
+
+  useEffect(() => {
+    const openFindWithShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'f') return;
+      if (mode === 'edit') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setDiffOn(false);
+      setPreviewFindOpen(true);
+      window.requestAnimationFrame(() => {
+        findInputRef.current?.focus();
+        findInputRef.current?.select();
+      });
+    };
+    window.addEventListener('keydown', openFindWithShortcut);
+    return () => window.removeEventListener('keydown', openFindWithShortcut);
+  }, [mode]);
+
+  useEffect(() => {
+    const openCommandsWithShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.key.toLowerCase() !== 'p') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setCommandPaletteMode('commands');
+      setCommandPaletteOpen(true);
+      setCommandQuery('>');
+      setCommandIndex(0);
+    };
+    window.addEventListener('keydown', openCommandsWithShortcut, true);
+    return () => window.removeEventListener('keydown', openCommandsWithShortcut, true);
+  }, []);
+
+  useEffect(() => {
+    setCommandIndex(current => clampNumber(current, 0, Math.max(commandResults.length - 1, 0)));
+  }, [commandResults.length]);
+
+  useEffect(() => {
+    if (mode !== 'edit') return undefined;
+    const closeEditorFindOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const view = viewRef.current;
+      if (!target || !view || !hostRef.current?.querySelector('.cm-search')) return;
+      if (target.closest('.cm-search')) return;
+      closeSearchPanel(view);
+    };
+    document.addEventListener('pointerdown', closeEditorFindOnOutsideClick, true);
+    return () => document.removeEventListener('pointerdown', closeEditorFindOnOutsideClick, true);
+  }, [mode]);
 
   useEffect(() => {
     const preview = previewRef.current;
@@ -150,23 +615,103 @@ export function EditorPane({ buffer, error, saving, onSelectionChange, onChange,
     block?.classList.add('preview-picked');
   }, [previewHtml, selectedPreviewIndex]);
 
+  useLayoutEffect(() => {
+    annotatePreviewLineNumbers(previewRef.current, previewSource);
+    const frame = window.requestAnimationFrame(() => {
+      annotatePreviewLineNumbers(previewRef.current, previewSource);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [previewHtml, previewSource, compareOn]);
+
+  useLayoutEffect(() => {
+    annotatePreviewLineNumbers(secondaryPreviewRef.current, secondaryPreviewSource);
+    const frame = window.requestAnimationFrame(() => {
+      annotatePreviewLineNumbers(secondaryPreviewRef.current, secondaryPreviewSource);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [secondaryPreviewHtml, secondaryPreviewSource, compareOn]);
+
+  useLayoutEffect(() => {
+    const targetPane = compareOn ? activePreviewPane : 'primary';
+    const preview = targetPane === 'secondary' ? secondaryPreviewRef.current : previewRef.current;
+    const count = previewFindOpen
+      ? applyPreviewFindHighlights(preview, {
+        query: previewFindQuery,
+        index: previewFindIndex,
+        caseSensitive: false,
+        wholeWord: false,
+        regex: false,
+        scrollToActive: previewFindShouldScrollRef.current,
+      })
+      : clearPreviewFindHighlights(preview);
+    previewFindShouldScrollRef.current = false;
+    setPreviewFindMatchCount(current => current === count ? current : count);
+  });
+
+  useEffect(() => {
+    if (!previewFindMatchCount) {
+      setPreviewFindIndex(0);
+      return;
+    }
+    setPreviewFindIndex(current => current >= previewFindMatchCount ? 0 : current);
+  }, [previewFindMatchCount]);
+
   useEffect(() => {
     setActiveHeadingIndex(0);
+    setWholeDocumentSelected(false);
+    setPreviewCopyTarget(null);
   }, [buffer.path, previewHtml]);
+
+  useEffect(() => {
+    if (!previewCopyTarget) return undefined;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewCopyTarget(null);
+    };
+    const closeOnPointer = (event: PointerEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest('.preview-copy-popover')) return;
+      setPreviewCopyTarget(null);
+    };
+    window.addEventListener('keydown', close);
+    window.addEventListener('pointerdown', closeOnPointer, true);
+    return () => {
+      window.removeEventListener('keydown', close);
+      window.removeEventListener('pointerdown', closeOnPointer, true);
+    };
+  }, [previewCopyTarget]);
 
   function selectWholeDocument() {
     if (!buffer.path || !visibleContent.trim()) return;
+    const lines = lineRangeForOffsets(previewSource, 0, previewSource.length);
+    setWholeDocumentSelected(true);
     onSelectionChange({
       fileId: buffer.path,
       text: previewSource,
       from: 0,
       to: previewSource.length,
+      lineStart: lines.start,
+      lineEnd: lines.end,
     });
   }
 
+  async function copyWholeDocument() {
+    if (!buffer.path) return;
+    const lines = lineRangeForOffsets(previewSource, 0, previewSource.length);
+    const text = [
+      `File: ${buffer.path}`,
+      formatContextLocation({ from: 0, to: previewSource.length, lineStart: lines.start, lineEnd: lines.end }),
+      previewSource,
+    ].join('\n');
+    copyTextImmediately(text);
+    await copyTextWithActiveInstructions(text);
+  }
+
   function scrollToHeading(index: number) {
-    const heading = previewRef.current?.querySelectorAll('h1,h2,h3')[index];
-    heading?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    const preview = previewRef.current;
+    const heading = preview?.querySelectorAll('h1,h2,h3,h4,h5,h6')[index];
+    if (preview && heading instanceof HTMLElement) {
+      preview.scrollTo({ top: Math.max(0, heading.offsetTop - 28), behavior: 'smooth' });
+    }
     setActiveHeadingIndex(index);
   }
 
@@ -174,7 +719,7 @@ export function EditorPane({ buffer, error, saving, onSelectionChange, onChange,
     if (diffOn) return;
     const preview = previewRef.current;
     if (!preview) return;
-    const headingNodes = Array.from(preview.querySelectorAll('h1,h2,h3'));
+    const headingNodes = Array.from(preview.querySelectorAll('h1,h2,h3,h4,h5,h6'));
     if (!headingNodes.length) {
       setActiveHeadingIndex(0);
       return;
@@ -187,63 +732,494 @@ export function EditorPane({ buffer, error, saving, onSelectionChange, onChange,
     setActiveHeadingIndex(current => current === nextIndex ? current : nextIndex);
   }
 
-  function selectPreviewBlock(event: MouseEvent<HTMLElement>) {
-    if (!buffer.path) return;
+  function handlePreviewShellWheel(event: WheelEvent<HTMLDivElement>) {
+    if (shouldLeaveWheelToCodeBlock(event)) return;
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const primary = previewRef.current;
+    const secondary = secondaryPreviewRef.current;
+    if (!primary) return;
+    const targetPreview = target?.closest('.markdown-preview');
+    const scrollAmount = event.deltaY;
+    if (!scrollAmount) return;
+
+    if (compareOn && secondary) {
+      if (targetPreview === primary) {
+        event.preventDefault();
+        primary.scrollTop += scrollAmount;
+        return;
+      }
+      if (targetPreview === secondary) {
+        event.preventDefault();
+        secondary.scrollTop += scrollAmount;
+        return;
+      }
+      const targetPane = target?.closest('.preview-compare-pane');
+      const panePreview = targetPane?.querySelector('.markdown-preview');
+      if (panePreview instanceof HTMLElement) {
+        event.preventDefault();
+        panePreview.scrollTop += scrollAmount;
+        return;
+      }
+      event.preventDefault();
+      const fallback = activePreviewPane === 'secondary' ? secondary : primary;
+      fallback.scrollTop += scrollAmount;
+      return;
+    }
+
+    event.preventDefault();
+    primary.scrollTop += scrollAmount;
+  }
+
+  function shouldLeaveWheelToCodeBlock(event: WheelEvent<HTMLElement>) {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const codeBlock = target?.closest('.markdown-preview pre');
+    if (!(codeBlock instanceof HTMLElement)) return false;
+    const hasHorizontalOverflow = codeBlock.scrollWidth > codeBlock.clientWidth + 2;
+    return hasHorizontalOverflow && (Math.abs(event.deltaX) > Math.abs(event.deltaY) || event.shiftKey);
+  }
+
+  function selectPreviewBlock(event: MouseEvent<HTMLElement>, pane: 'primary' | 'secondary' = 'primary') {
+    onActivePreviewPaneChange(pane);
+    if (rangeSelectionHandledRef.current) {
+      rangeSelectionHandledRef.current = false;
+      return;
+    }
+    const paneState = previewPaneState(pane);
+    if (!paneState.path) return;
     if (diffOn) return;
     const target = event.target instanceof HTMLElement
       ? event.target.closest('p,li,table,pre,blockquote,h1,h2,h3,h4,h5,h6')
       : null;
-    if (!(target instanceof HTMLElement) || !previewRef.current?.contains(target)) return;
-    const blocks = Array.from(previewRef.current.querySelectorAll('p,li,table,pre,blockquote,h1,h2,h3,h4,h5,h6'));
+    if (!(target instanceof HTMLElement) || !paneState.preview?.contains(target)) return;
+    const blocks = previewBlocks(paneState.preview);
     const index = blocks.indexOf(target);
     const text = target.innerText.trim();
     if (!text) return;
-    const from = Math.max(0, previewSource.indexOf(text));
-    setSelectedPreviewIndex(index);
-    onSelectionChange({
-      fileId: buffer.path,
+    const range = previewTextRangeForElement(paneState.source, text, target, blocks, index);
+    const lines = lineRangeForOffsets(paneState.source, range.from, range.to);
+    const context = {
+      fileId: paneState.path,
       text,
-      from,
-      to: from + text.length,
+      from: range.from,
+      to: range.to,
+      lineStart: lines.start,
+      lineEnd: lines.end,
+    };
+    setSelectedPreviewIndex(pane === 'primary' ? index : null);
+    setWholeDocumentSelected(false);
+    onSelectionChange(null);
+    onPreviewContextPick(context);
+    void copyPreviewContext(context, '복사됨');
+  }
+
+  function selectPreviewRange(event: MouseEvent<HTMLElement>, pane: 'primary' | 'secondary' = 'primary') {
+    onActivePreviewPaneChange(pane);
+    const paneState = previewPaneState(pane);
+    if (!paneState.path || diffOn) return;
+    const preview = paneState.preview;
+    const selection = window.getSelection();
+    if (!preview || !selection || selection.isCollapsed || !selection.rangeCount) return;
+    if (!selection.anchorNode || !selection.focusNode) return;
+    if (!preview.contains(selection.anchorNode) || !preview.contains(selection.focusNode)) return;
+    const text = selection.toString().trim();
+    if (!text) return;
+    const target = event.target instanceof HTMLElement
+      ? event.target.closest('p,li,table,pre,blockquote,h1,h2,h3,h4,h5,h6')
+      : null;
+    const blocks = previewBlocks(preview);
+    const index = target instanceof HTMLElement ? blocks.indexOf(target) : -1;
+    const range = target instanceof HTMLElement
+      ? previewTextRangeForElement(paneState.source, text, target, blocks, index)
+      : findTextRange(paneState.source, text);
+    const lines = lineRangeForOffsets(paneState.source, range.from, range.to);
+    const context = {
+      fileId: paneState.path,
+      text,
+      from: range.from,
+      to: range.to,
+      lineStart: lines.start,
+      lineEnd: lines.end,
+    };
+    rangeSelectionHandledRef.current = true;
+    window.setTimeout(() => {
+      rangeSelectionHandledRef.current = false;
+    }, 0);
+    setSelectedPreviewIndex(pane === 'primary' && index >= 0 ? index : null);
+    setWholeDocumentSelected(false);
+    onSelectionChange(null);
+    onPreviewContextPick(context);
+    showPreviewCopyTarget(event, pane, context);
+    selection.removeAllRanges();
+  }
+
+  function showPreviewCopyTarget(event: MouseEvent<HTMLElement>, pane: 'primary' | 'secondary', context: PreviewContext) {
+    const viewportMargin = 12;
+    const estimatedWidth = 300;
+    const x = Math.min(
+      Math.max(event.clientX + 6, viewportMargin),
+      Math.max(viewportMargin, window.innerWidth - estimatedWidth - viewportMargin),
+    );
+    const y = Math.min(
+      Math.max(event.clientY - 46, viewportMargin),
+      Math.max(viewportMargin, window.innerHeight - 54),
+    );
+    setPreviewCopyTarget({
+      ...context,
+      pane,
+      x,
+      y,
     });
+  }
+
+  async function copyPreviewTarget() {
+    if (!previewCopyTarget) return;
+    await copyPreviewContext(previewCopyTarget, '복사됨');
+    setPreviewCopyTarget(null);
+  }
+
+  async function copyPreviewContext(context: PreviewContext, feedback: string) {
+    await copyTextWithActiveInstructions([
+      `File: ${context.fileId}`,
+      formatContextLocation(context),
+      '',
+      context.text,
+    ].join('\n'));
+    setCopyFeedback(feedback);
+  }
+
+  async function copyAllSelectedContext() {
+    await onCopyContextChips();
+    setCopyFeedback('선택 내용 복사됨');
+    setPreviewCopyTarget(null);
+  }
+
+  async function copyContextChipsFromRail() {
+    await onCopyContextChips();
+    setCopyFeedback('참고 내용 복사됨');
+  }
+
+  function renderDocumentContextRail() {
+    if (mode === 'edit' || !contextChips.length) return null;
+    return (
+      <aside className="document-context-rail" aria-label="다음 요청 참고 내용">
+        <header>
+          <strong>참고</strong>
+          <span>{contextChips.length}개</span>
+        </header>
+        <div className="document-context-list">
+          {contextChips.map(chip => (
+            <span className="context-chip document-context-chip" key={chip.id} title={chip.text}>
+              <strong>{chip.fileId}</strong>
+              <small>{chip.text.length.toLocaleString()}자</small>
+              <button type="button" aria-label="참고 내용 제거" onClick={() => onRemoveContextChip(chip.id)}>×</button>
+            </span>
+          ))}
+        </div>
+        <div className="document-context-actions">
+          <button type="button" onClick={copyContextChipsFromRail}>복사</button>
+          <button type="button" onClick={onClearContextChips}>모두 제거</button>
+        </div>
+      </aside>
+    );
+  }
+
+  function previewPaneState(pane: 'primary' | 'secondary') {
+    if (pane === 'secondary') {
+      return {
+        path: secondaryBuffer?.path || '',
+        source: secondaryPreviewSource,
+        preview: secondaryPreviewRef.current,
+      };
+    }
+    return {
+      path: buffer.path,
+      source: previewSource,
+      preview: previewRef.current,
+    };
   }
 
   function toggleDiff(next: boolean) {
     setDiffOn(next);
   }
 
+  function activatePreviewPane(pane: 'primary' | 'secondary') {
+    activePreviewPaneRef.current = pane;
+    onActivePreviewPaneChange(pane);
+  }
+
+  function togglePreviewSplit(next: boolean) {
+    if (!canPreviewBody) return;
+    if (next) {
+      setMode('preview');
+      setDiffOn(false);
+      if (!secondaryBuffer?.path) onOpenCurrentInSplit();
+      return;
+    }
+    onCloseSecondary(activePreviewPaneRef.current);
+  }
+
+  function movePreviewFind(delta: number) {
+    if (!previewFindMatchCount) return;
+    previewFindShouldScrollRef.current = true;
+    setPreviewFindScrollVersion(current => current + 1);
+    setPreviewFindIndex(current => (current + delta + previewFindMatchCount) % previewFindMatchCount);
+  }
+
+  function closePreviewFind() {
+    setPreviewFindOpen(false);
+    setPreviewFindQuery('');
+    setPreviewFindIndex(0);
+  }
+
+  function switchBodyMode(nextMode: 'preview' | 'edit') {
+    if (nextMode === 'preview' && !canPreviewBody) return;
+    if (nextMode === mode) return;
+    pendingModeLineRef.current = mode === 'edit' ? currentEditorLine() : currentPreviewLine();
+    setMode(nextMode);
+  }
+
+  function currentEditorLine() {
+    const view = viewRef.current;
+    if (!view) return 1;
+    return view.state.doc.lineAt(view.state.selection.main.head).number;
+  }
+
+  function currentPreviewLine() {
+    const preview = previewRef.current;
+    if (!preview) return 1;
+    const blocks = Array.from(preview.querySelectorAll<HTMLElement>('[data-line-start]'));
+    if (!blocks.length) return 1;
+    const previewTop = preview.getBoundingClientRect().top;
+    let bestLine = Number(blocks[0].dataset.lineStart || 1);
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const block of blocks) {
+      const distance = Math.abs(block.getBoundingClientRect().top - previewTop - 24);
+      if (distance >= bestDistance) continue;
+      const line = Number(block.dataset.lineStart || 1);
+      if (Number.isFinite(line) && line > 0) {
+        bestLine = line;
+        bestDistance = distance;
+      }
+    }
+    return bestLine;
+  }
+
+  function scrollEditorToLine(lineNumber: number) {
+    const view = viewRef.current;
+    if (!view) return;
+    const line = view.state.doc.line(Math.min(Math.max(1, lineNumber), view.state.doc.lines));
+    view.dispatch({
+      selection: { anchor: line.from },
+      effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+    });
+    view.focus();
+  }
+
+  function scrollPreviewToLine(lineNumber: number) {
+    const preview = previewRef.current;
+    if (!preview) return;
+    const blocks = Array.from(preview.querySelectorAll<HTMLElement>('[data-line-start]'));
+    const target = blocks.find(block => {
+      const start = Number(block.dataset.lineStart || 0);
+      const end = Number(block.dataset.lineEnd || start);
+      return start <= lineNumber && end >= lineNumber;
+    }) || blocks.find(block => Number(block.dataset.lineStart || 0) >= lineNumber) || blocks[0];
+    if (!target) return;
+    preview.scrollTo({ top: Math.max(0, target.offsetTop - 28), behavior: 'auto' });
+  }
+
+  function startPreviewSplitResize(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    const target = event.currentTarget.parentElement;
+    if (!target) return;
+    document.body.classList.add('resizing-panels');
+    const move = (moveEvent: globalThis.MouseEvent) => {
+      const rect = target.getBoundingClientRect();
+      const rawRatio = splitOrientation === 'horizontal'
+        ? (moveEvent.clientX - rect.left) / Math.max(rect.width, 1)
+        : (moveEvent.clientY - rect.top) / Math.max(rect.height, 1);
+      setPreviewSplitRatio(clampNumber(rawRatio, 0.22, 0.78));
+    };
+    const stop = () => {
+      document.body.classList.remove('resizing-panels');
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', stop);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', stop, { once: true });
+  }
+
+  function setPreviewWidthFromPointer(event: MouseEvent<HTMLInputElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = clampNumber((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1);
+    const rawWidth = PREVIEW_WIDTH_MIN + ratio * (PREVIEW_WIDTH_MAX - PREVIEW_WIDTH_MIN);
+    const steppedWidth = Math.round(rawWidth / PREVIEW_WIDTH_STEP) * PREVIEW_WIDTH_STEP;
+    setPreviewWidth(clampNumber(steppedWidth, PREVIEW_WIDTH_MIN, PREVIEW_WIDTH_MAX));
+  }
+
+  function closeCommandPalette() {
+    setCommandPaletteOpen(false);
+    setCommandPaletteMode('commands');
+    setCommandQuery('');
+    setCommandIndex(0);
+    setPendingIndentMode(indentMode);
+  }
+
+  function runCommandItem(index = commandIndex) {
+    const item = commandResults[index] || commandResults[0];
+    if (!item) return;
+    item.run();
+  }
+
+  function convertIndentation(targetMode: IndentMode) {
+    const view = viewRef.current;
+    if (!view) return;
+    const current = view.state.doc.toString();
+    const next = convertLeadingIndentation(current, targetMode, tabSize);
+    if (next === current) return;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: next },
+    });
+  }
+
   return (
     <section className="editor-pane">
+      {commandPaletteOpen ? (
+        <div className="command-palette-overlay" role="dialog" aria-modal="true" aria-label="명령 팔레트">
+          <div className="command-palette-panel">
+            <input
+              autoFocus
+              value={commandQuery}
+              placeholder={commandPaletteMode === 'tab-size' ? `Select Tab Size for ${pendingIndentMode === 'tabs' ? 'Tabs' : 'Spaces'}` : '명령 입력'}
+              onChange={event => {
+                setCommandQuery(event.currentTarget.value);
+                setCommandIndex(0);
+              }}
+              onKeyDown={event => {
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  closeCommandPalette();
+                } else if (event.key === 'ArrowDown') {
+                  event.preventDefault();
+                  setCommandIndex(current => Math.min(current + 1, Math.max(commandResults.length - 1, 0)));
+                } else if (event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  setCommandIndex(current => Math.max(current - 1, 0));
+                } else if (event.key === 'Enter') {
+                  event.preventDefault();
+                  runCommandItem();
+                }
+              }}
+            />
+            <div className="command-palette-results" role="listbox" aria-label="명령 결과">
+              {commandResults.length ? commandResults.map((item, index) => (
+                <button
+                  className={`command-palette-row ${index === commandIndex ? 'active' : ''}`}
+                  key={item.id}
+                  type="button"
+                  role="option"
+                  aria-selected={index === commandIndex}
+                  onMouseEnter={() => setCommandIndex(index)}
+                  onClick={() => item.run()}
+                >
+                  <span>{highlightCommandName(item.label, commandQuery)}</span>
+                  {item.detail ? <small>{item.detail}</small> : null}
+                </button>
+              )) : (
+                <div className="command-palette-empty">No commands</div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {!compareOn && primaryFileTabs ? <div className="editor-pane-tabs">{primaryFileTabs}</div> : null}
       <div className="panel-title editor-title">
         <span>{buffer.path || 'Editor'}</span>
         <span>{markdownPreviewBlocks(visibleContent).length} blocks</span>
         {buffer.dirtyByUser ? <span className="dirty-pill">수정됨</span> : null}
         {buffer.conflictState !== 'clean' ? <span className="conflict-pill">{buffer.conflictState}</span> : null}
-        <div className="editor-mode-toggle" aria-label="본문 모드">
-          <button className={mode === 'preview' ? 'active' : ''} type="button" onClick={() => setMode('preview')}>프리뷰</button>
-          <button className={mode === 'edit' ? 'active' : ''} type="button" onClick={() => setMode('edit')}>편집</button>
-        </div>
+        <label className="indent-mode-control" title="Tab 입력 방식">
+          <span>Tab</span>
+          <select value={indentMode} onChange={event => setIndentMode(event.currentTarget.value === 'tabs' ? 'tabs' : 'spaces')}>
+            <option value="spaces">Spaces {tabSize}</option>
+            <option value="tabs">Tab {tabSize}</option>
+          </select>
+        </label>
+        {canPreviewBody ? (
+          <div className="editor-mode-toggle" aria-label="본문 모드">
+            <button className={mode === 'preview' ? 'active' : ''} type="button" onClick={() => switchBodyMode('preview')}>프리뷰</button>
+            <button className={mode === 'edit' ? 'active' : ''} type="button" onClick={() => switchBodyMode('edit')}>편집</button>
+          </div>
+        ) : null}
         <label className={`diff-toggle ${diffOn ? 'active' : ''}`}>
           <span>Diff</span>
           <input type="checkbox" checked={diffOn} onChange={event => toggleDiff(event.currentTarget.checked)} />
         </label>
+        {!diffOn && canPreviewBody ? (
+          <label className={`preview-split-toggle ${secondaryBuffer?.path ? 'active' : ''}`}>
+            <span>문서 분할</span>
+            <input
+              type="checkbox"
+              checked={Boolean(secondaryBuffer?.path)}
+              disabled={!buffer.path}
+              onChange={event => togglePreviewSplit(event.currentTarget.checked)}
+            />
+          </label>
+        ) : null}
         {diffOn ? (
           <label className={`diff-toggle ${diffSplit ? 'active' : ''}`}>
-            <span>분할</span>
+            <span>좌우 비교</span>
             <input type="checkbox" checked={diffSplit} onChange={event => setDiffSplit(event.currentTarget.checked)} />
           </label>
         ) : null}
+        {secondaryBuffer?.path && !diffOn ? (
+          <div className="split-preview-controls" aria-label="문서 분할 방향">
+            <button
+              className={splitOrientation === 'horizontal' ? 'active' : ''}
+              type="button"
+              onClick={() => onSplitOrientationChange('horizontal')}
+            >
+              좌우
+            </button>
+            <button
+              className={splitOrientation === 'vertical' ? 'active' : ''}
+              type="button"
+              onClick={() => onSplitOrientationChange('vertical')}
+            >
+              상하
+            </button>
+            <button type="button" onClick={() => onCloseSecondary(activePreviewPaneRef.current)}>문서 분할 닫기</button>
+          </div>
+        ) : null}
+        <label className={`diff-toggle ${showPreviewLineNumbers ? 'active' : ''}`}>
+          <span>라인 번호</span>
+          <input
+            type="checkbox"
+            checked={showPreviewLineNumbers}
+            onChange={event => setShowPreviewLineNumbers(event.currentTarget.checked)}
+          />
+        </label>
         <button className="editor-action" type="button" disabled={!buffer.path} onClick={selectWholeDocument}>전체 선택</button>
+        <button
+          className="editor-action"
+          type="button"
+          disabled={!buffer.path}
+          onMouseDown={copyWholeDocument}
+          onClick={copyWholeDocument}
+        >
+          전체 복사
+        </button>
         <label className="preview-width-control" title="본문 너비">
           <input
             type="range"
-            min="480"
-            max="1200"
-            step="20"
+            min={PREVIEW_WIDTH_MIN}
+            max={PREVIEW_WIDTH_MAX}
+            step={PREVIEW_WIDTH_STEP}
             value={previewWidth}
             onChange={event => setPreviewWidth(Number(event.currentTarget.value))}
+            onPointerDown={setPreviewWidthFromPointer}
           />
-          <span>{previewWidth}</span>
+          <span>폭 {previewWidth}</span>
         </label>
         <button className="save-button" type="button" disabled={!buffer.path || !buffer.dirtyByUser || saving} onClick={onSave}>
           {saving ? '저장 중' : '저장'}
@@ -252,64 +1228,1028 @@ export function EditorPane({ buffer, error, saving, onSelectionChange, onChange,
       {error ? <div className="editor-error">{error}</div> : null}
       <div className={`editor-workspace ${mode} ${diffOn ? 'diffing' : ''}`}>
         <div className="editor-host" ref={hostRef} />
-        <div className="preview-shell">
-          {mode !== 'edit' ? (
-            <nav className={`toc-rail ${headings.length ? '' : 'empty'}`} aria-label="문서 목차">
-              {headings.length ? headings.map((heading, index) => (
-                <button
-                  className={`toc-item toc-h${heading.level}`}
-                  data-active={index === activeHeadingIndex ? 'true' : 'false'}
-                  key={`${heading.line}-${heading.text}`}
-                  type="button"
-                  onClick={() => scrollToHeading(index)}
-                >
-                  {heading.text}
-                </button>
-              )) : <span>목차 없음</span>}
-            </nav>
-          ) : null}
-          <article
-            className={`markdown-preview ${diffOn ? 'diff-preview-mode' : ''}`}
-            ref={previewRef}
-            style={{ '--preview-width': `${previewWidth}px` } as CSSProperties}
-            onClick={selectPreviewBlock}
-            onScroll={syncActiveHeading}
-          >
-            {diffOn ? (
-              <DiffViewer
-                oldText={baseContent}
-                newText={visibleContent}
-                rows={diffRows as DiffRow[]}
-                view={mode === 'edit' ? 'raw' : 'preview'}
-                split={diffSplit}
+        <div
+          className={`preview-shell ${showPreviewLineNumbers ? 'show-line-numbers' : 'hide-line-numbers'} ${mode !== 'edit' && contextChips.length ? 'with-context-rail' : ''} ${compareOn ? `preview-compare-active split-${splitOrientation}` : ''}`}
+          onWheel={handlePreviewShellWheel}
+        >
+          {previewFindOpen ? (
+            <div className="preview-find-bar" role="search" aria-label="프리뷰 본문 찾기">
+              <input
+                ref={findInputRef}
+                value={previewFindQuery}
+                placeholder="Find"
+                onChange={event => {
+                  setPreviewFindQuery(event.currentTarget.value);
+                  setPreviewFindIndex(0);
+                }}
+                onKeyDown={event => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closePreviewFind();
+                  } else if (event.key === 'Enter') {
+                    event.preventDefault();
+                    movePreviewFind(event.shiftKey ? -1 : 1);
+                  }
+                }}
               />
-            ) : (
-              <>
-                {frontmatter.entries.length ? <FrontmatterCard entries={frontmatter.entries} /> : null}
-                <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
-              </>
-            )}
-          </article>
-          {selectedPreviewIndex !== null ? <span className="preview-selection-note">선택한 블록을 AI 컨텍스트로 사용할 수 있습니다.</span> : null}
+              <span className="preview-find-count">
+                {previewFindQuery ? (previewFindMatchCount ? `${previewFindIndex + 1} of ${previewFindMatchCount}` : 'No results') : ''}
+              </span>
+              <button type="button" title="이전 결과" disabled={!previewFindMatchCount} onClick={() => movePreviewFind(-1)}>↑</button>
+              <button type="button" title="다음 결과" disabled={!previewFindMatchCount} onClick={() => movePreviewFind(1)}>↓</button>
+              <button type="button" title="찾기 닫기" onClick={closePreviewFind}>×</button>
+            </div>
+          ) : null}
+          {compareOn ? (
+            <>
+              <div
+                className={`preview-compare preview-compare-${splitOrientation}`}
+                style={previewCompareStyle}
+              >
+                <section
+                  className={`preview-compare-pane primary ${activePreviewPane === 'primary' ? 'active-pane' : ''}`}
+                  aria-label="주 파일 프리뷰"
+                  onMouseDown={() => activatePreviewPane('primary')}
+                >
+                  {primaryFileTabs}
+                  <header>
+                    <strong>{buffer.path || '주 파일'}</strong>
+                    <span>주 파일</span>
+                  </header>
+                  <article
+                    className="markdown-preview split-preview-document"
+                    ref={previewRef}
+                    style={{ '--preview-width': `${previewWidth}px` } as CSSProperties}
+                    onClick={event => selectPreviewBlock(event, 'primary')}
+                    onMouseUp={event => selectPreviewRange(event, 'primary')}
+                    onScroll={syncActiveHeading}
+                  >
+                    {!previewAsSource && frontmatter.entries.length ? <FrontmatterCard entries={frontmatter.entries} /> : null}
+                    <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                  </article>
+                </section>
+                <button
+                  className={`preview-split-resizer preview-split-resizer-${splitOrientation}`}
+                  type="button"
+                  aria-label={splitOrientation === 'horizontal' ? '분할 폭 조절' : '분할 높이 조절'}
+                  onMouseDown={startPreviewSplitResize}
+                />
+                <section
+                  className={`preview-compare-pane secondary ${activePreviewPane === 'secondary' ? 'active-pane' : ''}`}
+                  aria-label="보조 파일 프리뷰"
+                  onMouseDown={() => activatePreviewPane('secondary')}
+                >
+                  {secondaryFileTabs}
+                  <header>
+                    <strong>{secondaryBuffer?.path || '보조 파일'}</strong>
+                    <span>읽기 전용</span>
+                  </header>
+                  <article
+                    className="markdown-preview split-preview-document secondary-document"
+                    ref={secondaryPreviewRef}
+                    style={{ '--preview-width': `${previewWidth}px` } as CSSProperties}
+                    onClick={event => selectPreviewBlock(event, 'secondary')}
+                    onMouseUp={event => selectPreviewRange(event, 'secondary')}
+                  >
+                    {!secondaryPreviewAsSource && secondaryFrontmatter.entries.length ? <FrontmatterCard entries={secondaryFrontmatter.entries} /> : null}
+                    <div dangerouslySetInnerHTML={{ __html: secondaryPreviewHtml }} />
+                  </article>
+                </section>
+              </div>
+              {renderDocumentContextRail()}
+            </>
+          ) : (
+            <>
+              {mode !== 'edit' ? (
+                <nav className={`toc-rail ${headings.length ? '' : 'empty'}`} aria-label="문서 목차">
+                  {headings.length ? headings.map((heading, index) => (
+                    <button
+                      className={`toc-item toc-h${heading.level}`}
+                      data-active={index === activeHeadingIndex ? 'true' : 'false'}
+                      key={`${heading.line}-${heading.text}`}
+                      type="button"
+                      onClick={() => scrollToHeading(index)}
+                    >
+                      {heading.text}
+                    </button>
+                  )) : <span>목차 없음</span>}
+                </nav>
+              ) : null}
+              <article
+                className={`markdown-preview ${diffOn ? 'diff-preview-mode' : ''}`}
+                ref={previewRef}
+                style={{ '--preview-width': `${previewWidth}px` } as CSSProperties}
+                onClick={event => selectPreviewBlock(event, 'primary')}
+                onMouseUp={event => selectPreviewRange(event, 'primary')}
+                onScroll={syncActiveHeading}
+              >
+                {diffOn ? (
+                  <DiffViewer
+                    oldText={baseContent}
+                    newText={visibleContent}
+                    rows={diffRows as DiffRow[]}
+                    view={mode === 'edit' ? 'raw' : 'preview'}
+                    split={diffSplit}
+                  />
+                ) : (
+                  <>
+                    {frontmatter.entries.length ? <FrontmatterCard entries={frontmatter.entries} /> : null}
+                    <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                  </>
+                )}
+              </article>
+              {renderDocumentContextRail()}
+            </>
+          )}
+          {selectedPreviewIndex !== null ? <span className="preview-selection-note">참고 내용에 추가됨</span> : null}
+          {copyFeedback ? <span className="preview-copy-feedback">{copyFeedback}</span> : null}
+          {previewCopyTarget ? (
+            <div
+              className="preview-copy-popover"
+              style={{ left: previewCopyTarget.x, top: previewCopyTarget.y } as CSSProperties}
+              role="toolbar"
+              aria-label="프리뷰 복사"
+              onClick={event => event.stopPropagation()}
+              onMouseDown={event => event.stopPropagation()}
+            >
+              <button type="button" onClick={copyPreviewTarget}>복사</button>
+              <button type="button" onClick={copyAllSelectedContext}>선택 내용 전체 복사</button>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>
   );
 }
 
-function parseHeadings(markdownText: string) {
-  return markdownText
-    .split(/\r?\n/)
-    .map((line, index) => {
-      const match = /^(#{1,3})\s+(.+?)\s*$/.exec(line);
-      if (!match) return null;
+function previewTextRangeForElement(source: string, text: string, target: HTMLElement, blocks: Element[], index: number) {
+  const blockText = target.innerText.trim();
+  const occurrence = blocks.slice(0, Math.max(index, 0))
+    .filter(block => block instanceof HTMLElement && block.innerText.trim() === blockText)
+    .length;
+  const blockRange = findTextRange(source, blockText, occurrence);
+  if (text === blockText) return blockRange;
+  const localRange = findTextRange(source, text, 0, blockRange.from, blockRange.to);
+  if (localRange.from !== blockRange.from || localRange.to !== Math.min(blockRange.to, blockRange.from + text.length)) {
+    return localRange;
+  }
+  return findTextRange(source, text);
+}
+
+function annotatePreviewLineNumbers(preview: HTMLElement | null, source: string) {
+  if (!preview || !source) return;
+  const blocks = previewBlocks(preview);
+  blocks.forEach((block, index) => {
+    const element = block instanceof HTMLElement ? block : null;
+    if (!element) return;
+    if (element.matches('pre.code-block') && element.dataset.lineStart && element.dataset.lineEnd) {
+      const start = Number(element.dataset.lineStart);
+      const end = Number(element.dataset.lineEnd);
+      if (Number.isFinite(start) && Number.isFinite(end) && start > 0 && end >= start) {
+        element.dataset.lineLabel = start === end ? String(start) : `${start}-${end}`;
+        return;
+      }
+    }
+    const text = element.innerText.trim();
+    if (!text) {
+      delete element.dataset.lineLabel;
+      delete element.dataset.lineStart;
+      delete element.dataset.lineEnd;
+      return;
+    }
+    const range = previewTextRangeForElement(source, text, element, blocks, index);
+    const lines = lineRangeForOffsets(source, range.from, range.to);
+    element.dataset.lineStart = String(lines.start);
+    element.dataset.lineEnd = String(lines.end);
+    element.dataset.lineLabel = lines.start === lines.end ? String(lines.start) : `${lines.start}-${lines.end}`;
+  });
+}
+
+function previewBlocks(preview: HTMLElement) {
+  return Array.from(preview.querySelectorAll('p,li,table,pre,blockquote,h1,h2,h3,h4,h5,h6'));
+}
+
+type PreviewFindOptions = {
+  query: string;
+  index: number;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  regex: boolean;
+  scrollToActive?: boolean;
+};
+
+function clearPreviewFindHighlights(preview: HTMLElement | null) {
+  if (!preview) return 0;
+  const marks = Array.from(preview.querySelectorAll('mark.preview-find-mark'));
+  marks.forEach(mark => {
+    const parent = mark.parentNode;
+    if (!parent) return;
+    parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+    parent.normalize();
+  });
+  return 0;
+}
+
+function applyPreviewFindHighlights(preview: HTMLElement | null, options: PreviewFindOptions) {
+  if (!preview) return 0;
+  const previousScrollTop = preview.scrollTop;
+  const previousScrollLeft = preview.scrollLeft;
+  clearPreviewFindHighlights(preview);
+  const matcher = buildPreviewFindMatcher(options);
+  if (!matcher) {
+    preview.scrollTop = previousScrollTop;
+    preview.scrollLeft = previousScrollLeft;
+    return 0;
+  }
+  const textNodes = previewTextNodes(preview);
+  const matches: HTMLElement[] = [];
+
+  for (const node of textNodes) {
+    const text = node.nodeValue || '';
+    const ranges = findPreviewTextRanges(text, matcher, options);
+    if (!ranges.length) continue;
+    const fragment = document.createDocumentFragment();
+    let cursor = 0;
+    for (const range of ranges) {
+      if (range.from > cursor) fragment.appendChild(document.createTextNode(text.slice(cursor, range.from)));
+      const mark = document.createElement('mark');
+      mark.className = 'preview-find-mark';
+      mark.textContent = text.slice(range.from, range.to);
+      fragment.appendChild(mark);
+      matches.push(mark);
+      cursor = range.to;
+    }
+    if (cursor < text.length) fragment.appendChild(document.createTextNode(text.slice(cursor)));
+    node.parentNode?.replaceChild(fragment, node);
+  }
+
+  const active = matches[options.index % Math.max(matches.length, 1)];
+  if (active) {
+    active.classList.add('current');
+    if (options.scrollToActive) {
+      active.scrollIntoView({ block: 'center', inline: 'nearest' });
+    } else {
+      preview.scrollTop = previousScrollTop;
+      preview.scrollLeft = previousScrollLeft;
+    }
+  } else {
+    preview.scrollTop = previousScrollTop;
+    preview.scrollLeft = previousScrollLeft;
+  }
+  return matches.length;
+}
+
+function previewTextNodes(root: HTMLElement) {
+  const nodes: Text[] = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!parent || !node.nodeValue?.trim()) return NodeFilter.FILTER_REJECT;
+      if (parent.closest('.preview-find-bar, .preview-copy-popover, mark.preview-find-mark')) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  let current = walker.nextNode();
+  while (current) {
+    nodes.push(current as Text);
+    current = walker.nextNode();
+  }
+  return nodes;
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function buildPreviewFindMatcher(options: PreviewFindOptions) {
+  const query = options.query.trim();
+  if (!query) return null;
+  try {
+    if (options.regex) {
+      return new RegExp(query, options.caseSensitive ? 'g' : 'gi');
+    }
+    return new RegExp(escapeRegExp(query), options.caseSensitive ? 'g' : 'gi');
+  } catch {
+    return null;
+  }
+}
+
+function findPreviewTextRanges(text: string, matcher: RegExp, options: PreviewFindOptions) {
+  const ranges: Array<{ from: number; to: number }> = [];
+  matcher.lastIndex = 0;
+  let match = matcher.exec(text);
+  while (match) {
+    const from = match.index;
+    const value = match[0];
+    const to = from + value.length;
+    if (value && (!options.wholeWord || isWholeWordMatch(text, from, to))) {
+      ranges.push({ from, to });
+    }
+    matcher.lastIndex = value ? matcher.lastIndex : matcher.lastIndex + 1;
+    match = matcher.exec(text);
+  }
+  return ranges;
+}
+
+function isWholeWordMatch(text: string, from: number, to: number) {
+  const before = from > 0 ? text[from - 1] : '';
+  const after = to < text.length ? text[to] : '';
+  return !isWordCharacter(before) && !isWordCharacter(after);
+}
+
+function isWordCharacter(value: string) {
+  return /[\p{L}\p{N}_]/u.test(value);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function lineRangeForOffsets(source: string, from: number, to: number) {
+  const safeFrom = Math.max(0, Math.min(from, source.length));
+  const safeTo = Math.max(safeFrom, Math.min(to, source.length));
+  const start = lineNumberForOffset(source, safeFrom);
+  const adjustedEnd = safeTo > safeFrom && source[safeTo - 1] === '\n' ? safeTo - 1 : safeTo;
+  return {
+    start,
+    end: Math.max(start, lineNumberForOffset(source, adjustedEnd)),
+  };
+}
+
+function lineNumberForOffset(source: string, offset: number) {
+  let line = 1;
+  const safeOffset = Math.max(0, Math.min(offset, source.length));
+  for (let index = 0; index < safeOffset; index += 1) {
+    if (source.charCodeAt(index) === 10) line += 1;
+  }
+  return line;
+}
+
+function findTextRange(source: string, text: string, occurrence = 0, start = 0, end = source.length) {
+  const needle = text.trim();
+  if (!needle) return { from: start, to: start };
+  const exact = nthIndexOf(source, needle, occurrence, start, end);
+  if (exact !== -1) return { from: exact, to: exact + needle.length };
+
+  const sourceIndex = buildSearchIndex(source.slice(start, end), start);
+  const needleIndex = buildSearchIndex(needle, 0);
+  if (!needleIndex.text) return { from: start, to: start };
+  let from = 0;
+  for (let count = 0; count <= occurrence; count += 1) {
+    const found = sourceIndex.text.indexOf(needleIndex.text, from);
+    if (found === -1) break;
+    if (count === occurrence) {
+      const rangeStart = sourceIndex.map[found] ?? start;
+      const rangeEnd = (sourceIndex.map[found + needleIndex.text.length - 1] ?? rangeStart) + 1;
+      return { from: rangeStart, to: rangeEnd };
+    }
+    from = found + needleIndex.text.length;
+  }
+  return { from: start, to: Math.min(end, start + needle.length) };
+}
+
+function nthIndexOf(source: string, needle: string, occurrence: number, start = 0, end = source.length) {
+  let from = start;
+  for (let index = 0; index <= occurrence; index += 1) {
+    const found = source.indexOf(needle, from);
+    if (found === -1 || found >= end) return -1;
+    if (index === occurrence) return found;
+    from = found + needle.length;
+  }
+  return -1;
+}
+
+function buildSearchIndex(source: string, offset: number) {
+  let text = '';
+  const map: number[] = [];
+  let previousWasSpace = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '*' || char === '_' || char === '`' || char === '#' || char === '>') continue;
+    if (/\s/.test(char)) {
+      if (!previousWasSpace && text) {
+        text += ' ';
+        map.push(offset + index);
+        previousWasSpace = true;
+      }
+      continue;
+    }
+    text += char;
+    map.push(offset + index);
+    previousWasSpace = false;
+  }
+  if (text.endsWith(' ')) {
+    text = text.slice(0, -1);
+    map.pop();
+  }
+  return { text, map };
+}
+
+function registerHighlightLanguages() {
+  const registrations: Array<[string, Parameters<typeof hljs.registerLanguage>[1]]> = [
+    ['bash', bash],
+    ['c', c],
+    ['cpp', cpp],
+    ['css', css],
+    ['dart', dart],
+    ['go', go],
+    ['java', java],
+    ['javascript', javascript],
+    ['json', json],
+    ['kotlin', kotlin],
+    ['markdown', markdownHighlight],
+    ['objectivec', objectivec],
+    ['python', python],
+    ['ruby', ruby],
+    ['rust', rust],
+    ['sql', sql],
+    ['swift', swift],
+    ['typescript', typescript],
+    ['xml', xml],
+    ['yaml', yaml],
+  ];
+  for (const [name, language] of registrations) {
+    if (!hljs.getLanguage(name)) hljs.registerLanguage(name, language);
+  }
+  for (const [alias, target] of [
+    ['c++', 'cpp'],
+    ['cc', 'cpp'],
+    ['console', 'bash'],
+    ['cxx', 'cpp'],
+    ['h', 'c'],
+    ['hpp', 'cpp'],
+    ['htm', 'xml'],
+    ['html', 'xml'],
+    ['javascriptreact', 'javascript'],
+    ['js', 'javascript'],
+    ['jsonc', 'json'],
+    ['jsx', 'javascript'],
+    ['kt', 'kotlin'],
+    ['md', 'markdown'],
+    ['mjs', 'javascript'],
+    ['objc', 'objectivec'],
+    ['objective-c', 'objectivec'],
+    ['py', 'python'],
+    ['rb', 'ruby'],
+    ['sh', 'bash'],
+    ['shell', 'bash'],
+    ['shell-session', 'bash'],
+    ['terminal', 'bash'],
+    ['ts', 'typescript'],
+    ['tsx', 'typescript'],
+    ['typescriptreact', 'typescript'],
+    ['xml', 'xml'],
+    ['yml', 'yaml'],
+    ['zsh', 'bash'],
+  ] as Array<[string, string]>) {
+    if (!hljs.getLanguage(alias)) hljs.registerAliases(alias, { languageName: target });
+  }
+}
+
+function renderHighlightedCode(code: string, language: string, sourceLineStart?: number, sourceLineEnd?: number) {
+  const normalizedLanguage = normalizeHighlightLanguage(language);
+  const escaped = escapeHtml(code);
+  if (normalizedLanguage && normalizedLanguage !== 'text' && hljs.getLanguage(normalizedLanguage)) {
+    try {
+      const highlighted = hljs.highlight(code, {
+        language: normalizedLanguage,
+        ignoreIllegals: true,
+      }).value;
+      return renderCodeBlock(highlighted, normalizedLanguage, true, sourceLineStart, sourceLineEnd);
+    } catch {
+      return renderCodeBlock(escaped, 'text', false, sourceLineStart, sourceLineEnd);
+    }
+  }
+  return renderCodeBlock(escaped, 'text', false, sourceLineStart, sourceLineEnd);
+}
+
+function renderPreviewHtml(source: string, filePath: string) {
+  if (isSourcePreviewFile(filePath)) {
+    const language = sourcePreviewLanguage(filePath);
+    const previewSource = formatSourcePreviewContent(source, language);
+    return `${renderHighlightedCode(previewSource, language, 1, sourceLineCount(previewSource))}\n`;
+  }
+  return markdownRenderer.render(source);
+}
+
+function isSourcePreviewFile(filePath: string) {
+  return /\.json$/i.test(String(filePath || ''));
+}
+
+function sourcePreviewLanguage(filePath: string) {
+  const value = String(filePath || '');
+  if (/\.json$/i.test(value)) return 'json';
+  return 'text';
+}
+
+function isMarkdownPreviewFile(filePath: string) {
+  return /\.(md|markdown|mdown)$/i.test(String(filePath || ''));
+}
+
+function isPreviewableFile(filePath: string) {
+  const value = String(filePath || '');
+  return isMarkdownPreviewFile(value) || /\.json$/i.test(value);
+}
+
+function formatSourcePreviewContent(source: string, language: string) {
+  if (language !== 'json') return source;
+  const trimmed = String(source || '').trim();
+  if (!trimmed) return source;
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2);
+  } catch {
+    return source;
+  }
+}
+
+function sourceLineCount(source: string) {
+  const normalized = String(source || '').replace(/\r\n?/g, '\n');
+  const withoutTrailingNewline = normalized.endsWith('\n') ? normalized.slice(0, -1) : normalized;
+  if (!withoutTrailingNewline) return 1;
+  return withoutTrailingNewline.split('\n').length;
+}
+
+function copyTextImmediately(text: string) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand('copy');
+  } catch {
+    // The bridge-backed async copy remains the authoritative fallback.
+  } finally {
+    textarea.remove();
+  }
+}
+
+function renderCodeBlock(highlightedCode: string, language: string, highlighted = true, sourceLineStart?: number, sourceLineEnd?: number) {
+  const classLanguage = language === 'code' ? 'text' : language;
+  const codeClass = highlighted
+    ? ` class="hljs language-${classLanguage}" data-lang="${classLanguage}"`
+    : ` data-lang="${classLanguage}"`;
+  const label = escapeHtml(formatLanguageLabel(classLanguage));
+  const safeStart = Number.isFinite(sourceLineStart) && sourceLineStart && sourceLineStart > 0 ? sourceLineStart : undefined;
+  const safeEnd = Number.isFinite(sourceLineEnd) && sourceLineEnd && safeStart ? Math.max(safeStart, sourceLineEnd) : safeStart;
+  const lineAttrs = safeStart && safeEnd
+    ? ` data-line-start="${safeStart}" data-line-end="${safeEnd}" data-line-label="${safeStart === safeEnd ? safeStart : `${safeStart}-${safeEnd}`}"`
+    : '';
+  return `<pre class="code-block code-block-${classLanguage}" data-language-label="${label}"${lineAttrs}><code${codeClass}>${highlightedCode}</code></pre>`;
+}
+
+function addTokenLineAttrs(token: Token | undefined) {
+  if (!token || !Array.isArray(token.map)) return;
+  const start = token.map[0] + 1;
+  const end = Math.max(start, token.map[1]);
+  token.attrSet('data-line-start', String(start));
+  token.attrSet('data-line-end', String(end));
+  token.attrSet('data-line-label', start === end ? String(start) : `${start}-${end}`);
+}
+
+function makeHtmlInline(content: string) {
+  const token = new Token('html_inline', '', 0);
+  token.content = content;
+  return token;
+}
+
+function removePrefixFromInlineTokens(tokens: Token[], prefix: string) {
+  let removed = false;
+  return tokens.map(token => removePrefixFromInlineToken(token, prefix, () => removed, value => {
+    removed = value;
+  }));
+}
+
+function removePrefixFromInlineToken(
+  token: Token,
+  prefix: string,
+  getRemoved: () => boolean,
+  setRemoved: (value: boolean) => void,
+) {
+  if (getRemoved()) return token;
+  if (token.type === 'text') {
+    const trimmedStart = token.content.trimStart();
+    if (!trimmedStart.startsWith(prefix)) return token;
+    const clone = cloneToken(token);
+    const leadingSpaceLength = token.content.length - trimmedStart.length;
+    const leadingSpace = token.content.slice(0, leadingSpaceLength);
+    clone.content = leadingSpace + trimmedStart.slice(prefix.length).trimStart();
+    setRemoved(true);
+    return clone;
+  }
+  if (token.children?.length) {
+    const clone = cloneToken(token);
+    clone.children = token.children.map(child => removePrefixFromInlineToken(child, prefix, getRemoved, setRemoved));
+    return clone;
+  }
+  return token;
+}
+
+function highlightRiskKeywordsInInlineTokens(tokens: Token[]) {
+  return tokens.flatMap(token => highlightRiskKeywordsInInlineToken(token));
+}
+
+function highlightRiskKeywordsInInlineToken(token: Token): Token[] {
+  if (token.type === 'code_inline' || token.type === 'html_inline') return [token];
+  if (token.type === 'text') return splitRiskTextToken(token);
+  if (token.children?.length) {
+    const clone = cloneToken(token);
+    clone.children = highlightRiskKeywordsInInlineTokens(token.children);
+    return [clone];
+  }
+  return [token];
+}
+
+function splitRiskTextToken(token: Token): Token[] {
+  const keyword = RISK_KEYWORDS.find(item => token.content.includes(item));
+  if (!keyword) return [token];
+  const result: Token[] = [];
+  const parts = token.content.split(keyword);
+  parts.forEach((part, index) => {
+    if (part) {
+      const textToken = cloneToken(token);
+      textToken.content = part;
+      result.push(textToken);
+    }
+    if (index < parts.length - 1) {
+      result.push(makeHtmlInline(`<span class="md-risk-token">${escapeHtml(keyword)}</span>`));
+    }
+  });
+  return result.flatMap(item => item.type === 'text' ? splitRiskTextToken(item) : [item]);
+}
+
+function cloneToken(token: Token) {
+  const clone = new Token(token.type, token.tag, token.nesting);
+  clone.attrs = token.attrs ? token.attrs.map(attr => [...attr] as [string, string]) : null;
+  clone.map = token.map ? [...token.map] as [number, number] : null;
+  clone.level = token.level;
+  clone.children = token.children ? [...token.children] : null;
+  clone.content = token.content;
+  clone.markup = token.markup;
+  clone.info = token.info;
+  clone.meta = token.meta;
+  clone.block = token.block;
+  clone.hidden = token.hidden;
+  return clone;
+}
+
+function formatLanguageLabel(language: string) {
+  const labels: Record<string, string> = {
+    bash: 'Shell',
+    c: 'C',
+    cpp: 'C++',
+    css: 'CSS',
+    dart: 'Dart',
+    go: 'Go',
+    java: 'Java',
+    javascript: 'JavaScript',
+    json: 'JSON',
+    kotlin: 'Kotlin',
+    markdown: 'Markdown',
+    objectivec: 'Objective-C',
+    text: 'Text',
+    python: 'Python',
+    ruby: 'Ruby',
+    rust: 'Rust',
+    sql: 'SQL',
+    swift: 'Swift',
+    typescript: 'TypeScript',
+    xml: 'HTML/XML',
+    yaml: 'YAML',
+  };
+  return labels[language] || language.toUpperCase();
+}
+
+function normalizeHighlightLanguage(language: string) {
+  const value = String(language || '').trim().toLowerCase().split(/\s+/)[0] || '';
+  const aliases: Record<string, string> = {
+    'c++': 'cpp',
+    cjs: 'javascript',
+    cc: 'cpp',
+    console: 'bash',
+    cxx: 'cpp',
+    h: 'c',
+    hpp: 'cpp',
+    htm: 'xml',
+    html: 'xml',
+    js: 'javascript',
+    jsonc: 'json',
+    jsx: 'javascript',
+    kt: 'kotlin',
+    md: 'markdown',
+    mjs: 'javascript',
+    objc: 'objectivec',
+    'objective-c': 'objectivec',
+    plain: 'text',
+    plaintext: 'text',
+    py: 'python',
+    rb: 'ruby',
+    sh: 'bash',
+    shell: 'bash',
+    'shell-session': 'bash',
+    terminal: 'bash',
+    txt: 'text',
+    ts: 'typescript',
+    tsx: 'typescript',
+    yml: 'yaml',
+    zsh: 'bash',
+  };
+  return aliases[value] || value;
+}
+
+function editorLanguageExtension(filePath: string): Extension {
+  const value = String(filePath || '');
+  if (/\.json$/i.test(value)) return codeMirrorJson();
+  if (/\.(js|mjs|cjs)$/i.test(value)) return codeMirrorJavascript({ jsx: true });
+  return markdown();
+}
+
+function editorIndentExtensions(mode: IndentMode, tabSize: number): Extension[] {
+  return [
+    indentUnit.of(mode === 'tabs' ? '\t' : ' '.repeat(tabSize)),
+    EditorState.tabSize.of(tabSize),
+    leadingIndentGuides(tabSize),
+  ];
+}
+
+function leadingIndentGuides(tabSize: number): Extension {
+  return ViewPlugin.fromClass(class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = buildLeadingIndentDecorations(view, tabSize);
+    }
+
+    update(update: ViewUpdate) {
+      if (!update.docChanged && !update.viewportChanged) return;
+      this.decorations = buildLeadingIndentDecorations(update.view, tabSize);
+    }
+  }, {
+    decorations: plugin => plugin.decorations,
+  });
+}
+
+function buildLeadingIndentDecorations(view: EditorView, tabSize: number): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const range of view.visibleRanges) {
+    let position = range.from;
+    while (position <= range.to) {
+      const line = view.state.doc.lineAt(position);
+      const leading = /^[ \t]+/.exec(line.text)?.[0] || '';
+      let column = 0;
+      for (let index = 0; index < leading.length; index += 1) {
+        const char = leading[index];
+        const width = char === '\t' ? tabSize - (column % tabSize || 0) : 1;
+        const atIndentBoundary = column % tabSize === 0;
+        builder.add(
+          line.from + index,
+          line.from + index + 1,
+          Decoration.replace({
+            widget: new IndentWhitespaceWidget(char === '\t' ? 'tab' : 'space', width, atIndentBoundary),
+          }),
+        );
+        column += width;
+      }
+      position = line.to + 1;
+    }
+  }
+  return builder.finish();
+}
+
+class IndentWhitespaceWidget extends WidgetType {
+  constructor(
+    private readonly kind: 'space' | 'tab',
+    private readonly width: number,
+    private readonly indentBoundary: boolean,
+  ) {
+    super();
+  }
+
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = [
+      'cm-indent-whitespace',
+      this.kind === 'tab' ? 'cm-indent-tab' : 'cm-indent-space',
+      this.indentBoundary ? 'cm-indent-boundary' : '',
+    ].filter(Boolean).join(' ');
+    span.textContent = this.kind === 'tab' ? '→' : '·';
+    span.style.width = `${this.width}ch`;
+    return span;
+  }
+
+  eq(other: IndentWhitespaceWidget) {
+    return this.kind === other.kind && this.width === other.width && this.indentBoundary === other.indentBoundary;
+  }
+
+  ignoreEvent() {
+    return true;
+  }
+}
+
+function editorCommandItems(options: {
+  indentMode: IndentMode;
+  tabSize: number;
+  setIndentMode: (mode: IndentMode) => void;
+  setCommandPaletteMode: (mode: CommandPaletteMode) => void;
+  setPendingIndentMode: (mode: IndentMode) => void;
+  setCommandQuery: (query: string) => void;
+  setCommandIndex: (index: number) => void;
+  closeCommandPalette: () => void;
+  convertIndentation: (mode: IndentMode) => void;
+}): CommandItem[] {
+  return [
+    {
+      id: 'indent-tabs',
+      label: 'Indent Using Tabs',
+      detail: options.indentMode === 'tabs' ? 'currently used' : undefined,
+      run: () => {
+        options.setPendingIndentMode('tabs');
+        options.setCommandPaletteMode('tab-size');
+        options.setCommandQuery('');
+        options.setCommandIndex(0);
+      },
+    },
+    {
+      id: 'indent-spaces',
+      label: 'Indent Using Spaces',
+      detail: options.indentMode === 'spaces' ? 'currently used' : undefined,
+      run: () => {
+        options.setPendingIndentMode('spaces');
+        options.setCommandPaletteMode('tab-size');
+        options.setCommandQuery('');
+        options.setCommandIndex(0);
+      },
+    },
+    {
+      id: 'convert-tabs',
+      label: 'Convert Indentation to Tabs',
+      run: () => {
+        options.convertIndentation('tabs');
+        options.setIndentMode('tabs');
+        options.closeCommandPalette();
+      },
+    },
+    {
+      id: 'convert-spaces',
+      label: 'Convert Indentation to Spaces',
+      run: () => {
+        options.convertIndentation('spaces');
+        options.setIndentMode('spaces');
+        options.closeCommandPalette();
+      },
+    },
+  ];
+}
+
+function tabSizeCommandItems(pendingMode: IndentMode, currentTabSize: number, applySettings: (size: number) => void, closeCommandPalette: () => void): CommandItem[] {
+  return Array.from({ length: 8 }, (_, index) => {
+    const size = index + 1;
+    return {
+      id: `tab-size-${size}`,
+      label: String(size),
+      detail: size === currentTabSize ? `Configured ${pendingMode === 'tabs' ? 'Tab' : 'Space'} Size` : undefined,
+      run: () => {
+        applySettings(size);
+        closeCommandPalette();
+      },
+    };
+  });
+}
+
+function readIndentSettings(filePath: string): { mode: IndentMode; tabSize: number } {
+  const language = indentLanguageForPath(filePath);
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(indentPreferenceKey(language)) || 'null') as { mode?: string; tabSize?: number } | null;
+    if (stored?.mode === 'tabs' || stored?.mode === 'spaces') {
       return {
-        level: match[1].length,
-        text: match[2].replace(/[#*_`[\]]/g, '').trim(),
-        line: index,
+        mode: stored.mode,
+        tabSize: sanitizeTabSize(stored.tabSize),
       };
-    })
-    .filter((item): item is { level: number; text: string; line: number } => Boolean(item));
+    }
+  } catch {
+    // Fall back to language recommendations.
+  }
+  return recommendedIndentSettings(language);
+}
+
+function writeIndentSettings(filePath: string, mode: IndentMode, tabSize: number) {
+  const language = indentLanguageForPath(filePath);
+  window.localStorage.setItem(indentPreferenceKey(language), JSON.stringify({
+    mode,
+    tabSize: sanitizeTabSize(tabSize),
+  }));
+}
+
+function indentPreferenceKey(language: string) {
+  return `docpilot:editor-indent:${language}`;
+}
+
+function indentLanguageForPath(filePath: string) {
+  const value = String(filePath || '').toLowerCase();
+  if (/\.(md|markdown|mdown)$/i.test(value)) return 'markdown';
+  if (/\.json$/i.test(value)) return 'json';
+  if (/\.(js|mjs|cjs|jsx)$/i.test(value)) return 'javascript';
+  if (/\.(ya?ml)$/i.test(value)) return 'yaml';
+  if (/\.py$/i.test(value)) return 'python';
+  if (/\.(java|kt|kts|swift|c|cc|cpp|h|hpp)$/i.test(value)) return 'c-family';
+  if (/^makefile$|\.mk$/i.test(value.split('/').pop() || '')) return 'make';
+  if (/\.(go)$/i.test(value)) return 'go';
+  return 'text';
+}
+
+function recommendedIndentSettings(language: string): { mode: IndentMode; tabSize: number } {
+  const recommendations: Record<string, { mode: IndentMode; tabSize: number }> = {
+    markdown: { mode: 'spaces', tabSize: 2 },
+    json: { mode: 'spaces', tabSize: 2 },
+    javascript: { mode: 'spaces', tabSize: 2 },
+    yaml: { mode: 'spaces', tabSize: 2 },
+    python: { mode: 'spaces', tabSize: 4 },
+    'c-family': { mode: 'spaces', tabSize: 4 },
+    go: { mode: 'tabs', tabSize: 4 },
+    make: { mode: 'tabs', tabSize: 4 },
+    text: { mode: 'spaces', tabSize: 2 },
+  };
+  return recommendations[language] || recommendations.text;
+}
+
+function sanitizeTabSize(value: unknown) {
+  const numberValue = Number(value || 2);
+  return Number.isFinite(numberValue) ? Math.min(8, Math.max(1, Math.round(numberValue))) : 2;
+}
+
+function filterCommandItems(items: CommandItem[], query: string) {
+  const normalizedQuery = query.replace(/^>\s*/, '').trim().toLowerCase();
+  if (!normalizedQuery) return items;
+  return items.filter(item => `${item.label} ${item.detail || ''}`.toLowerCase().includes(normalizedQuery));
+}
+
+function highlightCommandName(label: string, query: string) {
+  const normalizedQuery = query.replace(/^>\s*/, '').trim().toLowerCase();
+  if (!normalizedQuery) return label;
+  const lower = label.toLowerCase();
+  const start = lower.indexOf(normalizedQuery);
+  if (start === -1) return label;
+  return [
+    label.slice(0, start),
+    <mark key="match">{label.slice(start, start + normalizedQuery.length)}</mark>,
+    label.slice(start + normalizedQuery.length),
+  ];
+}
+
+function convertLeadingIndentation(source: string, targetMode: IndentMode, tabSize: number) {
+  return source.split(/(\r?\n)/).map(part => {
+    if (part === '\n' || part === '\r\n') return part;
+    const match = /^([ \t]+)/.exec(part);
+    if (!match) return part;
+    const indent = match[1];
+    const rest = part.slice(indent.length);
+    const width = indentWidth(indent, tabSize);
+    if (targetMode === 'spaces') return `${' '.repeat(width)}${rest}`;
+    const tabs = Math.floor(width / tabSize);
+    const spaces = width % tabSize;
+    return `${'\t'.repeat(tabs)}${' '.repeat(spaces)}${rest}`;
+  }).join('');
+}
+
+function indentWidth(indent: string, tabSize: number) {
+  let width = 0;
+  for (const char of indent) {
+    width += char === '\t' ? tabSize - (width % tabSize || 0) : 1;
+  }
+  return width;
+}
+
+function escapeHtml(value: string) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function parseHeadings(markdownText: string) {
+  const tokens = markdownRenderer.parse(markdownText, {});
+  const headings: Array<{ level: number; text: string; line: number }> = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token.type !== 'heading_open') continue;
+    const level = Number(token.tag.replace(/^h/, ''));
+    if (!Number.isInteger(level) || level < 1 || level > 6) continue;
+    const inline = tokens[index + 1];
+    const text = inline?.type === 'inline'
+      ? inline.content.replace(/[#*_`[\]]/g, '').trim()
+      : '';
+    if (!text) continue;
+    headings.push({
+      level,
+      text,
+      line: Array.isArray(token.map) ? token.map[0] : headings.length,
+    });
+  }
+  return headings;
 }
 
 function parseFrontmatter(markdownText: string) {
@@ -369,62 +2309,129 @@ function PreviewUnifiedDiff({ rows }: { rows: DiffRow[] }) {
         {rows.flatMap((row, index) => {
           if (row.type === 'change') {
             return [
-              <PreviewDiffBlock key={`old-${index}`} row={row} side="old" />,
-              <PreviewDiffBlock key={`new-${index}`} row={row} side="new" />,
+              <PreviewDiffBlock key={`old-${index}`} row={row} side="old" lineLabel={String(index + 1)} />,
+              <PreviewDiffBlock key={`new-${index}`} row={row} side="new" lineLabel={String(index + 1)} />,
             ];
           }
-          return [<PreviewDiffBlock key={`${row.type}-${index}`} row={row} side={row.type === 'del' ? 'old' : 'new'} />];
+          return [<PreviewDiffBlock key={`${row.type}-${index}`} row={row} side={row.type === 'del' ? 'old' : 'new'} lineLabel={String(index + 1)} />];
         })}
       </div>
+      <DiffMinimap rows={rows} />
     </div>
   );
 }
 
 function PreviewSplitDiff({ rows }: { rows: DiffRow[] }) {
+  const oldListRef = useRef<HTMLDivElement | null>(null);
+  const newListRef = useRef<HTMLDivElement | null>(null);
+  const scrollLockRef = useRef(false);
   if (!rows.some(row => row.type !== 'same')) return <div className="preview-diff-empty">변경 사항 없음</div>;
   return (
     <div className="preview-diff-split">
       <section>
         <div className="diff-head">프리뷰 · 기존</div>
-        <div className="preview-diff-list">
-          {rows.map((row, index) => <PreviewDiffBlock key={`old-${index}`} row={row} side="old" split />)}
+        <div
+          className="preview-diff-list"
+          ref={oldListRef}
+          onScroll={() => syncDiffScroll(oldListRef.current, newListRef.current, scrollLockRef)}
+        >
+          {rows.map((row, index) => <PreviewDiffBlock key={`old-${index}`} row={row} side="old" lineLabel={String(index + 1)} split />)}
         </div>
       </section>
       <section>
         <div className="diff-head">프리뷰 · 변경</div>
-        <div className="preview-diff-list">
-          {rows.map((row, index) => <PreviewDiffBlock key={`new-${index}`} row={row} side="new" split />)}
+        <div
+          className="preview-diff-list"
+          ref={newListRef}
+          onScroll={() => syncDiffScroll(newListRef.current, oldListRef.current, scrollLockRef)}
+        >
+          {rows.map((row, index) => <PreviewDiffBlock key={`new-${index}`} row={row} side="new" lineLabel={String(index + 1)} split />)}
         </div>
       </section>
+      <DiffMinimap rows={rows} />
     </div>
   );
 }
 
-function PreviewDiffBlock({ row, side, split = false }: { row: DiffRow; side: 'old' | 'new'; split?: boolean }) {
+function DiffMinimap({ rows }: { rows: Array<{ type: string }> }) {
+  const changed = rows
+    .map((row, index) => ({ row, index }))
+    .filter(item => item.row.type !== 'same');
+  if (!changed.length) return null;
+  const total = Math.max(rows.length - 1, 1);
+  return (
+    <div className="diff-minimap" aria-hidden="true">
+      {changed.map(({ row, index }) => (
+        <span
+          className={`diff-minimap-marker ${row.type}`}
+          key={`${row.type}-${index}`}
+          style={{ top: `${(index / total) * 100}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PreviewDiffBlock({ row, side, lineLabel, split = false }: { row: DiffRow; side: 'old' | 'new'; lineLabel: string; split?: boolean }) {
   const hidden = (row.type === 'add' && side === 'old') || (row.type === 'del' && side === 'new');
   const oldText = blockToDiffText(row.oldBlock);
   const newText = blockToDiffText(row.newBlock);
   const text = side === 'old' ? oldText : newText;
-  const parts = row.type === 'change'
-    ? inlineDiffParts(oldText, newText, side)
-    : tokenizeInlineDiffText(text, row.type !== 'same');
-  const mark = row.type === 'same' ? '' : side === 'old' ? '-' : '+';
+  const block = side === 'old' ? row.oldBlock : row.newBlock;
+  const changedRange = row.type === 'change'
+    ? inlineDiffRange(oldText, newText, side)
+    : row.type !== 'same'
+      ? { start: 0, end: text.length }
+      : null;
   const sideClass = row.type === 'change' ? (side === 'old' ? 'change-old' : 'change-new') : '';
   return (
-    <section className={`preview-diff-block ${row.type} ${sideClass} ${hidden ? 'hidden-placeholder' : ''} ${split ? 'split' : ''}`}>
-      <span className="preview-diff-mark" aria-hidden="true">{mark}</span>
-      <p className="preview-diff-rendered">
-        {parts.length ? parts.map((part, index) => (
-          <span
-            className={`preview-diff-token ${part.code ? 'code' : ''} ${part.changed ? `changed ${side}` : ''}`}
-            key={`${part.text}-${index}`}
-          >
-            {part.text}
-          </span>
-        )) : <span>&nbsp;</span>}
-      </p>
+    <section className={`preview-diff-block ${row.type} ${sideClass} ${hidden ? 'hidden-placeholder' : ''} ${split ? 'split' : ''}`} data-line-label={lineLabel}>
+      <PreviewDiffRenderedBlock block={block || ''} fallbackText={text} changedRange={changedRange} side={side} />
     </section>
   );
+}
+
+function PreviewDiffRenderedBlock({
+  block,
+  fallbackText,
+  changedRange,
+  side,
+}: {
+  block: string;
+  fallbackText: string;
+  changedRange: InlineDiffRange;
+  side: 'old' | 'new';
+}) {
+  const source = String(block || '').trim();
+  if (!source) {
+    return <div className="preview-diff-rendered preview-diff-empty-block">&nbsp;</div>;
+  }
+
+  if (canRenderDiffBlockWithMarkdownIt(source)) {
+    return (
+      <div
+        className="preview-diff-rendered preview-diff-rendered-markdown"
+        dangerouslySetInnerHTML={{ __html: markdownRenderer.render(source) }}
+      />
+    );
+  }
+
+  return (
+    <div className="preview-diff-rendered">
+      {renderPreviewDiffMarkdownBlock(block, fallbackText, changedRange, side)}
+    </div>
+  );
+}
+
+function canRenderDiffBlockWithMarkdownIt(block: string) {
+  const lines = String(block || '').split(/\r?\n/).filter(line => line.trim());
+  if (!lines.length) return false;
+
+  // A single table row is a diff-friendly fragment, but markdown-it needs the
+  // table header/separator context to render it as an actual table.
+  if (lines.length === 1 && /^\|.+\|\s*$/.test(lines[0])) return false;
+
+  return true;
 }
 
 type InlineDiffPart = {
@@ -432,6 +2439,180 @@ type InlineDiffPart = {
   code: boolean;
   changed: boolean;
 };
+
+type InlineDiffRange = {
+  start: number;
+  end: number;
+} | null;
+
+function inlineDiffRange(oldText: string, newText: string, side: 'old' | 'new'): InlineDiffRange {
+  const text = side === 'old' ? oldText : newText;
+  const compare = side === 'old' ? newText : oldText;
+  if (!text) return null;
+  let start = 0;
+  while (start < text.length && start < compare.length && text[start] === compare[start]) {
+    start += 1;
+  }
+  let textEnd = text.length - 1;
+  let compareEnd = compare.length - 1;
+  while (textEnd >= start && compareEnd >= start && text[textEnd] === compare[compareEnd]) {
+    textEnd -= 1;
+    compareEnd -= 1;
+  }
+  return textEnd >= start ? { start, end: textEnd + 1 } : null;
+}
+
+function renderPreviewDiffMarkdownBlock(block: string, fullText: string, changedRange: InlineDiffRange, side: 'old' | 'new') {
+  const lines = String(block || '').split(/\r?\n/);
+  const visibleLines = lines.filter(line => line.trim());
+  const cursor = { current: 0 };
+  if (!visibleLines.length) return <span>&nbsp;</span>;
+
+  if (/^```/.test(visibleLines[0])) {
+    const code = visibleLines
+      .filter(line => !/^```/.test(line))
+      .join('\n');
+    return (
+      <pre>
+        <code>{renderPreviewDiffInline(code, fullText, cursor, changedRange, side)}</code>
+      </pre>
+    );
+  }
+
+  if (visibleLines.length === 1) {
+    const heading = /^(#{1,6})\s+(.+?)\s*$/.exec(visibleLines[0]);
+    if (heading) {
+      const level = Math.min(6, heading[1].length);
+      const content = inlineDisplayText(heading[2]);
+      const children = renderPreviewDiffInline(content, fullText, cursor, changedRange, side);
+      if (level === 1) return <h1>{children}</h1>;
+      if (level === 2) return <h2>{children}</h2>;
+      if (level === 3) return <h3>{children}</h3>;
+      if (level === 4) return <h4>{children}</h4>;
+      if (level === 5) return <h5>{children}</h5>;
+      return <h6>{children}</h6>;
+    }
+  }
+
+  if (visibleLines.length > 1 && visibleLines.every(line => /^\|.+\|\s*$/.test(line))) {
+    const rows = visibleLines.map(parseMarkdownTableRow);
+    const hasSeparator = rows.length > 1 && rows[1].every(cell => /^:?-{3,}:?$/.test(cell.trim()));
+    const header = rows[0] || [];
+    const bodyRows = hasSeparator ? rows.slice(2) : rows.slice(1);
+    return (
+      <table>
+        <thead>
+          <tr>
+            {header.map((cell, index) => (
+              <th key={`h-${index}`}>{renderPreviewDiffInline(inlineDisplayText(cell), fullText, cursor, changedRange, side)}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {bodyRows.map((row, rowIndex) => (
+            <tr key={`r-${rowIndex}`}>
+              {row.map((cell, cellIndex) => (
+                <td key={`${rowIndex}-${cellIndex}`}>{renderPreviewDiffInline(inlineDisplayText(cell), fullText, cursor, changedRange, side)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+
+  if (visibleLines.length === 1 && /^\|.+\|\s*$/.test(visibleLines[0])) {
+    const cells = parseMarkdownTableRow(visibleLines[0]);
+    return (
+      <div className="preview-diff-table-row">
+        {cells.map((cell, index) => (
+          <span key={index}>{renderPreviewDiffInline(inlineDisplayText(cell), fullText, cursor, changedRange, side)}</span>
+        ))}
+      </div>
+    );
+  }
+
+  if (visibleLines.every(line => /^\s*[-*+]\s+/.test(line))) {
+    return (
+      <ul>
+        {visibleLines.map((line, index) => (
+          <li key={index}>{renderPreviewDiffInline(inlineDisplayText(line.replace(/^\s*[-*+]\s+/, '')), fullText, cursor, changedRange, side)}</li>
+        ))}
+      </ul>
+    );
+  }
+
+  if (visibleLines.every(line => /^\s*\d+\.\s+/.test(line))) {
+    return (
+      <ol>
+        {visibleLines.map((line, index) => (
+          <li key={index}>{renderPreviewDiffInline(inlineDisplayText(line.replace(/^\s*\d+\.\s+/, '')), fullText, cursor, changedRange, side)}</li>
+        ))}
+      </ol>
+    );
+  }
+
+  if (visibleLines.every(line => /^>\s?/.test(line))) {
+    const text = visibleLines.map(line => inlineDisplayText(line.replace(/^>\s?/, ''))).join(' ');
+    return <blockquote><p>{renderPreviewDiffInline(text, fullText, cursor, changedRange, side)}</p></blockquote>;
+  }
+
+  const text = visibleLines.map(line => inlineDisplayText(line)).join(' ');
+  return <p>{renderPreviewDiffInline(text, fullText, cursor, changedRange, side)}</p>;
+}
+
+function parseMarkdownTableRow(line: string) {
+  return line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map(cell => cell.trim());
+}
+
+function inlineDisplayText(text: string) {
+  return String(text || '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .trim();
+}
+
+function renderPreviewDiffInline(
+  segment: string,
+  fullText: string,
+  cursor: { current: number },
+  changedRange: InlineDiffRange,
+  side: 'old' | 'new',
+): ReactNode[] {
+  const text = String(segment || '');
+  if (!text) return [];
+  const found = fullText.indexOf(text, cursor.current);
+  const start = found >= 0 ? found : cursor.current;
+  const end = start + text.length;
+  cursor.current = end;
+  const localParts: Array<{ text: string; changed: boolean }> = [];
+
+  if (!changedRange || changedRange.end <= start || changedRange.start >= end) {
+    localParts.push({ text, changed: false });
+  } else {
+    const changedStart = Math.max(changedRange.start, start) - start;
+    const changedEnd = Math.min(changedRange.end, end) - start;
+    if (changedStart > 0) localParts.push({ text: text.slice(0, changedStart), changed: false });
+    if (changedEnd > changedStart) localParts.push({ text: text.slice(changedStart, changedEnd), changed: true });
+    if (changedEnd < text.length) localParts.push({ text: text.slice(changedEnd), changed: false });
+  }
+
+  return localParts.flatMap((part, index) => (
+    tokenizeInlineDiffText(part.text, part.changed).map((token, tokenIndex) => (
+      <span
+        className={`preview-diff-token ${token.code ? 'code' : ''} ${token.changed ? `changed ${side}` : ''}`}
+        key={`${start}-${index}-${tokenIndex}-${token.text}`}
+      >
+        {token.text}
+      </span>
+    ))
+  ));
+}
 
 function blockToDiffText(block = '') {
   return String(block || '')
@@ -499,27 +2680,50 @@ function RawUnifiedDiff({ rows }: { rows: LineDiffRow[] }) {
           <RawLine row={row} key={`${row.type}-${index}`} />
         ))}
       </div>
+      <DiffMinimap rows={rows} />
     </div>
   );
 }
 
 function RawSplitDiff({ rows }: { rows: LineDiffRow[] }) {
+  const oldLinesRef = useRef<HTMLDivElement | null>(null);
+  const newLinesRef = useRef<HTMLDivElement | null>(null);
+  const scrollLockRef = useRef(false);
   return (
     <div className="raw-diff-split">
       <section>
         <div className="diff-head">편집 RAW · 기준</div>
-        <div className="raw-diff-lines">
+        <div
+          className="raw-diff-lines"
+          ref={oldLinesRef}
+          onScroll={() => syncDiffScroll(oldLinesRef.current, newLinesRef.current, scrollLockRef)}
+        >
           {rows.map((row, index) => <RawLine row={row} side="old" key={`old-${index}`} />)}
         </div>
       </section>
       <section>
         <div className="diff-head">편집 RAW · 변경</div>
-        <div className="raw-diff-lines">
+        <div
+          className="raw-diff-lines"
+          ref={newLinesRef}
+          onScroll={() => syncDiffScroll(newLinesRef.current, oldLinesRef.current, scrollLockRef)}
+        >
           {rows.map((row, index) => <RawLine row={row} side="new" key={`new-${index}`} />)}
         </div>
       </section>
+      <DiffMinimap rows={rows} />
     </div>
   );
+}
+
+function syncDiffScroll(source: HTMLElement | null, target: HTMLElement | null, lockRef: { current: boolean }) {
+  if (!source || !target || lockRef.current) return;
+  lockRef.current = true;
+  target.scrollTop = source.scrollTop;
+  target.scrollLeft = source.scrollLeft;
+  window.requestAnimationFrame(() => {
+    lockRef.current = false;
+  });
 }
 
 function RawLine({ row, side }: { row: LineDiffRow; side?: 'old' | 'new' }) {
@@ -529,9 +2733,8 @@ function RawLine({ row, side }: { row: LineDiffRow; side?: 'old' | 'new' }) {
   const number = side === 'old' ? row.oldNo : side === 'new' ? row.newNo : row.newNo || row.oldNo;
   const mark = row.type === 'add' ? '+' : row.type === 'del' ? '-' : '';
   return (
-    <div className={`raw-diff-line ${row.type}`}>
+    <div className={`raw-diff-line ${row.type} ${side ? 'split-line' : 'unified-line'}`}>
       <span className="raw-num">{number || ''}</span>
-      {!side ? <span className="raw-num">{row.newNo || ''}</span> : null}
       <span className="raw-mark">{mark}</span>
       <code>{text}</code>
     </div>

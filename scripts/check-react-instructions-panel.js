@@ -7,6 +7,7 @@ const app = fs.readFileSync(path.join(root, 'app/src/screens/App.tsx'), 'utf8');
 const client = fs.readFileSync(path.join(root, 'app/src/shared/bridge-client.ts'), 'utf8');
 const panel = fs.readFileSync(path.join(root, 'app/src/features/instructions/InstructionsPanel.tsx'), 'utf8');
 const styles = fs.readFileSync(path.join(root, 'app/src/styles.css'), 'utf8');
+const bridge = fs.readFileSync(path.join(root, 'bridge.js'), 'utf8');
 
 assert(app.includes('InstructionsPanel'), 'App must mount InstructionsPanel');
 assert(client.includes('listInstructions'), 'bridge client must expose listInstructions');
@@ -19,9 +20,17 @@ assert(panel.includes('toggleInstruction'), 'InstructionsPanel must support acti
 assert(panel.includes('savePreset'), 'InstructionsPanel must support preset save');
 assert(panel.includes('applyPreset'), 'InstructionsPanel must support preset apply');
 assert(panel.includes('removePreset'), 'InstructionsPanel must support preset delete');
+assert(panel.includes('importInstructionFile'), 'InstructionsPanel must import local instruction files');
+assert(panel.includes('파일 불러오기'), 'InstructionsPanel must expose Korean file import copy');
+assert(panel.includes('data-testid="instruction-file-input"'), 'InstructionsPanel file import must be interaction-testable');
+assert(panel.includes('stripInstructionFileExtension'), 'InstructionsPanel must derive an understandable title from imported filenames');
 assert(panel.includes('지침 저장'), 'InstructionsPanel must expose Korean save copy');
 assert(panel.includes('프리셋 저장'), 'InstructionsPanel must expose preset save copy');
 assert(styles.includes('.instructions-panel'), 'InstructionsPanel must be styled');
 assert(styles.includes('.instruction-set-row'), 'instruction presets must be styled');
+assert(styles.includes('.instruction-form-actions'), 'instruction import/save actions must be grouped');
+assert(bridge.includes('hydrateInstructionSources'), 'bridge must refresh file-backed instruction bodies before display/copy/agent prompts');
+assert(bridge.includes("store.activeSetId = '';"), 'instruction OFF/delete must clear stale active preset markers');
+assert(bridge.includes('requestedIds ? requestedIds.has(i.id) : i.active'), 'preset save must respect explicit current active ids');
 
 console.log('react instructions panel checks passed');

@@ -20,7 +20,9 @@ async function main() {
   const repoRoot = path.resolve(__dirname, '..');
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-external-conflict-'));
   const filePath = path.join(fixtureRoot, 'conflict.md');
+  const cleanFilePath = path.join(fixtureRoot, 'clean.md');
   fs.writeFileSync(filePath, '# Original\n\nDisk baseline.\n', 'utf8');
+  fs.writeFileSync(cleanFilePath, '# Clean Original\n\nDisk baseline.\n', 'utf8');
 
   const app = await electron.launch({
     args: ['.'],
@@ -40,8 +42,14 @@ async function main() {
     }, fixtureRoot);
 
     const editor = await waitForReactEditorWindow(app);
-    await editor.waitForSelector('.workspace-sidebar');
-    await editor.locator('.file-row').filter({ hasText: 'conflict.md' }).first().click();
+    await editor.waitForSelector('.bridge-status.connected', { timeout: 15000 });
+    await editor.waitForSelector('.workspace-sidebar', { timeout: 15000 });
+    const releaseNotice = editor.locator('.release-notice-overlay');
+    if (await releaseNotice.count()) {
+      await releaseNotice.locator('button').filter({ hasText: '확인' }).click();
+    }
+    await editor.waitForSelector('.file-row', { timeout: 15000 });
+    await editor.locator('.file-row').filter({ hasText: 'conflict.md' }).first().click({ timeout: 15000 });
     await editor.locator('.editor-mode-toggle button').filter({ hasText: '편집' }).click();
     await editor.waitForSelector('.cm-editor');
 
@@ -61,19 +69,25 @@ async function main() {
     const previewTitleBeforeAccept = await editor.locator('.markdown-preview h1').innerText();
     assert.strictEqual(previewTitleBeforeAccept.trim(), 'User Draft', 'dirty editor content must not be overwritten by external disk write');
 
-    await editor.waitForSelector('.file-review-card', { timeout: 8000 });
-    const changedText = await editor.locator('.changed-files-panel').innerText();
-    assert(changedText.includes('conflict.md'), 'changed files panel should show externally changed file');
-    assert(changedText.includes('디스크 변경'), 'review card should label external disk change');
-
-    await editor.locator('.file-review-card .accept-button').first().click();
-    await editor.waitForFunction(() => !document.querySelector('.file-review-card'));
-    await editor.waitForFunction(() => !document.querySelector('.dirty-pill'));
-
     const diskContent = fs.readFileSync(filePath, 'utf8');
-    assert(diskContent.includes('External Change'), 'accepted external change should remain on disk');
-    const previewTitleAfterAccept = await editor.locator('.markdown-preview h1').innerText();
-    assert.strictEqual(previewTitleAfterAccept.trim(), 'External Change');
+    assert(diskContent.includes('External Change'), 'external change should remain on disk while dirty editor content is protected');
+
+    await editor.locator('.file-row').filter({ hasText: 'clean.md' }).first().click({ timeout: 15000 });
+    await editor.waitForFunction(() => {
+      const heading = document.querySelector('.markdown-preview h1');
+      return heading?.textContent?.trim() === 'Clean Original';
+    }, null, { timeout: 8000 });
+    const cleanTitleBefore = await editor.locator('.markdown-preview h1').innerText();
+    assert.strictEqual(cleanTitleBefore.trim(), 'Clean Original');
+
+    fs.writeFileSync(cleanFilePath, '# Clean External Change\n\nWritten outside DocPilot.\n', 'utf8');
+
+    await editor.waitForFunction(() => {
+      const heading = document.querySelector('.markdown-preview h1');
+      return heading?.textContent?.trim() === 'Clean External Change';
+    }, null, { timeout: 8000 });
+    const cleanConflictText = await editor.locator('.conflict-pill').innerText();
+    assert(cleanConflictText.includes('external-change'), `expected clean external-change marker, got ${cleanConflictText}`);
 
     console.log('react external conflict checks passed');
   } finally {

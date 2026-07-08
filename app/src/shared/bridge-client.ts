@@ -149,6 +149,7 @@ export type AgentSessionLogEntry = {
 
 export type SessionTurnEvent = {
   type: 'turn.started' | 'turn.delta' | 'turn.progress' | 'artifact.created' | 'turn.done' | 'turn.error' | 'turn.stopped' | string;
+  turnId?: string;
   text?: string;
   error?: string;
   phase?: string;
@@ -176,7 +177,7 @@ export type BridgePing = {
 export type AppSettings = {
   version: number;
   autosave: boolean;
-  theme: 'dark' | 'system';
+  theme: 'dark' | 'light' | 'system';
   agentCommandMode: 'auto' | 'custom';
   claudeCommand: string;
   codexCommand: string;
@@ -236,14 +237,19 @@ export function bridgeBaseUrl() {
 }
 
 export async function bridgeJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${bridgeBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  let response: Response;
+  try {
+    response = await fetch(`${bridgeBaseUrl()}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers || {}),
+      },
+    });
+  } catch (err) {
+    throw new Error(bridgeConnectionError(err));
+  }
+  if (!response.ok) throw new Error(await bridgeHttpError(response));
   return response.json() as Promise<T>;
 }
 
@@ -299,6 +305,13 @@ export function renameWorkspaceFile(id: string, name: string) {
   });
 }
 
+export function deleteWorkspaceNode(id: string, options: { permanent?: boolean } = {}) {
+  return bridgeJson<WorkspaceFilesResponse & { ok: true; deletedId: string; trashId?: string }>('/file-delete', {
+    method: 'POST',
+    body: JSON.stringify({ id, permanent: options.permanent === true }),
+  });
+}
+
 export function attachWorkspaceRoot(folderPath: string) {
   return bridgeJson<WorkspaceFilesResponse & { ok: true; root: WorkspaceRoot }>('/workspace-roots', {
     method: 'POST',
@@ -319,6 +332,10 @@ export function chooseWorkspaceFolder() {
 
 export function getRecentFolders() {
   return window.docpilot?.getRecent?.() || Promise.resolve([]);
+}
+
+export function getAppVersion() {
+  return window.docpilot?.getAppVersion?.() || Promise.resolve('');
 }
 
 export function openWorkspaceFolder(folderPath: string) {
@@ -458,19 +475,31 @@ export function getAgentSessionLogs(sessionId: string, limit = 200) {
   );
 }
 
+export function closeAgentSession(sessionId: string) {
+  return bridgeJson<{ ok: true; sessions: AgentSessionSummary[] }>(`/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function sendSessionTurn(
   sessionId: string,
   payload: { message: string; attachments?: unknown[]; outputHints?: Record<string, unknown> },
   onEvent: (event: SessionTurnEvent) => void,
   signal?: AbortSignal,
 ) {
-  const response = await fetch(`${bridgeBaseUrl()}/sessions/${encodeURIComponent(sessionId)}/turn`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    signal,
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  let response: Response;
+  try {
+    response = await fetch(`${bridgeBaseUrl()}/sessions/${encodeURIComponent(sessionId)}/turn`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') throw err;
+    throw new Error(bridgeConnectionError(err));
+  }
+  if (!response.ok) throw new Error(await bridgeHttpError(response));
   if (!response.body) throw new Error('stream body missing');
 
   const reader = response.body.getReader();
@@ -492,6 +521,26 @@ export async function sendSessionTurn(
       onEvent(JSON.parse(data) as SessionTurnEvent);
     }
   }
+}
+
+async function bridgeHttpError(response: Response) {
+  let detail = '';
+  try {
+    const payload = await response.clone().json() as { error?: unknown };
+    detail = typeof payload.error === 'string' ? payload.error : '';
+  } catch {
+    try { detail = await response.clone().text(); } catch {}
+  }
+  return `브리지 요청 실패 HTTP ${response.status}${detail ? `: ${detail}` : ''}`;
+}
+
+function bridgeConnectionError(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err || '');
+  return [
+    '브리지에 연결할 수 없습니다.',
+    '앱을 다시 시작하거나 브리지 상태를 확인하세요.',
+    message && message !== 'Failed to fetch' ? `원인: ${message}` : '',
+  ].filter(Boolean).join(' ');
 }
 
 export function stopSessionTurn(sessionId: string) {

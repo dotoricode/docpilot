@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import {
   attachWorkspaceRoot,
   chooseWorkspaceFolder,
   copyText,
   createWorkspaceFile,
   createWorkspaceFolder,
+  deleteWorkspaceNode,
   detachWorkspaceRoot,
   getRecentFolders,
   getWorkspaceFilePath,
   listFileStatuses,
   listWorkspaceFiles,
-  openWorkspaceFolder,
+  openLocalPath,
   renameWorkspaceFile,
   type FileStatus,
   type WorkspaceFilesResponse,
@@ -19,9 +20,12 @@ import {
 
 type WorkspaceSidebarProps = {
   activeFile: string;
+  dirtyFileIds?: string[];
   refreshSignal: number;
   instructionsPanel?: ReactNode;
   onOpenFile: (file: string) => void;
+  onOpenFileInSplit?: (file: string) => void;
+  onCollapse?: () => void;
 };
 
 type FileTreeNode = {
@@ -40,7 +44,16 @@ type TreeMenuState = {
   node: FileTreeNode | null;
 } | null;
 
-export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel, onOpenFile }: WorkspaceSidebarProps) {
+type EditingNodeState = {
+  id: string;
+  value: string;
+  type: 'folder' | 'file';
+  openAfterRename: boolean;
+  isNew: boolean;
+} | null;
+
+export function WorkspaceSidebar({ activeFile, dirtyFileIds = [], refreshSignal, instructionsPanel, onOpenFile, onOpenFileInSplit, onCollapse }: WorkspaceSidebarProps) {
+  const editFinalizingRef = useRef(false);
   const [files, setFiles] = useState<string[]>([]);
   const [folders, setFolders] = useState<string[]>([]);
   const [roots, setRoots] = useState<WorkspaceRoot[]>([]);
@@ -52,7 +65,9 @@ export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel,
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'docs' | 'instructions'>('docs');
   const [treeMenu, setTreeMenu] = useState<TreeMenuState>(null);
+  const [editingNode, setEditingNode] = useState<EditingNodeState>(null);
   const [notice, setNotice] = useState('');
+  const [focusedNodeId, setFocusedNodeId] = useState('');
 
   const tree = useMemo(() => buildFileTree(files, folders, roots), [files, folders, roots]);
   const normalizedQuery = query.trim().toLowerCase();
@@ -65,6 +80,18 @@ export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel,
     if (!normalizedQuery) return files.length;
     return files.filter(file => file.toLowerCase().includes(normalizedQuery)).length;
   }, [files, normalizedQuery]);
+  const dirtyFileSet = useMemo(() => new Set(dirtyFileIds.filter(Boolean)), [dirtyFileIds]);
+  const dirtyFolderSet = useMemo(() => {
+    const foldersWithChanges = new Set<string>();
+    dirtyFileIds.filter(Boolean).forEach(fileId => {
+      parentFolderIds(fileId).forEach(folderId => foldersWithChanges.add(folderId));
+    });
+    Object.entries(statuses).forEach(([fileId, status]) => {
+      if (!status) return;
+      parentFolderIds(fileId).forEach(folderId => foldersWithChanges.add(folderId));
+    });
+    return foldersWithChanges;
+  }, [dirtyFileIds, statuses]);
 
   useEffect(() => {
     let disposed = false;
@@ -134,6 +161,68 @@ export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel,
     setTreeMenu({ ...contextMenuPosition(event), node: null });
   }
 
+  function startEditingNode(node: Pick<FileTreeNode, 'id' | 'name' | 'type'>, openAfterRename = node.type === 'file', isNew = false) {
+    editFinalizingRef.current = false;
+    setTreeMenu(null);
+    setFocusedNodeId(node.id);
+    setEditingNode({
+      id: node.id,
+      value: node.name,
+      type: node.type,
+      openAfterRename,
+      isNew,
+    });
+  }
+
+  async function commitEditingNode(valueOverride?: string) {
+    if (editFinalizingRef.current) return;
+    const editing = editingNode;
+    if (!editing) return;
+    editFinalizingRef.current = true;
+    const nextName = (valueOverride ?? editing.value).trim();
+    setEditingNode(null);
+    try {
+      if (!nextName || nextName === pathFileName(editing.id)) {
+        if (editing.isNew) await discardCreatedNode(editing);
+        return;
+      }
+      await renameNodeById(editing.id, nextName, editing.openAfterRename);
+    } finally {
+      editFinalizingRef.current = false;
+    }
+  }
+
+  function cancelEditingNode() {
+    if (editFinalizingRef.current) return;
+    const editing = editingNode;
+    editFinalizingRef.current = true;
+    setEditingNode(null);
+    if (editing?.isNew) {
+      void discardCreatedNode(editing).finally(() => {
+        editFinalizingRef.current = false;
+      });
+    } else {
+      editFinalizingRef.current = false;
+    }
+  }
+
+  async function discardCreatedNode(editing: NonNullable<EditingNodeState>) {
+    setBusy(true);
+    try {
+      const data = await deleteWorkspaceNode(editing.id, { permanent: true });
+      applyWorkspaceData(data);
+      setNotice(`${pathFileName(editing.id)} 생성을 취소했습니다.`);
+      if (activeFile === editing.id || activeFile.startsWith(`${editing.id}/`)) {
+        const nextFile = data.files.find(file => file !== editing.id) || '';
+        if (nextFile) onOpenFile(nextFile);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function addRoot() {
     setBusy(true);
     try {
@@ -165,9 +254,25 @@ export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel,
   async function openRecent(folderPath: string) {
     setBusy(true);
     try {
-      await openWorkspaceFolder(folderPath);
+      const primary = await getWorkspaceFilePath('workspace:primary').catch(() => null);
+      if (primary?.path === folderPath) {
+        setNotice(`${folderName(folderPath)} 폴더는 이미 현재 작업공간입니다.`);
+        setError('');
+        return;
+      }
+      if (roots.some(root => root.path === folderPath)) {
+        setNotice(`${folderName(folderPath)} 폴더는 이미 추가되어 있습니다.`);
+        setError('');
+        return;
+      }
+      const data = await attachWorkspaceRoot(folderPath);
+      applyWorkspaceData(data);
+      setExpandedFolders(current => new Set([...current, data.root.id]));
+      setNotice(`${folderName(folderPath)} 폴더를 현재 작업공간에 추가했습니다.`);
+      setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
       setBusy(false);
     }
   }
@@ -190,16 +295,18 @@ export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel,
   }
 
   async function createFileAt(node: FileTreeNode) {
-    const name = window.prompt('새 파일 이름', 'new-document.md');
-    if (!name) return;
+    const dir = node.type === 'folder' ? node.id : parentFolderIds(node.id).at(-1) || '';
+    const name = uniqueTempFileName(dir, files);
     setBusy(true);
     try {
-      const dir = node.type === 'folder' ? node.id : parentFolderIds(node.id).at(-1) || '';
-      const data = await createWorkspaceFile(dir, name, `# ${name.replace(/\.(md|markdown|mdown|txt|text)$/i, '')}\n`);
+      setQuery('');
+      const data = await createWorkspaceFile(dir, name, defaultFileContent(name));
       applyWorkspaceData(data);
-      setExpandedFolders(current => new Set([...current, ...activeParentFolderIds(data.id, roots)]));
+      setExpandedFolders(current => new Set([...current, ...activeParentFolderIds(data.id, data.roots || roots)]));
       setNotice(`${data.id} 파일을 만들었습니다.`);
       onOpenFile(data.id);
+      setFocusedNodeId(data.id);
+      startEditingNode({ id: data.id, name: pathFileName(data.id), type: 'file' }, true, true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -209,14 +316,16 @@ export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel,
   }
 
   async function createRootFile() {
-    const name = window.prompt('새 파일 이름', 'new-document.md');
-    if (!name) return;
+    const name = uniqueTempFileName('workspace:primary', files);
     setBusy(true);
     try {
-      const data = await createWorkspaceFile('workspace:primary', name, `# ${name.replace(/\.(md|markdown|mdown|txt|text)$/i, '')}\n`);
+      setQuery('');
+      const data = await createWorkspaceFile('workspace:primary', name, defaultFileContent(name));
       applyWorkspaceData(data);
       setNotice(`${data.id} 파일을 만들었습니다.`);
       onOpenFile(data.id);
+      setFocusedNodeId(data.id);
+      startEditingNode({ id: data.id, name: pathFileName(data.id), type: 'file' }, true, true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -226,15 +335,17 @@ export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel,
   }
 
   async function createFolderAt(node: FileTreeNode | null) {
-    const name = window.prompt('새 폴더 이름', 'new-folder');
-    if (!name) return;
+    const dir = node?.type === 'folder' ? node.id : node?.type === 'file' ? parentFolderIds(node.id).at(-1) || 'workspace:primary' : 'workspace:primary';
+    const name = uniqueTempFolderName(dir, folders);
     setBusy(true);
     try {
-      const dir = node?.type === 'folder' ? node.id : node?.type === 'file' ? parentFolderIds(node.id).at(-1) || 'workspace:primary' : 'workspace:primary';
+      setQuery('');
       const data = await createWorkspaceFolder(dir, name);
       applyWorkspaceData(data);
       setExpandedFolders(current => new Set([...current, data.id, ...activeParentFolderIds(`${data.id}/placeholder.md`, data.roots || roots)]));
       setNotice(`${data.id} 폴더를 만들었습니다.`);
+      setFocusedNodeId(data.id);
+      startEditingNode({ id: data.id, name: pathFileName(data.id), type: 'folder' }, false, true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -243,21 +354,55 @@ export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel,
     }
   }
 
-  async function renameFile(node: FileTreeNode) {
-    if (node.type !== 'file') return;
-    const name = window.prompt('새 파일 이름', node.name);
-    if (!name || name === node.name) return;
+  async function renameNode(node: FileTreeNode) {
+    if (node.workspaceRoot) return;
+    startEditingNode(node, node.type === 'file');
+  }
+
+  async function renameNodeById(id: string, name: string, openAfterRename: boolean) {
     setBusy(true);
     try {
-      const data = await renameWorkspaceFile(node.id, name);
+      const data = await renameWorkspaceFile(id, name);
       applyWorkspaceData(data);
       setNotice(`${data.id} 이름으로 변경했습니다.`);
-      onOpenFile(data.id);
+      if (openAfterRename) onOpenFile(data.id);
+      setFocusedNodeId(data.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
       setTreeMenu(null);
+    }
+  }
+
+  async function deleteNode(node: FileTreeNode) {
+    if (node.workspaceRoot) return;
+    setBusy(true);
+    try {
+      const data = await deleteWorkspaceNode(node.id);
+      applyWorkspaceData(data);
+      setNotice(`${node.name} 항목을 복구 가능한 삭제 위치로 이동했습니다.`);
+      if (activeFile === node.id || activeFile.startsWith(`${node.id}/`)) {
+        const nextFile = data.files.find(file => file !== node.id) || '';
+        if (nextFile) onOpenFile(nextFile);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+      setTreeMenu(null);
+    }
+  }
+
+  function handleNodeKeyDown(event: KeyboardEvent<HTMLButtonElement>, node: FileTreeNode) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      renameNode(node);
+      return;
+    }
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      event.preventDefault();
+      deleteNode(node);
     }
   }
 
@@ -273,25 +418,103 @@ export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel,
     }
   }
 
+  async function openNodeFolder(node: FileTreeNode) {
+    try {
+      const target = node.type === 'folder' ? node.id : parentFolderIds(node.id).at(-1) || 'workspace:primary';
+      const resolved = await getWorkspaceFilePath(target);
+      const opened = await openLocalPath(resolved.path);
+      if (!opened) throw new Error('폴더를 열 수 없습니다.');
+      setNotice('시스템 파일 탐색기에서 폴더를 열었습니다.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTreeMenu(null);
+    }
+  }
+
+  async function openCurrentWorkspaceFolder() {
+    try {
+      const resolved = await getWorkspaceFilePath('workspace:primary');
+      const opened = await openLocalPath(resolved.path);
+      if (!opened) throw new Error('워크스페이스 폴더를 열 수 없습니다.');
+      setNotice('워크스페이스 폴더를 열었습니다.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTreeMenu(null);
+    }
+  }
+
   function renderNode(node: FileTreeNode, depth: number) {
     const style = { '--depth': depth } as CSSProperties;
+    const editing = editingNode?.id === node.id ? editingNode : null;
+    const inlineEditor = editing ? (
+      <input
+        className="tree-inline-input"
+        value={editing.value}
+        autoFocus
+        onFocus={event => event.currentTarget.select()}
+        onMouseDown={event => event.stopPropagation()}
+        onClick={event => event.stopPropagation()}
+        onChange={event => {
+          const nextValue = event.currentTarget.value;
+          setEditingNode(current => current?.id === node.id ? { ...current, value: nextValue } : current);
+        }}
+        onBlur={event => {
+          void commitEditingNode(event.currentTarget.value);
+        }}
+        onKeyDown={event => {
+          event.stopPropagation();
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            void commitEditingNode(event.currentTarget.value);
+          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            cancelEditingNode();
+          }
+        }}
+      />
+    ) : null;
     if (node.type === 'folder') {
       const expanded = normalizedQuery ? true : expandedFolders.has(node.id);
-      const childCount = countFiles(node);
+      const hasChildren = Boolean(node.children?.length);
+      const dirty = dirtyFolderSet.has(node.id);
+      const folderChildren = (
+        <>
+          <span className={`tree-twist ${hasChildren ? 'has-children' : ''} ${expanded ? 'expanded' : ''}`} aria-hidden="true" />
+          <span className="tree-icon tree-icon-folder" aria-hidden="true" />
+          {inlineEditor || <span className="tree-name">{node.name}</span>}
+          {dirty && !expanded ? <small className="file-status modified folder-status" aria-label="수정 사항 포함" title="수정 사항 포함" /> : null}
+        </>
+      );
       return (
-        <div className="workspace-tree-node" key={`folder:${node.id}`}>
-          <button
-            className={`workspace-folder-row ${expanded ? 'expanded' : ''} ${node.workspaceRoot ? 'workspace-root-folder' : ''}`}
-            style={style}
-            type="button"
-            title={node.workspacePath || node.path || node.name}
-            onClick={() => toggleFolder(node.id)}
-            onContextMenu={event => openTreeMenu(event, node)}
-          >
-            <span className="tree-twist">{expanded ? '⌄' : '›'}</span>
-            <span className="tree-name">{node.name}</span>
-            <small>{childCount}</small>
-          </button>
+        <div className={`workspace-tree-node ${node.workspaceRoot ? 'workspace-root-tree-node' : ''}`} key={`folder:${node.id}`}>
+          {editing ? (
+            <div
+              className={`workspace-folder-row ${expanded ? 'expanded' : ''} ${hasChildren ? 'has-children' : 'empty-folder'} ${node.workspaceRoot ? 'workspace-root-folder' : ''}`}
+              style={style}
+              title={node.workspacePath || node.path || node.name}
+              data-focused={focusedNodeId === node.id ? 'true' : 'false'}
+              data-editing="true"
+            >
+              {folderChildren}
+            </div>
+          ) : (
+            <button
+              className={`workspace-folder-row ${expanded ? 'expanded' : ''} ${hasChildren ? 'has-children' : 'empty-folder'} ${node.workspaceRoot ? 'workspace-root-folder' : ''}`}
+              style={style}
+              type="button"
+              title={node.workspacePath || node.path || node.name}
+              onClick={() => toggleFolder(node.id)}
+              onContextMenu={event => openTreeMenu(event, node)}
+              onFocus={() => setFocusedNodeId(node.id)}
+              onKeyDown={event => handleNodeKeyDown(event, node)}
+              data-focused={focusedNodeId === node.id ? 'true' : 'false'}
+              data-editing="false"
+            >
+              {folderChildren}
+            </button>
+          )}
           {expanded && node.children?.length ? (
             <div className="workspace-tree-children">
               {node.children.map(child => renderNode(child, depth + 1))}
@@ -301,21 +524,45 @@ export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel,
       );
     }
 
-    const status = statuses[node.id];
+    const dirty = dirtyFileSet.has(node.id);
+    const status = dirty ? 'modified' : statuses[node.id];
+    const statusLabel = dirty ? '저장 안 됨' : status === 'new' ? '새 파일' : status === 'modified' ? '수정됨' : '';
+    const fileChildren = (
+      <>
+        <span className={`tree-icon tree-icon-file tree-icon-${fileIconType(node.name)}`} aria-hidden="true" />
+        {inlineEditor || <span className="tree-name">{node.name}</span>}
+        {status ? <small className={`file-status ${status}`} aria-label={statusLabel} title={statusLabel} /> : null}
+      </>
+    );
+    if (editing) {
+      return (
+        <div
+          className={`file-row workspace-file-row ${node.id === activeFile ? 'active' : ''} ${dirty ? 'unsaved' : ''}`}
+          key={`file:${node.id}`}
+          style={style}
+          title={node.id}
+          data-focused={focusedNodeId === node.id ? 'true' : 'false'}
+          data-editing="true"
+        >
+          {fileChildren}
+        </div>
+      );
+    }
     return (
       <button
-        className={`file-row workspace-file-row ${node.id === activeFile ? 'active' : ''}`}
+        className={`file-row workspace-file-row ${node.id === activeFile ? 'active' : ''} ${dirty ? 'unsaved' : ''}`}
         key={`file:${node.id}`}
         style={style}
         type="button"
         title={node.id}
         onClick={() => onOpenFile(node.id)}
         onContextMenu={event => openTreeMenu(event, node)}
+        onFocus={() => setFocusedNodeId(node.id)}
+        onKeyDown={event => handleNodeKeyDown(event, node)}
+        data-focused={focusedNodeId === node.id ? 'true' : 'false'}
+        data-editing="false"
       >
-        <span className="tree-spacer" aria-hidden="true" />
-        <span className="tree-icon document-icon" aria-hidden="true">MD</span>
-        <span className="tree-name">{node.name}</span>
-        {status ? <small className={`file-status ${status}`}>{status === 'new' ? 'new' : 'mod'}</small> : null}
+        {fileChildren}
       </button>
     );
   }
@@ -324,7 +571,10 @@ export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel,
     <aside className="workspace-sidebar">
       <div className="panel-title workspace-title">
         <span>Workspace</span>
-        <button type="button" disabled={busy} onClick={addRoot}>+ 폴더</button>
+        <div className="panel-title-actions">
+          <button type="button" disabled={busy} onClick={addRoot}>+ 폴더</button>
+          {onCollapse ? <button type="button" onClick={onCollapse}>접기</button> : null}
+        </div>
       </div>
       <div className="workspace-tabs" role="tablist" aria-label="Workspace sections">
         <button
@@ -404,7 +654,7 @@ export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel,
             onContextMenu={openBlankTreeMenu}
           >
             {visibleTree.map(node => renderNode(node, 0))}
-            {!files.length && !folders.length && !error ? <div className="empty-note">No markdown files</div> : null}
+            {!files.length && !folders.length && !error ? <div className="empty-note">No document files</div> : null}
             {files.length > 0 && normalizedQuery && !visibleTree.length ? <div className="empty-note">검색 결과 없음</div> : null}
           </div>
         </div>
@@ -422,22 +672,33 @@ export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel,
           {treeMenu.node ? (
             treeMenu.node.type === 'folder' ? (
               <>
-                <button type="button" onClick={() => createFileAt(treeMenu.node!)}>새 파일</button>
-                <button type="button" onClick={() => createFolderAt(treeMenu.node)}>새 폴더</button>
+                <button type="button" onClick={() => createFileAt(treeMenu.node!)}>파일 만들기</button>
+                <button type="button" onClick={() => createFolderAt(treeMenu.node)}>폴더 만들기</button>
+                {!treeMenu.node.workspaceRoot ? <button type="button" onClick={() => renameNode(treeMenu.node!)}>이름 바꾸기</button> : null}
+                {!treeMenu.node.workspaceRoot ? <button type="button" onClick={() => deleteNode(treeMenu.node!)}>폴더 삭제</button> : null}
+                <button type="button" onClick={() => openNodeFolder(treeMenu.node!)}>Finder에서 열기</button>
               </>
             ) : (
               <>
-                <button type="button" onClick={() => createFileAt(treeMenu.node!)}>같은 폴더에 새 파일</button>
-                <button type="button" onClick={() => renameFile(treeMenu.node!)}>이름 변경</button>
+                {onOpenFileInSplit ? <button type="button" onClick={() => {
+                  onOpenFileInSplit(treeMenu.node!.id);
+                  setTreeMenu(null);
+                }}>분할로 열기</button> : null}
+                <button type="button" onClick={() => createFileAt(treeMenu.node!)}>파일 만들기</button>
+                <button type="button" onClick={() => renameNode(treeMenu.node!)}>이름 바꾸기</button>
+                <button type="button" onClick={() => deleteNode(treeMenu.node!)}>파일 삭제</button>
+                <button type="button" onClick={() => openNodeFolder(treeMenu.node!)}>Finder에서 위치 열기</button>
               </>
             )
           ) : (
             <>
-              <button type="button" onClick={createRootFile}>새 파일</button>
-              <button type="button" onClick={() => createFolderAt(null)}>새 폴더</button>
+              <button type="button" onClick={createRootFile}>파일 만들기</button>
+              <button type="button" onClick={() => createFolderAt(null)}>폴더 만들기</button>
+              <button type="button" disabled={busy} onClick={addRoot}>워크스페이스 추가</button>
+              <button type="button" onClick={openCurrentWorkspaceFolder}>Finder에서 열기</button>
             </>
           )}
-          {treeMenu.node ? <button type="button" onClick={() => copyNodePath(treeMenu.node!)}>절대경로 복사</button> : null}
+          {treeMenu.node ? <button type="button" onClick={() => copyNodePath(treeMenu.node!)}>경로 복사</button> : null}
         </div>
       ) : null}
     </aside>
@@ -447,6 +708,52 @@ export function WorkspaceSidebar({ activeFile, refreshSignal, instructionsPanel,
 function folderName(folderPath: string) {
   const trimmed = String(folderPath || '').replace(/\/+$/, '');
   return trimmed.split('/').pop() || trimmed || '폴더';
+}
+
+function uniqueTempFileName(dirId: string, files: string[]) {
+  const dir = String(dirId || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const prefix = !dir || dir === 'workspace:primary' ? '' : `${dir}/`;
+  const names = new Set(files
+    .filter(file => {
+      const parts = normalizedParts(file);
+      const parent = parts.slice(0, -1).join('/');
+      return parent === (prefix ? prefix.slice(0, -1) : '');
+    })
+    .map(pathFileName));
+  for (let index = 1; index < 1000; index += 1) {
+    const name = index === 1 ? 'untitled.md' : `untitled-${index}.md`;
+    if (!names.has(name)) return name;
+  }
+  return `untitled-${Date.now()}.md`;
+}
+
+function uniqueTempFolderName(dirId: string, folders: string[]) {
+  const dir = String(dirId || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const prefix = !dir || dir === 'workspace:primary' ? '' : `${dir}/`;
+  const names = new Set(folders
+    .filter(folder => {
+      const parts = normalizedParts(folder);
+      const parent = parts.slice(0, -1).join('/');
+      return parent === (prefix ? prefix.slice(0, -1) : '');
+    })
+    .map(pathFileName));
+  for (let index = 1; index < 1000; index += 1) {
+    const name = index === 1 ? 'new-folder' : `new-folder-${index}`;
+    if (!names.has(name)) return name;
+  }
+  return `new-folder-${Date.now()}`;
+}
+
+function defaultFileContent(fileName: string) {
+  const lower = String(fileName || '').toLowerCase();
+  if (/\.(json)$/i.test(lower)) return '{\n  \n}\n';
+  if (/\.(js|mjs|cjs)$/i.test(lower)) return '';
+  return `# ${fileName.replace(/\.(md|markdown|mdown|txt|text|yaml|yml|json|js|mjs|cjs)$/i, '')}\n`;
+}
+
+function pathFileName(fileId: string) {
+  const parts = normalizedParts(fileId);
+  return parts[parts.length - 1] || fileId || 'untitled.md';
 }
 
 function contextMenuPosition(event: MouseEvent) {
@@ -514,7 +821,7 @@ function buildFileTree(files: string[], folders: string[], roots: WorkspaceRoot[
   }
 
   sortTree(rootNodes);
-  return rootNodes.filter(node => node.type === 'file' || node.workspaceRoot || countFiles(node) > 0 || (node.children || []).length > 0);
+  return rootNodes;
 }
 
 function insertFolder(children: FileTreeNode[], parts: string[], rootPrefix: string) {
@@ -612,7 +919,14 @@ function normalizedParts(fileId: string) {
   return String(fileId || '').split('/').filter(Boolean);
 }
 
-function countFiles(node: FileTreeNode): number {
-  if (node.type === 'file') return 1;
-  return (node.children || []).reduce((sum, child) => sum + countFiles(child), 0);
+function fileIconType(fileName: string) {
+  const lower = String(fileName || '').toLowerCase();
+  if (/\.(md|markdown|mdown)$/i.test(lower)) return 'markdown';
+  if (/\.(ya?ml)$/i.test(lower)) return 'yaml';
+  if (/\.(json)$/i.test(lower)) return 'json';
+  if (/\.(js|mjs|cjs)$/i.test(lower)) return 'javascript';
+  if (/\.(ts|tsx|jsx)$/i.test(lower)) return 'code';
+  if (/\.(kt|java|swift|m|mm|c|cc|cpp|h|hpp)$/i.test(lower)) return 'code';
+  if (/\.(txt|text)$/i.test(lower)) return 'text';
+  return 'default';
 }

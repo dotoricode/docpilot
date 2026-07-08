@@ -11,6 +11,7 @@ const store = new Store();
 const DEFAULT_BRIDGE_PORT = 7474;
 let bridgePort = DEFAULT_BRIDGE_PORT;
 let bridgeProc = null;
+const bridgeProcesses = new Set();
 let startWin = null;
 let editorWin = null;
 let switchingFolder = false;
@@ -66,8 +67,11 @@ function getBridgePath() {
   return path.join(__dirname, 'bridge.js');
 }
 
-function stopOwnedBridge() {
-  if (bridgeProc) { bridgeProc.kill(); bridgeProc = null; }
+function stopOwnedBridge(proc = bridgeProc) {
+  if (!proc) return;
+  bridgeProcesses.delete(proc);
+  try { proc.kill(); } catch {}
+  if (bridgeProc === proc) bridgeProc = null;
 }
 
 function sleep(ms) {
@@ -93,16 +97,18 @@ async function findBridgePort() {
 }
 
 function startBridge(root, port) {
-  stopOwnedBridge();
   activeRoot = root;
   const child = fork(getBridgePath(), ['--root', root], {
     env: buildBridgeEnv(port),
     stdio: 'ignore',
   });
+  bridgeProcesses.add(child);
   bridgeProc = child;
   child.on('exit', () => {
+    bridgeProcesses.delete(child);
     if (bridgeProc === child) bridgeProc = null;
   });
+  return child;
 }
 
 // ── Dev live reload ─────────────────────────────────────
@@ -221,6 +227,15 @@ function waitForBridgeRoot(root, port = bridgePort, timeoutMs = 2500) {
   });
 }
 
+function configureAboutPanel() {
+  app.setAboutPanelOptions({
+    applicationName: 'DocPilot',
+    applicationVersion: app.getVersion(),
+    version: app.getVersion(),
+    copyright: `Copyright © ${new Date().getFullYear()} DocPilot`,
+  });
+}
+
 // ── Recent folders ───────────────────────────────────────
 function getRecent() { return store.get('recentFolders') || []; }
 
@@ -250,7 +265,7 @@ async function chooseFile(owner) {
     properties: ['openFile'],
     title: '문서 파일 선택',
     filters: [
-      { name: 'Text Documents', extensions: ['md', 'markdown', 'mdown', 'txt', 'text'] },
+      { name: 'Supported Documents', extensions: ['md', 'markdown', 'mdown', 'txt', 'text', 'yaml', 'yml', 'json', 'js', 'mjs', 'cjs'] },
       { name: 'All Files', extensions: ['*'] },
     ],
   });
@@ -260,7 +275,7 @@ async function chooseFile(owner) {
 
 // ── Windows ──────────────────────────────────────────────
 function createStartWindow() {
-  startWin = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 560,
     height: 420,
     resizable: false,
@@ -269,13 +284,18 @@ function createStartWindow() {
     show: false,
     webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
   });
-  startWin.loadFile('start.html');
-  startWin.once('ready-to-show', () => startWin.show());
-  startWin.on('closed', () => { startWin = null; });
+  win._docpilotWindowKind = 'start';
+  startWin = win;
+  win.loadFile('start.html');
+  win.once('ready-to-show', () => win.show());
+  win.on('closed', () => {
+    if (startWin === win) startWin = null;
+  });
+  return win;
 }
 
-function createEditorWindow(root, openFileRel = '', port = bridgePort) {
-  editorWin = new BrowserWindow({
+function createEditorWindow(root, openFileRel = '', port = bridgePort, bridge = null) {
+  const win = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 760,
@@ -286,17 +306,30 @@ function createEditorWindow(root, openFileRel = '', port = bridgePort) {
     show: false,
     webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
   });
-  editorWin._docpilotOpenFileRel = openFileRel || '';
-  installEditorNavigationGuard(editorWin);
-  loadEditorShell(editorWin);
-  editorWin.once('ready-to-show', () => editorWin.show());
-  editorWin.on('closed', () => {
-    editorWin = null;
+  win._docpilotWindowKind = 'editor';
+  win._docpilotRoot = root;
+  win._docpilotBridgePort = port;
+  win._docpilotBridgeProc = bridge;
+  win._docpilotOpenFileRel = openFileRel || '';
+  editorWin = win;
+  installEditorNavigationGuard(win);
+  loadEditorShell(win);
+  win.once('ready-to-show', () => win.show());
+  win.on('focus', () => {
+    editorWin = win;
+    bridgePort = win._docpilotBridgePort || bridgePort;
+    bridgeProc = win._docpilotBridgeProc || bridgeProc;
+    activeRoot = win._docpilotRoot || activeRoot;
+  });
+  win.on('closed', () => {
+    stopOwnedBridge(win._docpilotBridgeProc);
+    if (editorWin === win) editorWin = null;
     if (!switchingFolder) {
-      stopOwnedBridge();
-      app.quit();
+      const remaining = BrowserWindow.getAllWindows().filter(item => item !== win && !item.isDestroyed());
+      if (!remaining.length) app.quit();
     }
   });
+  return win;
 }
 
 function isEditorShellUrl(rawUrl) {
@@ -316,6 +349,7 @@ function getReactRendererPath() {
 function loadEditorShell(win) {
   if (!win || win.isDestroyed()) return;
   const openFileRel = win._docpilotOpenFileRel || '';
+  const port = win._docpilotBridgePort || bridgePort;
   const reactRendererPath = getReactRendererPath();
   if (!fs.existsSync(reactRendererPath)) {
     dialog.showErrorBox(
@@ -326,7 +360,7 @@ function loadEditorShell(win) {
   }
   win.loadFile(reactRendererPath, {
     query: {
-      port: String(bridgePort),
+      port: String(port),
       ...(openFileRel ? { open: openFileRel } : {}),
     },
   });
@@ -344,10 +378,10 @@ function installEditorNavigationGuard(win) {
   });
 }
 
-function closeEditorForSwitch() {
-  if (!editorWin) return Promise.resolve();
+function closeEditorForSwitch(win = editorWin) {
+  if (!win || win.isDestroyed()) return Promise.resolve();
   switchingFolder = true;
-  const old = editorWin;
+  const old = win;
   return new Promise(resolve => {
     old.once('closed', () => {
       switchingFolder = false;
@@ -357,30 +391,34 @@ function closeEditorForSwitch() {
   });
 }
 
-async function openFolder(folderPath, openFileRel = '') {
-  await closeEditorForSwitch();
+async function openFolder(folderPath, openFileRel = '', owner = BrowserWindow.getFocusedWindow()) {
+  const ownerWindow = owner && !owner.isDestroyed() ? owner : null;
+  if (ownerWindow?._docpilotWindowKind === 'editor') {
+    await closeEditorForSwitch(ownerWindow);
+  }
   addRecent(folderPath);
-  stopOwnedBridge();
   await sleep(120);
-  bridgePort = await findBridgePort();
-  startBridge(folderPath, bridgePort);
-  await waitForBridgeRoot(folderPath, bridgePort);
-  createEditorWindow(folderPath, openFileRel, bridgePort);
-  if (startWin) { startWin.close(); startWin = null; }
-  checkForUpdates();
+  const nextBridgePort = await findBridgePort();
+  const nextBridgeProc = startBridge(folderPath, nextBridgePort);
+  bridgePort = nextBridgePort;
+  await waitForBridgeRoot(folderPath, nextBridgePort);
+  const win = createEditorWindow(folderPath, openFileRel, nextBridgePort, nextBridgeProc);
+  if (ownerWindow?._docpilotWindowKind === 'start' && !ownerWindow.isDestroyed()) {
+    ownerWindow.close();
+  }
+  checkForUpdates(win);
 }
 
-async function openFilePath(filePath) {
+async function openFilePath(filePath, owner = BrowserWindow.getFocusedWindow()) {
   const root = path.dirname(filePath);
   const rel = path.basename(filePath);
-  await openFolder(root, rel);
+  await openFolder(root, rel, owner);
 }
 
 async function closeFolder() {
-  if (!editorWin) return;
-  await closeEditorForSwitch();
-  stopOwnedBridge();
-  activeRoot = '';
+  const win = focusedEditorWindow();
+  if (!win) return;
+  await closeEditorForSwitch(win);
   createStartWindow();
 }
 
@@ -403,8 +441,8 @@ ipcMain.handle('choose-instruction-file', async () => {
   return { path: filePath, name: path.basename(filePath), content };
 });
 
-ipcMain.handle('open-folder', async (_, folderPath) => {
-  await openFolder(folderPath);
+ipcMain.handle('open-folder', async (event, folderPath) => {
+  await openFolder(folderPath, '', BrowserWindow.fromWebContents(event.sender));
 });
 
 ipcMain.handle('remove-recent', (_, folderPath) => {
@@ -439,19 +477,29 @@ ipcMain.handle('window-toggle-maximize', event => {
 });
 
 // ── Application menu ───────────────────────────────────
+function focusedEditorWindow() {
+  const focused = BrowserWindow.getFocusedWindow();
+  if (focused?._docpilotWindowKind === 'editor') return focused;
+  if (editorWin && !editorWin.isDestroyed()) return editorWin;
+  return null;
+}
+
 function sendEditorCommand(command) {
-  if (!editorWin || editorWin.isDestroyed()) return;
-  editorWin.webContents.send('menu-command', command);
+  const win = focusedEditorWindow();
+  if (!win || win.isDestroyed()) return;
+  win.webContents.send('menu-command', command);
 }
 
 async function menuOpenFolder() {
-  const folderPath = await chooseFolder(BrowserWindow.getFocusedWindow());
-  if (folderPath) await openFolder(folderPath);
+  const owner = BrowserWindow.getFocusedWindow();
+  const folderPath = await chooseFolder(owner);
+  if (folderPath) await openFolder(folderPath, '', owner);
 }
 
 async function menuOpenFile() {
-  const filePath = await chooseFile(BrowserWindow.getFocusedWindow());
-  if (filePath) await openFilePath(filePath);
+  const owner = BrowserWindow.getFocusedWindow();
+  const filePath = await chooseFile(owner);
+  if (filePath) await openFilePath(filePath, owner);
 }
 
 function recentMenuItems() {
@@ -460,7 +508,7 @@ function recentMenuItems() {
   const items = recent.map(folderPath => ({
     label: path.basename(folderPath) || folderPath,
     sublabel: folderPath,
-    click: () => openFolder(folderPath),
+    click: () => openFolder(folderPath, '', BrowserWindow.getFocusedWindow()),
   }));
   items.push({ type: 'separator' });
   items.push({ label: 'Clear Recently Opened', click: () => clearRecent() });
@@ -469,6 +517,7 @@ function recentMenuItems() {
 
 function buildAppMenu() {
   const isMac = process.platform === 'darwin';
+  configureAboutPanel();
   const template = [
     ...(isMac ? [{
       label: app.name,
@@ -487,7 +536,7 @@ function buildAppMenu() {
     {
       label: 'File',
       submenu: [
-        { label: 'New Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => { if (!startWin) createStartWindow(); else startWin.focus(); } },
+        { label: 'New Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => createStartWindow() },
         { type: 'separator' },
         { label: 'Open...', accelerator: 'CmdOrCtrl+O', click: () => menuOpenFile() },
         { label: 'Open Folder...', accelerator: 'CmdOrCtrl+Shift+O', click: () => menuOpenFolder() },
@@ -541,7 +590,7 @@ function buildAppMenu() {
 // ── Version check ────────────────────────────────────────
 const GITHUB_REPO = 'youngsang-kwon/docpilot'; // TODO: 실제 repo로 변경
 
-function checkForUpdates() {
+function checkForUpdates(targetWin = focusedEditorWindow()) {
   const req = net.request(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
   req.on('response', res => {
     let body = '';
@@ -551,8 +600,8 @@ function checkForUpdates() {
         const data = JSON.parse(body);
         const latest = (data.tag_name || '').replace(/^v/, '');
         const current = app.getVersion();
-        if (latest && latest !== current && editorWin) {
-          editorWin.webContents.send('update-available', { version: latest, url: data.html_url });
+        if (latest && latest !== current && targetWin && !targetWin.isDestroyed()) {
+          targetWin.webContents.send('update-available', { version: latest, url: data.html_url });
         }
       } catch {}
     });
@@ -575,7 +624,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (switchingFolder) return;
-  if (bridgeProc) { bridgeProc.kill(); bridgeProc = null; }
+  for (const proc of Array.from(bridgeProcesses)) stopOwnedBridge(proc);
   activeRoot = '';
   app.quit();
 });

@@ -116,7 +116,8 @@ async function waitForPing(port, deadline = Date.now() + 5000) {
     const events = await postProjectChat(port);
     assert(events.some(event => event.compatibility === 'session-turn'), 'project-chat must identify session-turn compatibility wrapper');
     assert(events.some(event => event.started && event.promptPackage?.contextMode === 'project'), 'project-chat must start a project context session turn');
-    assert(events.some(event => event.chunk && event.chunk.includes('fake claude response')), 'project-chat must proxy session output chunks');
+    const proxiedText = events.filter(event => event.chunk).map(event => event.chunk).join('');
+    assert(proxiedText.includes('fake claude response'), 'project-chat must proxy session output chunks');
     const done = events.find(event => event.done);
     assert(done, 'project-chat must emit a legacy done event');
     assert.strictEqual(done.source, 'claude');

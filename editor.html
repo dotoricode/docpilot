@@ -2321,7 +2321,6 @@ html[data-ai-agent="codex"]{
     <div id="agent-menu" class="agent-menu"></div>
     <div id="tree-menu" class="tree-menu"></div>
     <div class="logo"><div class="pip"></div>docpilot</div>
-    <span id="version-badge" style="font-size:9px;color:var(--t3);font-family:var(--mono);letter-spacing:.04em;border:1px solid var(--bd2);padding:1px 5px">v...</span>
     <span id="root-badge" style="font-size:9px;color:var(--t3);font-family:var(--mono);letter-spacing:.04em;border:1px solid var(--bd2);padding:1px 5px">root: ...</span>
     <div class="vsep"></div>
     <div id="crumb"><span style="color:var(--t3)">파일을 선택하세요</span></div>
@@ -6665,13 +6664,9 @@ Object.assign(window,{
 /* ── INIT ── */
 async function init(){
 	  syncDiffControls();
-	  syncAiModeUi();
-	  renderRightPanel();
+  syncAiModeUi();
+  renderRightPanel();
   setEmptyState('loading','브리지 연결을 확인하고 있습니다');
-  try{
-    const version=await window.docpilot?.getAppVersion?.();
-    if(version)document.getElementById('version-badge').textContent='v'+version;
-  }catch{}
   await checkBridge();
   setEmptyState('loading','파일 트리를 스캔하고 있습니다');
   try{
