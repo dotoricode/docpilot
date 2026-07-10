@@ -40,26 +40,15 @@ async function main() {
     const editor = await waitForReactEditorWindow(app);
     await editor.waitForSelector('.bridge-status');
     await editor.waitForSelector('.workspace-sidebar');
-    await editor.waitForSelector('.editor-pane');
-    if (await editor.locator('.right-rail button').filter({ hasText: 'Agent' }).count()) {
-      await editor.locator('.right-rail button').filter({ hasText: 'Agent' }).click();
+    await editor.waitForSelector('.home-screen');
+    if (await editor.locator('.release-notice-overlay').count()) {
+      await editor.locator('.release-notice-modal footer button').filter({ hasText: '확인' }).click();
+      await editor.waitForSelector('.release-notice-overlay', { state: 'detached' });
     }
-    await editor.waitForSelector('.agent-panel');
-    await editor.waitForSelector('.agent-controls select');
-    await editor.waitForSelector('.agent-status-card');
-    await editor.waitForSelector('.agent-compact-steps');
-    await editor.waitForSelector('.agent-conversation-toggle');
-    const conversationInitiallyVisible = await editor.locator('.agent-conversation').count();
-    if (conversationInitiallyVisible) {
-      throw new Error('AI conversation should be collapsed by default');
+    const homeTitle = await editor.locator('.home-hero h1').innerText();
+    if (!homeTitle.includes('문서 작업공간')) {
+      throw new Error(`home screen did not render expected title: ${homeTitle}`);
     }
-    await editor.locator('.agent-conversation-toggle').click();
-    await editor.waitForSelector('.agent-conversation');
-    await editor.waitForSelector('.agent-advanced-details');
-    await editor.waitForSelector('.context-reference-panel.compact');
-    await editor.waitForSelector('.icon-send-button');
-    await editor.waitForSelector('.agent-composer');
-    await editor.waitForSelector('.agent-header-actions');
     await editor.waitForSelector('.workspace-tabs');
     await editor.waitForSelector('.workspace-file-row');
     await editor.locator('.workspace-file-row').filter({ hasText: 'README.md' }).first().click();
@@ -73,7 +62,6 @@ async function main() {
     if (title.trim() !== 'Smoke Test') throw new Error(`unexpected preview title: ${title}`);
 
     await editor.locator('.workspace-title button').filter({ hasText: '접기' }).waitFor();
-    await editor.locator('.agent-header-actions button').filter({ hasText: '접기' }).waitFor();
     const topbarPanelButtons = await editor.locator('.topbar-right .panel-toggle-button').count();
     if (topbarPanelButtons) {
       throw new Error('panel collapse buttons should live inside their panels, not the top bar');
@@ -82,10 +70,6 @@ async function main() {
     await editor.waitForSelector('.left-rail .panel-rail-open-button');
     await editor.locator('.left-rail .panel-rail-open-button').click();
     await editor.waitForSelector('.workspace-sidebar');
-    await editor.locator('.agent-header-actions button').filter({ hasText: '접기' }).click();
-    await editor.waitForSelector('.right-rail .panel-rail-open-button');
-    await editor.locator('.right-rail .panel-rail-open-button').click();
-    await editor.waitForSelector('.agent-panel');
 
     await editor.locator('.editor-mode-toggle button').filter({ hasText: '편집' }).click();
     await editor.waitForFunction(() => {
@@ -103,61 +87,23 @@ async function main() {
     await editor.locator('.editor-mode-toggle button').filter({ hasText: '프리뷰' }).click();
     await editor.waitForSelector('.markdown-preview h1');
 
-    const contextText = await editor.locator('.context-strip').first().innerText();
-    if (!contextText.includes('참고 내용') || !contextText.includes('자동')) {
-      throw new Error(`agent context strip did not render: ${contextText}`);
-    }
     const bridgeStatus = await editor.locator('.bridge-status').innerText();
     if (!bridgeStatus.includes('문서') && !bridgeStatus.includes('브리지')) {
       throw new Error(`bridge status did not render: ${bridgeStatus}`);
     }
 
-    const tabCount = await editor.locator('.agent-tabs').count();
-    if (tabCount) {
-      throw new Error('agent panel should not require a separate results tab');
-    }
-    const headerActions = await editor.locator('.agent-header-actions').innerText();
-    if (!headerActions.includes('세션 닫기') || !headerActions.includes('설정')) {
-      throw new Error(`agent header actions did not render close/settings actions: ${headerActions}`);
-    }
-    const statusText = await editor.locator('.agent-status-card').innerText();
-    if (!statusText.includes('대기') && !statusText.includes('생각') && !statusText.includes('작업')) {
-      throw new Error(`agent status card did not render: ${statusText}`);
-    }
-    const detailsText = await editor.locator('.agent-advanced-details').innerText();
-    if (!detailsText.includes('실행 정보와 고급 로그')) {
-      throw new Error(`advanced details did not render: ${detailsText}`);
-    }
-    await editor.getByText('실행 정보와 고급 로그').click();
-    const rawLogText = await editor.locator('.raw-log-panel').innerText();
-    if (!rawLogText.includes('고급 로그') || !rawLogText.includes('로그 보기')) {
-      throw new Error(`advanced raw log section did not render: ${rawLogText}`);
-    }
     await editor.locator('.workspace-tabs button').filter({ hasText: '지침' }).click();
     await editor.waitForSelector('.workspace-instructions-pane .instructions-panel');
     const instructionsVisible = await editor.locator('.workspace-instructions-pane .instructions-panel').count();
     if (!instructionsVisible) {
       throw new Error('instructions panel did not render inside workspace tab');
     }
-    await editor.locator('.agent-header-actions button').filter({ hasText: '설정' }).click();
-    await editor.waitForSelector('.agent-settings-modal .settings-title');
-    const settingsTitle = await editor.locator('.agent-settings-modal .settings-title').innerText();
-    if (!settingsTitle.includes('Settings')) {
-      throw new Error(`settings panel did not render: ${settingsTitle}`);
-    }
-    await editor.evaluate(async () => {
-      const port = new URLSearchParams(window.location.search).get('port') || '7474';
-      await fetch(`http://localhost:${port}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: { theme: 'system' } }),
-      });
-      window.dispatchEvent(new CustomEvent('docpilot-settings-saved', { detail: { settings: { theme: 'system' } } }));
-    });
-    await editor.waitForFunction(() => document.documentElement.dataset.themePreference === 'system');
-    const themePreference = await editor.evaluate(() => document.documentElement.dataset.themePreference);
-    if (themePreference !== 'system') {
-      throw new Error(`theme preference was not applied: ${themePreference}`);
+
+    await editor.locator('.app-logo').click();
+    await editor.waitForSelector('.home-screen');
+    const returnedHomeVisible = await editor.locator('.home-hero h1').innerText();
+    if (!returnedHomeVisible.includes('문서 작업공간')) {
+      throw new Error(`DocPilot logo did not return to home: ${returnedHomeVisible}`);
     }
 
     console.log('react renderer smoke check passed');

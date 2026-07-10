@@ -63,16 +63,33 @@
   }
 
   nav.toc .brand {
+    width: 100%;
     display: flex;
     align-items: center;
     gap: 10px;
     margin-bottom: 22px;
-    padding: 0 6px;
+    padding: 6px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.14s ease, border-color 0.14s ease, transform 0.14s ease;
+  }
+
+  nav.toc .brand:hover {
+    border-color: var(--dp-border);
+    background: rgba(250, 250, 247, 0.06);
+    transform: translateX(2px);
   }
 
   nav.toc .brand .dot {
     width: 9px;
     height: 9px;
+    flex: 0 0 auto;
+    display: inline-block;
     border-radius: 50%;
     background: var(--dp-accent);
     box-shadow: 0 0 0 3px var(--dp-accent-soft);
@@ -523,6 +540,122 @@
   }
 
   /* ── overview quick-nav cards ── */
+  .home-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 22px;
+    padding: 28px;
+    border: 1px solid var(--dp-border);
+    border-radius: 16px;
+    background:
+      linear-gradient(135deg, rgba(245, 78, 0, 0.14), transparent 38%),
+      radial-gradient(circle at 90% 12%, rgba(31, 138, 101, 0.18), transparent 34%),
+      rgba(41, 41, 34, 0.48);
+    box-shadow: 0 22px 80px rgba(0, 0, 0, 0.22);
+  }
+
+  .home-lockup {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--dp-text-strong);
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 18px;
+  }
+
+  .home-lockup .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--dp-accent);
+    box-shadow: 0 0 0 7px var(--dp-accent-soft);
+  }
+
+  .home-hero h1 {
+    font-size: 42px;
+    margin-bottom: 16px;
+  }
+
+  .home-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .home-actions a {
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--dp-border);
+    border-radius: 10px;
+    background: var(--dp-accent);
+    color: #fff8f2;
+    padding: 0 14px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .home-actions a.secondary {
+    background: rgba(250, 250, 247, 0.07);
+    color: var(--dp-text);
+  }
+
+  .home-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin: 18px 0 26px;
+  }
+
+  .home-stats div {
+    min-width: 0;
+    border: 1px solid var(--dp-border);
+    border-radius: 12px;
+    background: rgba(32, 32, 28, 0.58);
+    padding: 14px 16px;
+  }
+
+  .home-stats span {
+    display: block;
+    color: var(--dp-text-strong);
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .home-stats strong {
+    display: block;
+    color: var(--dp-faint);
+    font-family: var(--dp-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .home-section-title {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 14px;
+  }
+
+  .home-section-title h2 {
+    margin: 0;
+    color: var(--dp-text-strong);
+    font-size: 18px;
+  }
+
+  .home-section-title span {
+    color: var(--dp-faint);
+    font-family: var(--dp-mono);
+    font-size: 11px;
+  }
+
   .quick-nav {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -566,6 +699,10 @@
     color: var(--dp-faint);
     font-size: 12.5px;
     line-height: 1.5;
+  }
+
+  .quick-nav.compact {
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   }
 
   /* ── callouts ── */
@@ -613,6 +750,10 @@
     body { grid-template-columns: 1fr; }
     nav.toc { position: relative; height: auto; }
     main { padding: 40px 20px 80px; }
+    .home-hero { grid-template-columns: minmax(0, 1fr); }
+    .home-actions { align-items: stretch; flex-direction: column; }
+    .home-actions a { justify-content: center; }
+    .home-stats { grid-template-columns: minmax(0, 1fr); }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -626,61 +767,113 @@
 <body>
 
 <nav class="toc">
-  <div class="brand"><span class="dot"></span><span>DocPilot</span></div>
-  <div class="version">v1.0.27 · 사용 매뉴얼</div>
+  <button class="brand" type="button" data-target="overview" aria-label="홈으로 이동"><span class="dot"></span><span>DocPilot</span></button>
+  <div class="version">v1.0.28 · 사용 매뉴얼</div>
 
   <div class="section-label">시작하기</div>
   <a data-target="overview" class="active">개요</a>
   <a data-target="whats-new">What's New</a>
-  <a data-target="deploy">배포 &amp; 다운로드</a>
-  <a data-target="s1">폴더 열기 &amp; 워크플로우</a>
-  <a data-target="s2">파일 트리</a>
+  <a data-target="deploy">설치 및 다운로드</a>
+  <a data-target="quick-start">빠른 시작</a>
 
-  <div class="section-label">편집</div>
-  <a data-target="s3">문서 편집기</a>
+  <div class="section-label">작업공간</div>
+  <a data-target="s1">작업공간 열기</a>
+  <a data-target="s2">파일 탐색과 관리</a>
+  <a data-target="workspace-recent">최근 폴더와 추가 폴더</a>
 
-  <div class="section-label">Agent 연동</div>
-  <a data-target="s4">복사해서 Agent에게 전달</a>
-  <a data-target="s5">지침(Instructions) 관리</a>
+  <div class="section-label">문서 작업</div>
+  <a data-target="s3">편집과 미리보기</a>
+  <a data-target="quick-command">빠른 이동과 명령 팔레트</a>
+  <a data-target="tabs-split">탭과 분할 보기</a>
+  <a data-target="diff-compare">Diff와 변경 비교</a>
 
-  <div class="section-label">안전</div>
-  <a data-target="s6">Safety Model</a>
+  <div class="section-label">Agent 전달</div>
+  <a data-target="s4">참고 내용 복사</a>
+  <a data-target="s5">지침과 프리셋</a>
 
-  <div class="section-label">검증</div>
+  <div class="section-label">검토와 안전</div>
+  <a data-target="change-review">변경사항 검토</a>
+  <a data-target="s6">안전 모델</a>
   <a data-target="s7">검증 명령</a>
 </nav>
 
 <main>
 
   <div class="page active" id="overview">
-    <span class="kicker">User Manual</span>
-    <h1>DocPilot 사용 매뉴얼</h1>
-    <p class="subtitle">로컬 문서를 프리뷰·스플릿·diff로 보고, 지침을 걸어두고, 필요한 부분을 클릭하거나 드래그하면 <code>File: 경로 + Lines: N-M + 내용</code>이 그대로 복사됩니다. 터미널의 Claude Code나 Codex에 붙여넣기만 하면 됩니다 — 파일 위치를 직접 찾아 알려줄 필요가 없습니다.</p>
-    <hr class="divider" />
+    <section class="home-hero">
+      <div>
+        <div class="home-lockup"><span class="dot"></span><span>DocPilot Manual</span></div>
+        <span class="kicker">User Manual</span>
+        <h1>문서 작업을 빠르게 이어가는 사용 매뉴얼</h1>
+        <p class="subtitle">로컬 문서를 프리뷰·분할·Diff로 확인하고, 필요한 참고 내용을 클릭하거나 드래그해 Agent에게 전달하는 흐름을 한 곳에 정리했습니다.</p>
+      </div>
+      <div class="home-actions">
+        <a data-target="quick-start">빠른 시작</a>
+        <a class="secondary" data-target="deploy">설치 보기</a>
+      </div>
+    </section>
+
+    <section class="home-stats" aria-label="매뉴얼 구성 요약">
+      <div><span>16</span><strong>Sections</strong></div>
+      <div><span>1.0.28</span><strong>Current Version</strong></div>
+      <div><span>macOS</span><strong>Distribution</strong></div>
+    </section>
+
+    <div class="home-section-title">
+      <h2>주요 흐름</h2>
+      <span>작업공간 → 문서 작업 → Agent 전달 → 검토</span>
+    </div>
     <ul class="quick-nav">
-      <li><a data-target="s1"><div class="quick-nav-icon">📂</div><strong>폴더 열기 &amp; 워크플로우</strong><span>문서 폴더 선택부터 편집까지 흐름</span></a></li>
-      <li><a data-target="s2"><div class="quick-nav-icon">🗂️</div><strong>파일 트리</strong><span>탐색, 우클릭 메뉴, 최근 폴더</span></a></li>
-      <li><a data-target="s3"><div class="quick-nav-icon">📝</div><strong>문서 편집기</strong><span>빠른 이동, 명령 팔레트, 편집·미리보기·분할 보기</span></a></li>
-      <li><a data-target="s4"><div class="quick-nav-icon">📋</div><strong>복사해서 Agent에게 전달</strong><span>클릭/드래그 복사, 위치·라인 자동 포함</span></a></li>
-      <li><a data-target="s5"><div class="quick-nav-icon">📐</div><strong>지침(Instructions) 관리</strong><span>복사할 때마다 자동으로 함께 붙는 규칙</span></a></li>
-      <li><a data-target="s6"><div class="quick-nav-icon">🛡️</div><strong>Safety Model</strong><span>renderer/bridge 권한 경계</span></a></li>
-      <li><a data-target="s7"><div class="quick-nav-icon">✅</div><strong>검증 명령</strong><span>커밋 전 실행할 스크립트 13종</span></a></li>
-      <li><a data-target="whats-new"><div class="quick-nav-icon">✨</div><strong>What's New</strong><span>1.0.25부터 1.0.27까지 달라진 점</span></a></li>
-      <li><a data-target="deploy"><div class="quick-nav-icon">⬇️</div><strong>배포 &amp; 다운로드</strong><span>최신 DMG와 릴리즈 자산</span></a></li>
+      <li><a data-target="quick-start"><div class="quick-nav-icon">🚀</div><strong>빠른 시작</strong><span>폴더 열기부터 저장까지 기본 루프</span></a></li>
+      <li><a data-target="s1"><div class="quick-nav-icon">📂</div><strong>작업공간 열기</strong><span>로컬 문서 폴더를 작업 기준으로 지정</span></a></li>
+      <li><a data-target="s3"><div class="quick-nav-icon">📝</div><strong>편집과 미리보기</strong><span>CodeMirror 편집과 Markdown/JSON 프리뷰</span></a></li>
+      <li><a data-target="diff-compare"><div class="quick-nav-icon">⚖️</div><strong>Diff와 변경 비교</strong><span>저장 전후와 변경 위치 확인</span></a></li>
+      <li><a data-target="s4"><div class="quick-nav-icon">📋</div><strong>참고 내용 복사</strong><span>클릭/드래그 복사, 위치·라인 자동 포함</span></a></li>
+      <li><a data-target="change-review"><div class="quick-nav-icon">🔍</div><strong>변경사항 검토</strong><span>diff 확인, 병합, 수락과 거부</span></a></li>
+    </ul>
+
+    <div class="home-section-title" style="margin-top: 34px;">
+      <h2>전체 목차</h2>
+      <span>필요한 항목으로 바로 이동</span>
+    </div>
+    <ul class="quick-nav compact">
+      <li><a data-target="whats-new"><div class="quick-nav-icon">✨</div><strong>What's New</strong><span>최근 버전 변경사항</span></a></li>
+      <li><a data-target="deploy"><div class="quick-nav-icon">⬇️</div><strong>설치 및 다운로드</strong><span>macOS DMG 설치 흐름</span></a></li>
+      <li><a data-target="s2"><div class="quick-nav-icon">🗂️</div><strong>파일 탐색과 관리</strong><span>탐색, 검색, 우클릭 메뉴</span></a></li>
+      <li><a data-target="workspace-recent"><div class="quick-nav-icon">🕒</div><strong>최근 폴더와 추가 폴더</strong><span>다시 열기와 확장</span></a></li>
+      <li><a data-target="quick-command"><div class="quick-nav-icon">⌘</div><strong>빠른 이동과 명령 팔레트</strong><span>파일 찾기와 명령 실행</span></a></li>
+      <li><a data-target="tabs-split"><div class="quick-nav-icon">🧩</div><strong>탭과 분할 보기</strong><span>문서를 나란히 비교</span></a></li>
+      <li><a data-target="s5"><div class="quick-nav-icon">📐</div><strong>지침과 프리셋</strong><span>함께 붙는 규칙 묶음</span></a></li>
+      <li><a data-target="s6"><div class="quick-nav-icon">🛡️</div><strong>안전 모델</strong><span>renderer/bridge 경계</span></a></li>
+      <li><a data-target="s7"><div class="quick-nav-icon">✅</div><strong>검증 명령</strong><span>커밋 전 확인</span></a></li>
     </ul>
   </div>
 
   <div class="page" id="whats-new">
     <span class="kicker">What's New</span>
-    <h1>1.0.25 → 1.0.27 변경사항</h1>
+    <h1>1.0.26 → 1.0.28 변경사항</h1>
     <p class="subtitle">최근 세 버전에서 문서 검토, Diff 확인, 편집기, 지침 관리 흐름이 어떻게 바뀌었는지 정리했습니다.</p>
     <hr class="divider" />
 
     <div class="release-stack">
       <section class="release-card">
         <header>
-          <h2>DocPilot 1.0.27</h2>
+          <h2>DocPilot 1.0.28</h2>
           <span class="release-badge">현재 버전</span>
+        </header>
+        <ul class="release-items">
+          <li><span class="num">01</span><div><strong>큰 AsciiDoc 문서가 바로 열립니다</strong><p>AsciiDoc 변환을 별도 worker로 옮기고 프리뷰 계산을 줄여, 큰 manual.adoc 파일도 열 때마다 오래 멈추지 않습니다.</p></div></li>
+          <li><span class="num">02</span><div><strong>프리뷰 스크롤이 더 가벼워졌습니다</strong><p>목차 동기화와 라인 표시 작업을 스크롤 흐름에 맞게 조정해 긴 문서를 빠르게 내려도 끊김을 줄였습니다.</p></div></li>
+          <li><span class="num">03</span><div><strong>편집모드 하이라이트를 보강했습니다</strong><p>AsciiDoc, Markdown, JSON, JavaScript, TypeScript 편집 화면에 VSCode 2026 Light/Dark 기반 색상 팔레트를 적용했습니다.</p></div></li>
+          <li><span class="num">04</span><div><strong>프리뷰와 편집 위치를 이어갑니다</strong><p>프리뷰에서 편집으로, 편집에서 프리뷰로 전환할 때 현재 보고 있던 위치에 가깝게 이동합니다.</p></div></li>
+          <li><span class="num">05</span><div><strong>문서 패널과 코드블록 가독성을 다듬었습니다</strong><p>NOTE/WARNING 정보 패널, 코드블록 강조색, 제목 크기 단계를 라이트/다크 테마에 맞춰 다시 조정했습니다.</p></div></li>
+        </ul>
+      </section>
+
+      <section class="release-card">
+        <header>
+          <h2>DocPilot 1.0.27</h2>
+          <span class="release-badge">편집기 · 홈 · 단축키</span>
         </header>
         <ul class="release-items">
           <li><span class="num">01</span><div><strong>들여쓰기 선택지를 간단하게 정리했습니다</strong><p>상단 Tab 메뉴와 명령 팔레트에서 스페이스 2칸, 스페이스 4칸, 탭 2칸, 탭 4칸을 바로 선택할 수 있습니다.</p></div></li>
@@ -689,7 +882,7 @@
           <li><span class="num">04</span><div><strong>편집기 색과 배경을 다시 맞췄습니다</strong><p>다크 테마 편집 배경을 덜 진하게 조정하고, 편집 모드 코드 색상을 프리뷰 코드블록과 더 가깝게 맞췄습니다.</p></div></li>
           <li><span class="num">05</span><div><strong>들여쓰기 영역을 눈으로 확인할 수 있습니다</strong><p>선행 공백과 탭이 화면에 구분되어 보여, 파일마다 어떤 들여쓰기 기준을 쓰는지 편집 중 바로 확인할 수 있습니다.</p></div></li>
           <li><span class="num">06</span><div><strong>파일트리 마지막 항목도 편하게 우클릭할 수 있습니다</strong><p>파일트리 하단에 여유 공간을 두고 메뉴 위치를 보정해, 맨 아래 파일에서도 경로 복사 같은 메뉴가 잘리지 않습니다.</p></div></li>
-          <li><span class="num">07</span><div><strong>홈 이동과 주요 단축키를 정리했습니다</strong><p>좌측 상단 DocPilot 로고로 홈 화면에 돌아갈 수 있고, Cmd+P 빠른 이동과 Cmd+Shift+P 명령 팔레트 사용법을 매뉴얼에 보강했습니다.</p></div></li>
+          <li><span class="num">07</span><div><strong>홈 이동과 주요 단축키를 정리했습니다</strong><p>좌측 상단 DocPilot 로고로 홈 화면에 돌아갈 수 있고, ⌘ + P 빠른 이동과 ⌘ + Shift + P 명령 팔레트 사용법을 매뉴얼에 보강했습니다.</p></div></li>
         </ul>
       </section>
 
@@ -700,41 +893,27 @@
         </header>
         <ul class="release-items">
           <li><span class="num">01</span><div><strong>새 창이 기존 프로젝트를 끊지 않습니다</strong><p>새 창에서 다른 폴더를 열어도 기존 창의 프로젝트와 브리지가 그대로 유지됩니다.</p></div></li>
-          <li><span class="num">02</span><div><strong>검색창을 찾기 중심으로 줄였습니다</strong><p>프리뷰와 편집 모드의 Cmd+F 창을 더 작게 정리하고, 다른 영역을 클릭하면 닫히도록 했습니다.</p></div></li>
+          <li><span class="num">02</span><div><strong>검색창을 찾기 중심으로 줄였습니다</strong><p>프리뷰와 편집 모드의 ⌘ + F 창을 더 작게 정리하고, 다른 영역을 클릭하면 닫히도록 했습니다.</p></div></li>
           <li><span class="num">03</span><div><strong>본문 폭 기본값을 넓혔습니다</strong><p>프리뷰 본문 폭은 처음부터 최대로 열리고, 슬라이더 트랙을 클릭해 바로 조절할 수 있습니다.</p></div></li>
           <li><span class="num">04</span><div><strong>라이트 테마 코드블록을 보정했습니다</strong><p>라이트 테마에서도 네이비 코드블록 안의 타입, 함수명, 매개변수가 잘 보이도록 색을 다시 맞췄습니다.</p></div></li>
         </ul>
       </section>
 
-      <section class="release-card">
-        <header>
-          <h2>DocPilot 1.0.25</h2>
-          <span class="release-badge">Diff · 지침 · 복사</span>
-        </header>
-        <ul class="release-items">
-          <li><span class="num">01</span><div><strong>작은 Diff만 보이게 했습니다</strong><p>표 한 줄이나 목록 한 항목만 바뀐 경우, 그 부분만 빨강/초록으로 표시합니다. 문서 전체가 바뀐 것처럼 보이던 화면을 줄였습니다.</p></div></li>
-          <li><span class="num">02</span><div><strong>긴 문서에서 변경 위치를 먼저 볼 수 있습니다</strong><p>Diff 오른쪽 레일에 변경 지점이 표시됩니다. 레일을 보고 어디쯤을 확인해야 하는지 파악한 뒤 스크롤하면 됩니다.</p></div></li>
-          <li><span class="num">03</span><div><strong>라이트 테마 Diff를 다시 맞췄습니다</strong><p>줄 번호 색을 낮추고, 편집 모드 raw diff의 배경과 글자색을 조정했습니다. 밝은 화면에서도 삭제/추가 줄을 구분할 수 있습니다.</p></div></li>
-          <li><span class="num">04</span><div><strong>지침 프리셋이 현재 상태를 따라갑니다</strong><p>지침을 끄거나 삭제하면 활성 프리셋 표시도 함께 정리됩니다. 파일에서 불러온 지침은 복사나 에이전트 요청 전에 최신 내용을 다시 읽습니다.</p></div></li>
-          <li><span class="num">05</span><div><strong>프리뷰 복사 동작을 분리했습니다</strong><p>문단을 클릭하면 바로 참고 칩에 추가하고 복사합니다. 드래그로 범위를 잡았을 때만 선택 복사 메뉴가 열립니다.</p></div></li>
-        </ul>
-      </section>
     </div>
   </div>
 
   <div class="page" id="deploy">
-    <span class="kicker">Deploy</span>
-    <h1>배포 &amp; 다운로드</h1>
-    <p class="subtitle">현재 배포된 DocPilot 앱은 <code>v1.0.27</code>입니다. macOS에서는 DMG를 내려받아 기존 앱에 덮어 설치하면 됩니다.</p>
+    <span class="kicker">Install</span>
+    <h1>설치 및 다운로드</h1>
+    <p class="subtitle">현재 배포된 DocPilot 앱은 <code>v1.0.28</code>입니다. macOS에서는 DMG를 내려받아 기존 앱에 덮어 설치하면 됩니다.</p>
     <hr class="divider" />
 
     <div class="subsection">
       <h2>Download</h2>
       <h3><span class="emoji">⬇️</span>최신 macOS DMG</h3>
-      <p>아래 버튼은 GitHub Release의 최신 <code>DocPilot-1.0.27.dmg</code> 자산으로 연결됩니다.</p>
+      <p>현재 버전의 설치 파일명은 <code>DocPilot-1.0.28.dmg</code>입니다. 아래 버튼으로 DMG 파일을 내려받아 설치합니다.</p>
       <div class="deploy-actions">
-        <a href="https://github.com/dotoricode/docpilot/releases/download/v1.0.27/DocPilot-1.0.27.dmg">DocPilot 1.0.27 DMG 다운로드</a>
-        <a class="secondary" href="https://github.com/dotoricode/docpilot/releases/tag/v1.0.27">GitHub Release 보기</a>
+        <a href="https://github.com/dotoricode/docpilot/releases/download/v1.0.28/DocPilot-1.0.28.dmg">DocPilot 1.0.28 DMG 다운로드</a>
       </div>
     </div>
 
@@ -742,23 +921,11 @@
       <h2>Install</h2>
       <h3><span class="emoji">🧩</span>설치 방법</h3>
       <ol class="steps">
-        <li><code>DocPilot-1.0.27.dmg</code>를 내려받는다</li>
-        <li>DMG를 열고 <strong>DocPilot.app</strong>을 Applications 폴더로 드래그한다</li>
-        <li>기존 앱이 있으면 대체 설치한다</li>
-        <li>앱을 다시 열면 v1.0.27 개선사항 안내가 처음 한 번 표시된다</li>
+        <li><code>DocPilot-1.0.28.dmg</code>를 내려받는다</li>
+        <li>다운로드한 DMG 파일을 더블클릭해 실행한다</li>
+        <li>설치 창에서 <strong>DocPilot.app</strong>을 Applications 폴더로 옮긴다. 기존 앱이 있으면 대체 설치한다</li>
+        <li>앱을 다시 열면 v1.0.28 개선사항 안내가 처음 한 번 표시된다</li>
       </ol>
-    </div>
-
-    <div class="subsection">
-      <h2>Release Assets</h2>
-      <h3><span class="emoji">📦</span>배포 자산</h3>
-      <ul class="deploy-meta">
-        <li><strong>Version</strong><span>1.0.27</span></li>
-        <li><strong>DMG</strong><a href="https://github.com/dotoricode/docpilot/releases/download/v1.0.27/DocPilot-1.0.27.dmg">DocPilot-1.0.27.dmg</a></li>
-        <li><strong>Blockmap</strong><a href="https://github.com/dotoricode/docpilot/releases/download/v1.0.27/DocPilot-1.0.27.dmg.blockmap">DocPilot-1.0.27.dmg.blockmap</a></li>
-        <li><strong>Update YAML</strong><a href="https://github.com/dotoricode/docpilot/releases/download/v1.0.27/latest-mac.yml">latest-mac.yml</a></li>
-        <li><strong>Release</strong><a href="https://github.com/dotoricode/docpilot/releases/tag/v1.0.27">github.com/dotoricode/docpilot/releases/tag/v1.0.27</a></li>
-      </ul>
     </div>
 
     <div class="callout">
@@ -766,16 +933,50 @@
     </div>
   </div>
 
+  <div class="page" id="quick-start">
+    <span class="kicker">Quick Start</span>
+    <h1>빠른 시작</h1>
+    <p class="subtitle">처음 실행한 뒤 문서 폴더를 열고, 파일을 고치고, 필요한 참고 내용을 Agent에게 넘기는 기본 루프입니다.</p>
+    <hr class="divider" />
+
+    <div class="subsection">
+      <h2>Start</h2>
+      <h3><span class="emoji">🚀</span>첫 작업 흐름</h3>
+      <ol class="steps">
+        <li><a data-target="s1">작업공간 열기</a>에서 로컬 문서 폴더를 선택한다</li>
+        <li><a data-target="s2">파일 탐색과 관리</a>에서 수정할 문서를 연다</li>
+        <li><a data-target="s3">편집과 미리보기</a>에서 내용을 고치고 <code>⌘ + S</code> / <code>Ctrl + S</code>로 저장한다</li>
+        <li>검토가 필요하면 <a data-target="diff-compare">Diff와 변경 비교</a>로 바뀐 부분을 확인한다</li>
+        <li>Agent에게 넘길 근거는 <a data-target="s4">참고 내용 복사</a>에서 클릭하거나 드래그해 복사한다</li>
+      </ol>
+    </div>
+
+    <div class="subsection">
+      <h2>핵심 단축키</h2>
+      <ul class="feature-points">
+        <li><code>⌘ + S</code> / <code>Ctrl + S</code> — 현재 파일 저장</li>
+        <li><code>⌘ + P</code> / <code>Ctrl + P</code> — 빠른 파일 이동</li>
+        <li><code>⌘ + Shift + P</code> / <code>Ctrl + Shift + P</code> — 명령 팔레트 열기</li>
+        <li><code>⌘ + F</code> / <code>Ctrl + F</code> — 현재 보기에서 검색</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h2>권장 루프</h2>
+      <p>큰 문서를 한 번에 처리하기보다 파일을 열고, 짧게 고치고, 저장하고, Diff로 확인하는 순서로 반복합니다. Agent에게 요청할 때는 필요한 문단만 복사해 파일 경로와 라인 번호가 함께 전달되게 합니다.</p>
+    </div>
+  </div>
+
   <div class="page" id="s1">
-    <span class="kicker">Getting Started</span>
-    <h1>폴더 열기 &amp; <code>편집 → 저장</code> 워크플로우</h1>
-    <p class="subtitle">문서 폴더를 선택하는 순간부터 저장까지 이어지는 전체 흐름을 정리합니다.</p>
+    <span class="kicker">Workspace</span>
+    <h1>작업공간 열기</h1>
+    <p class="subtitle">DocPilot은 사용자가 선택한 로컬 폴더를 작업공간 기준 경로로 삼고, 그 안의 문서를 탐색·편집합니다.</p>
     <hr class="divider" />
 
     <div class="subsection">
       <h2>Start</h2>
       <h3><span class="emoji">📂</span>폴더 열기</h3>
-      <p>시작 화면에서 로컬 문서 폴더를 선택하면 나머지는 자동으로 이어집니다.</p>
+      <p>시작 화면에서 로컬 문서 폴더를 선택하면 파일 트리와 편집 화면이 해당 폴더 기준으로 열립니다.</p>
       <figure class="shot compact">
         <img src="assets/manual/start-screen.png" alt="DocPilot 시작 화면, 최근 폴더 목록과 폴더 열기 버튼" loading="lazy" />
         <figcaption>시작 화면 — 최근 폴더 목록 + 폴더 열기</figcaption>
@@ -790,7 +991,7 @@
 
     <div class="subsection">
       <h2>산출물</h2>
-      <h3><span class="emoji">📌</span>폴더를 열면 만들어지는 것</h3>
+      <h3><span class="emoji">📌</span>폴더를 열면 정해지는 것</h3>
       <ul class="feature-points">
         <li><strong>workspace root.</strong> 선택한 폴더 경로가 이후 모든 파일 조회의 기준이 된다.</li>
         <li><strong>최근 작업공간 기록.</strong> 연 폴더가 시작 화면의 최근 폴더 목록에 자동으로 남는다.</li>
@@ -805,27 +1006,15 @@
     </div>
 
     <div class="subsection">
-      <h2>권장 루프</h2>
-      <h3><span class="emoji">🔁</span>편집 사이클</h3>
-      <p>파일을 열고 고치고 저장하는 흐름은 짧게 반복됩니다.</p>
-      <ol class="steps">
-        <li>파일 트리에서 문서를 연다</li>
-        <li>CodeMirror 에디터에서 수정한다</li>
-        <li><code>⌘S</code> / <code>Ctrl+S</code>로 저장한다 (수정 상태일 때만 동작)</li>
-        <li>프리뷰에서 렌더링 결과를 확인하고 필요하면 다시 수정한다</li>
-      </ol>
-    </div>
-
-    <div class="subsection">
       <h2>실제 사례</h2>
-      <h3><span class="emoji">💡</span>새 문서를 만들어 저장하기</h3>
-      <p>파일 트리를 우클릭해 <strong>파일 만들기</strong>로 새 문서를 추가하고, 내용을 작성한 뒤 <code>⌘S</code>로 저장하면 즉시 디스크에 반영됩니다. 저장 전 상태는 상단에 "저장 안 됨"으로 표시됩니다.</p>
+      <h3><span class="emoji">💡</span>다른 작업공간으로 바꾸기</h3>
+      <p>다른 문서 묶음을 작업하려면 홈으로 돌아가 새 폴더를 열면 됩니다. 새 창에서 다른 폴더를 열어도 기존 창의 작업공간은 유지됩니다.</p>
     </div>
   </div>
 
   <div class="page" id="s2">
-    <span class="kicker">Getting Started</span>
-    <h1>파일 트리</h1>
+    <span class="kicker">Workspace</span>
+    <h1>파일 탐색과 관리</h1>
     <p class="subtitle">Workspace Sidebar는 선택한 폴더 하위의 문서를 트리 구조로 보여줍니다. Markdown, JSON, JavaScript, YAML 파일은 확장자에 맞는 아이콘으로 구분됩니다.</p>
     <hr class="divider" />
 
@@ -871,21 +1060,46 @@
     </div>
 
     <div class="subsection">
-      <h2>산출물</h2>
-      <h3><span class="emoji">🕒</span>최근 폴더</h3>
-      <p>최근에 열었던 작업 폴더 목록을 기록해 다음 실행 때 바로 이어서 작업할 수 있습니다.</p>
-    </div>
-
-    <div class="subsection">
       <h2>실제 사례</h2>
       <h3><span class="emoji">💡</span>새 폴더를 만들고 문서를 정리하기</h3>
       <p>빈 영역을 우클릭해 <strong>폴더 만들기</strong>로 하위 폴더를 만들면 예시 문서가 함께 만들어져 트리에 바로 표시됩니다. 그 폴더를 다시 우클릭해 <strong>파일 만들기</strong>로 문서를 추가합니다. 이름을 입력하지 않고 다른 곳을 클릭하거나 <code>Esc</code>를 누르면 생성 전 상태로 돌아갑니다.</p>
     </div>
   </div>
 
+  <div class="page" id="workspace-recent">
+    <span class="kicker">Workspace</span>
+    <h1>최근 폴더와 추가 폴더</h1>
+    <p class="subtitle">자주 여는 문서 폴더를 빠르게 다시 열고, 필요하면 현재 작업공간에 다른 폴더를 추가해 함께 탐색합니다.</p>
+    <hr class="divider" />
+
+    <div class="subsection">
+      <h2>최근 폴더</h2>
+      <h3><span class="emoji">🕒</span>다시 이어서 작업하기</h3>
+      <p>DocPilot은 최근에 열었던 작업 폴더 목록을 시작 화면에 보여줍니다. 같은 문서 묶음을 다시 작업할 때는 폴더 선택 대화상자를 거치지 않고 최근 목록에서 바로 열 수 있습니다.</p>
+      <ul class="feature-points">
+        <li>폴더를 열면 최근 작업공간 목록에 자동으로 기록된다</li>
+        <li>좌측 상단 DocPilot 로고로 홈에 돌아가도 작업 폴더 연결은 유지된다</li>
+        <li>저장되지 않은 변경사항이 있으면 홈 이동을 막고 먼저 저장하도록 안내한다</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h2>추가 폴더</h2>
+      <h3><span class="emoji">➕</span>현재 작업공간 확장</h3>
+      <p>파일 트리의 빈 영역을 우클릭한 뒤 <strong>워크스페이스 추가</strong>를 선택하면 다른 폴더를 함께 탐색할 수 있습니다. 관련 문서가 여러 위치에 나뉘어 있을 때 한 화면에서 파일을 찾는 용도입니다.</p>
+      <div class="callout"><strong>Boundary:</strong> 추가 폴더도 bridge를 통해 읽고 쓰며, 파일 작업은 사용자가 연 작업공간 범위 안에서만 수행됩니다.</div>
+    </div>
+
+    <div class="subsection">
+      <h2>실제 사례</h2>
+      <h3><span class="emoji">💡</span>문서와 참고 자료를 같이 보기</h3>
+      <p>제품 문서 폴더를 기본 작업공간으로 열고, 별도 참고 자료 폴더를 추가합니다. 파일 트리에서 두 위치를 오가며 문서를 열고, 필요한 참고 문단은 <a data-target="s4">참고 내용 복사</a>로 모아 Agent에게 전달합니다.</p>
+    </div>
+  </div>
+
   <div class="page" id="s3">
-    <span class="kicker">Editing</span>
-    <h1>문서 편집기</h1>
+    <span class="kicker">Document Work</span>
+    <h1>편집과 미리보기</h1>
     <p class="subtitle">CodeMirror 6 기반 에디터와 Markdown/JSON 프리뷰를 함께 제공합니다. JavaScript, YAML, 일반 텍스트 파일은 편집 중심으로 다룹니다.</p>
     <hr class="divider" />
 
@@ -905,27 +1119,55 @@
     </div>
 
     <div class="subsection">
-      <h2>탐색</h2>
-      <h3><span class="emoji">🔎</span>빠른 파일 이동 — <code>⌘P</code></h3>
-      <p><code>⌘P</code>(Cmd+P) / <code>Ctrl+P</code>를 누르면 현재 워크스페이스의 파일을 이름으로 바로 찾을 수 있습니다. 최근에 연 파일은 결과 위쪽에 먼저 표시됩니다.</p>
+      <h2>권한/제한</h2>
+      <h3><span class="emoji">⚠️</span>충돌 감지</h3>
+      <div class="callout"><strong>Boundary:</strong> 편집 중인 파일이 외부 프로그램에 의해 바뀌면 자동 덮어쓰지 않고 conflict로 표시한다. 저장 단축키(<code>⌘ + S</code>)는 편집 모드에서 수정된 상태일 때만 동작한다.</div>
+    </div>
+
+    <div class="subsection">
+      <h2>권장 루프</h2>
+      <h3><span class="emoji">⌨️</span>저장과 검색</h3>
+      <ul class="feature-points">
+        <li><code>⌘ + S</code> / <code>Ctrl + S</code> — 현재 파일 저장</li>
+        <li><code>⌘ + F</code> / <code>Ctrl + F</code> — 현재 모드에서 찾기 창 열기</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h2>실제 사례</h2>
+      <h3><span class="emoji">💡</span>새 문서를 만들어 저장하기</h3>
+      <p>파일 트리를 우클릭해 <strong>파일 만들기</strong>로 새 문서를 추가하고, 내용을 작성한 뒤 <code>⌘ + S</code>로 저장하면 즉시 디스크에 반영됩니다. 저장 전 상태는 상단에 "저장 안 됨"으로 표시됩니다.</p>
+    </div>
+  </div>
+
+  <div class="page" id="quick-command">
+    <span class="kicker">Document Work</span>
+    <h1>빠른 이동과 명령 팔레트</h1>
+    <p class="subtitle">파일 이름으로 빠르게 이동하고, 편집기 명령 팔레트에서 들여쓰기 설정과 변환을 실행합니다.</p>
+    <hr class="divider" />
+
+    <div class="subsection">
+      <h2>빠른 이동</h2>
+      <h3><span class="emoji">🔎</span><code>⌘ + P</code>로 파일 열기</h3>
+      <p><code>⌘ + P</code> / <code>Ctrl + P</code>를 누르면 현재 워크스페이스의 파일을 이름으로 바로 찾을 수 있습니다. 최근에 연 파일은 결과 위쪽에 먼저 표시됩니다.</p>
       <table class="dp-table">
         <thead>
           <tr><th>동작</th><th>결과</th></tr>
         </thead>
         <tbody>
-          <tr><td><code>⌘P</code> / <code>Ctrl+P</code></td><td>빠른 파일 이동 창 열기</td></tr>
+          <tr><td><code>⌘ + P</code> / <code>Ctrl + P</code></td><td>빠른 파일 이동 창 열기</td></tr>
           <tr><td>검색어 입력</td><td>파일명과 경로 기준으로 결과 필터링</td></tr>
           <tr><td><code>Enter</code></td><td>선택된 파일 열기</td></tr>
           <tr><td><code>Esc</code></td><td>빠른 이동 창 닫기</td></tr>
         </tbody>
       </table>
-      <div class="callout"><strong>Tip:</strong> 빠른 이동 창이 열린 상태에서 <code>⌘D</code> 또는 <code>⌘⇧D</code>를 누르면 선택된 파일을 바로 분할 영역으로 열 수 있습니다.</div>
+      <div class="callout"><strong>Tip:</strong> 빠른 이동 창이 열린 상태에서 <code>⌘ + D</code> 또는 <code>⌘ + Shift + D</code>를 누르면 선택된 파일을 바로 분할 영역으로 열 수 있습니다.</div>
     </div>
 
     <div class="subsection">
-      <h2>명령</h2>
-      <h3><span class="emoji">⌘</span>명령 팔레트 — <code>⌘⇧P</code></h3>
-      <p><code>⌘⇧P</code>(Cmd+Shift+P) / <code>Ctrl+Shift+P</code>를 누르면 편집기 명령 팔레트가 열립니다. 현재는 들여쓰기 설정과 들여쓰기 변환 명령을 제공합니다.</p>
+      <h2>명령 팔레트</h2>
+      <h3><span class="emoji">⌘</span><code>⌘ + Shift + P</code>로 명령 실행</h3>
+      <p><code>⌘ + Shift + P</code> / <code>Ctrl + Shift + P</code>를 누르면 편집기 명령 팔레트가 열립니다. 현재는 들여쓰기 설정과 들여쓰기 변환 명령을 제공합니다.</p>
       <table class="dp-table">
         <thead>
           <tr><th>명령</th><th>동작</th></tr>
@@ -954,11 +1196,28 @@
         </tbody>
       </table>
     </div>
+  </div>
+
+  <div class="page" id="tabs-split">
+    <span class="kicker">Document Work</span>
+    <h1>탭과 분할 보기</h1>
+    <p class="subtitle">여러 파일을 탭으로 열고, 필요한 경우 두 문서를 좌우 또는 상하로 나란히 봅니다.</p>
+    <hr class="divider" />
 
     <div class="subsection">
-      <h2>비교</h2>
-      <h3><span class="emoji">⚖️</span>분할 보기 옵션</h3>
-      <p>두 번째 문서를 열어 나란히 비교(compare)할 수 있고, 분할 방향을 고를 수 있습니다. 각 분할 영역은 독립된 파일 탭을 가지며, 탭은 같은 영역 안에서 드래그해 순서를 바꿀 수 있습니다.</p>
+      <h2>탭</h2>
+      <h3><span class="emoji">🧩</span>열린 문서 관리</h3>
+      <ul class="feature-points">
+        <li>파일을 열면 현재 pane의 탭으로 추가된다</li>
+        <li>같은 pane 안에서 탭을 드래그해 순서를 바꿀 수 있다</li>
+        <li><code>⌘ + W</code> / <code>Ctrl + W</code>로 현재 열린 페이지를 닫는다. 마지막 페이지이고 분할 상태이면 해당 pane을 닫는다</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h2>분할 보기</h2>
+      <h3><span class="emoji">⚖️</span>두 문서 나란히 보기</h3>
+      <p>두 번째 문서를 열어 나란히 비교(compare)할 수 있고, 분할 방향을 고를 수 있습니다. 각 분할 영역은 독립된 파일 탭을 가집니다.</p>
       <figure class="shot">
         <img src="assets/manual/split-view.png" alt="두 문서를 좌우로 나란히 여는 분할 보기 화면" loading="lazy" />
         <figcaption>분할 보기 — 두 문서 좌우 비교</figcaption>
@@ -970,42 +1229,46 @@
         <tbody>
           <tr><td>가로 분할</td><td>두 문서를 좌우로 나란히 배치</td></tr>
           <tr><td>세로 분할</td><td>두 문서를 위아래로 배치</td></tr>
-          <tr><td><code>⌘D</code> / <code>Ctrl+D</code></td><td>현재 파일 또는 빠른 이동 선택 파일을 좌우 분할로 열기</td></tr>
-          <tr><td><code>⌘⇧D</code> / <code>Ctrl+Shift+D</code></td><td>현재 파일 또는 빠른 이동 선택 파일을 상하 분할로 열기</td></tr>
+          <tr><td><code>⌘ + D</code> / <code>Ctrl + D</code></td><td>현재 파일 또는 빠른 이동 선택 파일을 좌우 분할로 열기</td></tr>
+          <tr><td><code>⌘ + Shift + D</code> / <code>Ctrl + Shift + D</code></td><td>현재 파일 또는 빠른 이동 선택 파일을 상하 분할로 열기</td></tr>
         </tbody>
       </table>
     </div>
+  </div>
+
+  <div class="page" id="diff-compare">
+    <span class="kicker">Document Work</span>
+    <h1>Diff와 변경 비교</h1>
+    <p class="subtitle">편집 중인 문서의 기준 내용과 현재 내용을 비교하고, 변경 위치를 빠르게 찾습니다.</p>
+    <hr class="divider" />
 
     <div class="subsection">
-      <h2>권한/제한</h2>
-      <h3><span class="emoji">⚠️</span>충돌 감지</h3>
-      <div class="callout"><strong>Boundary:</strong> 편집 중인 파일이 외부 프로그램에 의해 바뀌면 자동 덮어쓰지 않고 conflict로 표시한다. 저장 단축키(<code>⌘S</code>)는 편집 모드에서 수정된 상태일 때만 동작한다.</div>
-    </div>
-
-    <div class="subsection">
-      <h2>권장 루프</h2>
-      <h3><span class="emoji">⌨️</span>단축키</h3>
+      <h2>Diff 보기</h2>
+      <h3><span class="emoji">🔍</span>바뀐 부분만 확인</h3>
+      <p>Diff를 켜면 기존 내용과 현재 내용을 비교해 추가·삭제·수정된 부분을 표시합니다. Markdown 프리뷰에서는 문단, 표, 목록 같은 블록 단위로 바뀐 부분을 보기 좋게 보여줍니다.</p>
       <ul class="feature-points">
-        <li><code>⌘S</code> / <code>Ctrl+S</code> — 현재 파일 저장</li>
-        <li><code>⌘F</code> / <code>Ctrl+F</code> — 현재 모드에서 찾기 창 열기</li>
-        <li><code>⌘P</code> / <code>Ctrl+P</code> — 빠른 파일 이동</li>
-        <li><code>⌘⇧P</code> / <code>Ctrl+Shift+P</code> — 명령 팔레트 열기</li>
-        <li><code>⌘D</code> / <code>Ctrl+D</code> — 좌우 분할로 열기</li>
-        <li><code>⌘⇧D</code> / <code>Ctrl+Shift+D</code> — 상하 분할로 열기</li>
-        <li><code>⌘W</code> / <code>Ctrl+W</code> — 현재 열린 페이지 닫기. 마지막 페이지이고 분할 상태이면 해당 pane을 닫기</li>
+        <li>작은 변경은 문서 전체가 아니라 해당 블록 중심으로 표시된다</li>
+        <li>오른쪽 레일의 변경 표시를 보고 긴 문서 안의 변경 위치를 먼저 파악할 수 있다</li>
+        <li>편집 모드에서는 raw diff로 저장 전후 텍스트 차이를 확인한다</li>
       </ul>
     </div>
 
     <div class="subsection">
+      <h2>분할 Diff</h2>
+      <h3><span class="emoji">↔</span>기존/변경 나란히 보기</h3>
+      <p>분할 Diff를 사용하면 기존 내용과 변경 내용을 좌우로 놓고 비교합니다. 긴 문서나 표처럼 앞뒤 문맥이 중요한 파일에서 유용합니다.</p>
+    </div>
+
+    <div class="subsection">
       <h2>실제 사례</h2>
-      <h3><span class="emoji">💡</span>두 문서를 비교하며 편집하기</h3>
-      <p>분할 보기를 켜고 두 번째 문서를 연 뒤, 방향을 가로/세로로 바꿔가며 원본과 새 문서를 나란히 보고 옮겨 적습니다. 편집 중이던 파일에 리뷰 대기 중인 변경이 있으면, diff 토글로 저장 전/후 내용을 바로 비교할 수 있습니다.</p>
+      <h3><span class="emoji">💡</span>저장 전에 검토하기</h3>
+      <p>문서를 수정한 뒤 저장하기 전에 Diff를 켜고 바뀐 부분만 확인합니다. Agent가 바꾼 파일은 <a data-target="change-review">변경사항 검토</a>에서 diff 확인, 병합, 수락 또는 거부 흐름으로 처리합니다.</p>
     </div>
   </div>
 
   <div class="page" id="s4">
     <span class="kicker">Copy &amp; Send</span>
-    <h1>복사해서 <code>Agent</code>에게 전달</h1>
+    <h1>참고 내용 복사</h1>
     <p class="subtitle">프리뷰에서 클릭하거나 드래그하면 파일 위치, 라인 번호, 내용이 함께 클립보드에 복사됩니다. 여기서 말하는 Agent는 터미널에서 따로 띄운 Claude Code나 Codex 같은 외부 CLI 세션입니다 — 앱 내장 기능이 아닙니다.</p>
     <hr class="divider" />
 
@@ -1062,7 +1325,7 @@ Lines: 5-7
 
     <div class="subsection">
       <h2>권한/제한</h2>
-      <div class="callout"><strong>Boundary:</strong> 활성 지침이 하나라도 있으면, 복사되는 텍스트 맨 앞에 "활성 지침을 먼저 확인하고 반영하라"는 안내와 지침 목록이 자동으로 붙는다. 활성 지침이 없으면 본문만 복사된다. 자세한 지침 설정은 <a data-target="s5">지침(Instructions) 관리</a> 참고.</div>
+      <div class="callout"><strong>Boundary:</strong> 활성 지침이 하나라도 있으면, 복사되는 텍스트 맨 앞에 "활성 지침을 먼저 확인하고 반영하라"는 안내와 지침 목록이 자동으로 붙는다. 활성 지침이 없으면 본문만 복사된다. 자세한 지침 설정은 <a data-target="s5">지침과 프리셋</a> 참고.</div>
     </div>
 
     <div class="subsection">
@@ -1074,7 +1337,7 @@ Lines: 5-7
 
   <div class="page" id="s5">
     <span class="kicker">Copy &amp; Send</span>
-    <h1>지침(Instructions) 관리</h1>
+    <h1>지침과 프리셋</h1>
     <p class="subtitle">Agent에게 항상 전달할 규칙을 등록해두면, 복사할 때마다 자동으로 함께 붙습니다.</p>
     <hr class="divider" />
 
@@ -1116,7 +1379,7 @@ Lines: 5-7
       <h3><span class="emoji">🔢</span>활성 지침 표시</h3>
       <ul class="feature-points">
         <li>지침 탭 상단에 <strong>N active</strong>로 현재 켜진 지침 개수가 표시된다</li>
-        <li>켜진 지침은 <a data-target="s4">복사해서 Agent에게 전달</a>할 때마다 텍스트 맨 앞에 이름과 함께 자동으로 나열된다</li>
+        <li>켜진 지침은 <a data-target="s4">참고 내용 복사</a>할 때마다 텍스트 맨 앞에 이름과 함께 자동으로 나열된다</li>
       </ul>
     </div>
 
@@ -1127,9 +1390,45 @@ Lines: 5-7
     </div>
   </div>
 
+  <div class="page" id="change-review">
+    <span class="kicker">Review</span>
+    <h1>변경사항 검토</h1>
+    <p class="subtitle">Agent가 만든 변경이나 디스크에서 감지된 변경을 바로 적용하지 않고, 파일별로 diff를 확인한 뒤 병합·거부·수락합니다.</p>
+    <hr class="divider" />
+
+    <div class="subsection">
+      <h2>Start</h2>
+      <h3><span class="emoji">🔍</span>변경 결과 목록</h3>
+      <p>검토할 파일이 생기면 변경 결과 패널에 파일별 카드가 표시됩니다. 각 카드는 변경 전후 줄 수와 증가·감소량을 보여주며, Agent 변경인지 디스크 변경인지 구분합니다.</p>
+      <ul class="feature-points">
+        <li><strong>diff 뷰로 확인.</strong> 해당 파일을 열고 변경 전 내용을 기준으로 Diff를 켠다</li>
+        <li><strong>직접 병합.</strong> 병합 편집기를 열어 최종 내용을 직접 조정한다</li>
+        <li><strong>병합 저장.</strong> 직접 조정한 내용을 파일에 저장한다</li>
+        <li><strong>거부.</strong> 대기 중인 변경을 적용하지 않고 검토 목록에서 제거한다</li>
+        <li><strong>수락.</strong> 변경된 내용을 그대로 적용한다</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h2>권장 루프</h2>
+      <h3><span class="emoji">✅</span>먼저 보고 결정하기</h3>
+      <ol class="steps">
+        <li><strong>diff 뷰로 확인</strong>으로 변경 범위를 본다</li>
+        <li>그대로 적용해도 되면 <strong>수락</strong>을 누른다</li>
+        <li>일부만 반영해야 하면 <strong>직접 병합</strong>으로 최종 내용을 편집하고 <strong>병합 저장</strong>을 누른다</li>
+        <li>필요 없는 변경이면 <strong>거부</strong>한다</li>
+      </ol>
+    </div>
+
+    <div class="subsection">
+      <h2>권한/제한</h2>
+      <div class="callout"><strong>Boundary:</strong> 외부 변경이나 Agent 변경은 자동으로 기존 파일을 덮어쓰지 않습니다. 사용자가 diff 확인, 병합 저장, 거부, 수락 중 하나를 선택해야 최종 상태가 정해집니다.</div>
+    </div>
+  </div>
+
   <div class="page" id="s6">
     <span class="kicker">Safety</span>
-    <h1>Safety Model</h1>
+    <h1>안전 모델</h1>
     <p class="subtitle">DocPilot은 renderer(React UI)와 파일시스템 접근을 분리해 예기치 않은 파일 손상을 막습니다.</p>
     <hr class="divider" />
 

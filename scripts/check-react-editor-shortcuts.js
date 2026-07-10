@@ -72,7 +72,7 @@ async function main() {
     if (!text.includes('x')) throw new Error(`typed text was not inserted: ${text}`);
     await editor.keyboard.press(`${mod}+Z`);
     text = await editorText(editor);
-    if (text.includes('x')) throw new Error(`Cmd/Ctrl+Z should undo the last insertion, got: ${text}`);
+    if (text.includes('x')) throw new Error(`⌘/Ctrl + Z should undo the last insertion, got: ${text}`);
     await editor.keyboard.press(process.platform === 'darwin' ? `${mod}+Shift+Z` : `${mod}+Y`);
     text = await editorText(editor);
     if (!text.includes('x')) throw new Error(`redo shortcut should restore the insertion, got: ${text}`);

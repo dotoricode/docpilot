@@ -25,6 +25,7 @@ const ptyPath = path.join(
   'pty.node',
 );
 const unpackedBridgePath = path.join(appPath, 'Contents', 'Resources', 'app.asar.unpacked', 'bridge.js');
+const unpackedAdocWorkerPath = path.join(appPath, 'Contents', 'Resources', 'app.asar.unpacked', 'adoc-worker.js');
 const unpackedFakeAgentPath = path.join(appPath, 'Contents', 'Resources', 'app.asar.unpacked', 'scripts', 'fake-agent.js');
 const unpackedContextPolicyPath = path.join(
   appPath,
@@ -111,6 +112,7 @@ async function assertPackagedBridgeStarts() {
   assert(fs.existsSync(asarPath), `app.asar missing: ${asarPath}`);
   assert(fs.existsSync(ptyPath), `node-pty native module missing: ${ptyPath}`);
   assert(fs.existsSync(unpackedBridgePath), `unpacked bridge missing: ${unpackedBridgePath}`);
+  assert(fs.existsSync(unpackedAdocWorkerPath), `unpacked adoc worker missing: ${unpackedAdocWorkerPath}`);
   assert(fs.existsSync(unpackedFakeAgentPath), `unpacked fake agent missing: ${unpackedFakeAgentPath}`);
   assert(fs.existsSync(unpackedContextPolicyPath), `unpacked bridge dependency missing: ${unpackedContextPolicyPath}`);
 
@@ -126,6 +128,7 @@ async function assertPackagedBridgeStarts() {
     '/main.js',
     '/preload.js',
     '/start.html',
+    '/adoc-worker.js',
     '/bridge.js',
     '/prompt-package.js',
     '/dist/renderer/index.html',

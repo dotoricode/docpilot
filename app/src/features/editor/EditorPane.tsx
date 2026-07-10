@@ -33,7 +33,7 @@ import typescript from 'highlight.js/lib/languages/typescript';
 import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
 import { markdownBlockDiffRows, markdownPreviewBlocks } from '../../../../shared/core/markdown-block-diff';
-import { readWorkspaceFileBase } from '../../shared/bridge-client';
+import { bridgeBaseUrl, convertAsciidoc, readWorkspaceFileBase } from '../../shared/bridge-client';
 import { copyTextWithActiveInstructions } from '../../shared/copy-with-instructions';
 import { formatContextLocation } from '../../shared/context-format';
 
@@ -154,6 +154,81 @@ const markdownRenderer = new MarkdownIt({
   typographer: false,
 });
 
+// AsciiDoc conversion runs in bridge.js (Node/CommonJS), not in this
+// renderer: @asciidoctor/core's Opal runtime assumes sloppy-mode execution
+// (it reassigns Function#length and relies on unbound `this`), both of which
+// throw under the strict mode that ES modules force. safe: 'secure' is
+// hardcoded bridge-side — see bridge.js's /adoc-convert handler.
+const ASCIIDOC_PREVIEW_PENDING_HTML = `
+  <div class="docpilot-preview-loading">
+    <p class="docpilot-preview-loading-label">AsciiDoc 미리보기 준비 중…</p>
+    <div class="docpilot-preview-loading-track"><div class="docpilot-preview-loading-bar"></div></div>
+  </div>
+`;
+const ASCIIDOC_PREVIEW_ERROR_HTML = '<p class="docpilot-preview-error">AsciiDoc 렌더링 중 오류가 발생했습니다.</p>';
+const ASCIIDOC_RENDER_CACHE_LIMIT = 8;
+const asciidocRenderCache = new Map<string, string>();
+
+function asciidocPreviewCacheKey(filePath: string, source: string) {
+  return `${filePath}:${source.length}:${fastHashString(source)}`;
+}
+
+function fastHashString(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function getCachedAsciidocHtml(key: string) {
+  const html = asciidocRenderCache.get(key);
+  if (html === undefined) return undefined;
+  asciidocRenderCache.delete(key);
+  asciidocRenderCache.set(key, html);
+  return html;
+}
+
+function setCachedAsciidocHtml(key: string, html: string) {
+  asciidocRenderCache.set(key, html);
+  if (asciidocRenderCache.size > ASCIIDOC_RENDER_CACHE_LIMIT) {
+    const oldestKey = asciidocRenderCache.keys().next().value;
+    if (oldestKey) asciidocRenderCache.delete(oldestKey);
+  }
+}
+
+function normalizeRelativePath(value: string) {
+  const stack: string[] = [];
+  for (const part of value.split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') stack.pop();
+    else stack.push(part);
+  }
+  return stack.join('/');
+}
+
+// Markdown image sources are written relative to the document's own file,
+// same as plain (non-Antora) AsciiDoc — resolve them against a
+// /workspace-asset URL so they load from the actual workspace path instead
+// of the renderer page's own origin.
+function resolveWorkspaceAssetSrc(rawSrc: string, docId: string) {
+  if (/^(https?:|data:|\/\/)/i.test(rawSrc)) return rawSrc;
+  const docDir = docId.includes('/') ? docId.slice(0, docId.lastIndexOf('/')) : '';
+  const resolved = normalizeRelativePath(docDir ? `${docDir}/${rawSrc}` : rawSrc);
+  return `${bridgeBaseUrl()}/workspace-asset?id=${encodeURIComponent(resolved)}`;
+}
+
+const defaultImageRule = markdownRenderer.renderer.rules.image
+  || markdownRenderer.renderer.renderToken.bind(markdownRenderer.renderer);
+markdownRenderer.renderer.rules.image = (tokens, index, options, env, self) => {
+  const token = tokens[index];
+  const src = token.attrGet('src');
+  const docId = (env as { docId?: string } | undefined)?.docId || '';
+  if (src) token.attrSet('src', resolveWorkspaceAssetSrc(src, docId));
+  return defaultImageRule(tokens, index, options, env, self);
+};
+
 markdownRenderer.renderer.rules.fence = (tokens, index) => {
   const token = tokens[index];
   const lineStart = Array.isArray(token.map) ? token.map[0] + 2 : undefined;
@@ -261,32 +336,40 @@ markdownRenderer.core.ruler.after('inline', 'docpilot_semantic_paragraphs', stat
 
 const editorCursorTheme = EditorView.theme({
   '&.cm-editor': {
-    caretColor: '#f4f6f8',
+    caretColor: 'var(--cm-editor-cursor)',
   },
   '.cm-content': {
-    caretColor: '#f4f6f8',
+    caretColor: 'var(--cm-editor-cursor)',
   },
   '.cm-cursor, .cm-dropCursor': {
-    borderLeftColor: '#f4f6f8',
+    borderLeftColor: 'var(--cm-editor-cursor)',
     borderLeftWidth: '2px',
   },
   '.cm-activeLine': {
-    backgroundColor: 'rgba(87, 193, 255, 0.10)',
+    backgroundColor: 'var(--cm-editor-line-highlight)',
   },
   '.cm-focused .cm-activeLine': {
-    backgroundColor: 'rgba(87, 193, 255, 0.16)',
+    backgroundColor: 'var(--cm-editor-line-highlight)',
   },
 });
 
 const editorSyntaxHighlighting = syntaxHighlighting(HighlightStyle.define([
+  { tag: [syntaxTags.heading, syntaxTags.heading1, syntaxTags.heading2, syntaxTags.heading3, syntaxTags.heading4, syntaxTags.heading5, syntaxTags.heading6], color: 'var(--cm-syntax-heading)', fontWeight: '780' },
+  { tag: syntaxTags.strong, color: 'var(--cm-syntax-strong)', fontWeight: '780' },
+  { tag: syntaxTags.emphasis, color: 'var(--cm-syntax-emphasis)', fontStyle: 'italic' },
+  { tag: [syntaxTags.link, syntaxTags.url], color: 'var(--cm-syntax-link)' },
+  { tag: syntaxTags.monospace, color: 'var(--cm-syntax-inline-code)' },
+  { tag: syntaxTags.quote, color: 'var(--cm-syntax-quote)' },
+  { tag: syntaxTags.list, color: 'var(--cm-syntax-list)' },
+  { tag: syntaxTags.contentSeparator, color: 'var(--cm-syntax-punctuation)' },
   { tag: [syntaxTags.keyword, syntaxTags.operatorKeyword, syntaxTags.modifier], color: 'var(--cm-syntax-keyword)' },
   { tag: [syntaxTags.atom, syntaxTags.bool, syntaxTags.null, syntaxTags.number, syntaxTags.integer, syntaxTags.float], color: 'var(--cm-syntax-constant)' },
   { tag: [syntaxTags.string, syntaxTags.special(syntaxTags.string), syntaxTags.regexp], color: 'var(--cm-syntax-string)' },
   { tag: [syntaxTags.comment, syntaxTags.lineComment, syntaxTags.blockComment], color: 'var(--cm-syntax-comment)', fontStyle: 'italic' },
   { tag: [syntaxTags.definition(syntaxTags.variableName), syntaxTags.function(syntaxTags.variableName), syntaxTags.function(syntaxTags.propertyName)], color: 'var(--cm-syntax-function)' },
   { tag: [syntaxTags.variableName, syntaxTags.self, syntaxTags.standard(syntaxTags.variableName)], color: 'var(--cm-syntax-variable)' },
-  { tag: [syntaxTags.propertyName, syntaxTags.attributeName], color: 'var(--cm-syntax-property)' },
-  { tag: [syntaxTags.typeName, syntaxTags.className, syntaxTags.namespace], color: 'var(--cm-syntax-type)' },
+  { tag: [syntaxTags.propertyName, syntaxTags.attributeName, syntaxTags.labelName], color: 'var(--cm-syntax-property)' },
+  { tag: [syntaxTags.typeName, syntaxTags.className, syntaxTags.namespace, syntaxTags.definition(syntaxTags.typeName)], color: 'var(--cm-syntax-type)' },
   { tag: [syntaxTags.operator, syntaxTags.punctuation, syntaxTags.separator, syntaxTags.bracket], color: 'var(--cm-syntax-punctuation)' },
   { tag: syntaxTags.invalid, color: 'var(--cm-syntax-invalid)', textDecoration: 'underline wavy var(--cm-syntax-invalid)' },
 ]), { fallback: true });
@@ -317,8 +400,15 @@ export function EditorPane({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLElement | null>(null);
   const secondaryPreviewRef = useRef<HTMLElement | null>(null);
+  const tocRef = useRef<HTMLElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const activePreviewPaneRef = useRef<'primary' | 'secondary'>(activePreviewPane);
+  const activeHeadingFrameRef = useRef<number | null>(null);
+  const activeHeadingScrollFrameRef = useRef<number | null>(null);
+  const activeHeadingScrollIdleRef = useRef<number | null>(null);
+  const activeHeadingLastUpdateRef = useRef(0);
+  const shouldScrollTocActiveRef = useRef(false);
+  const headingOffsetsRef = useRef<number[]>([]);
   const rangeSelectionHandledRef = useRef(false);
   const lastExternalDocRef = useRef('');
   const pathRef = useRef(buffer.path);
@@ -351,14 +441,19 @@ export function EditorPane({
   const [previewFindMatchCount, setPreviewFindMatchCount] = useState(0);
   const [previewFindScrollVersion, setPreviewFindScrollVersion] = useState(0);
   const [previewSplitRatio, setPreviewSplitRatio] = useState(0.5);
+  const [asciidocResult, setAsciidocResult] = useState<{ key: string; html: string } | null>(null);
+  const [secondaryAsciidocResult, setSecondaryAsciidocResult] = useState<{ key: string; html: string } | null>(null);
 
   const visibleContent = buffer.path ? buffer.editorContent : emptyDocument;
   const secondaryVisibleContent = secondaryBuffer?.path ? secondaryBuffer.editorContent : '';
   const canPreviewBody = isPreviewableFile(buffer.path);
   const canPreviewSecondaryBody = isPreviewableFile(secondaryBuffer?.path || '');
   const markdownPreviewBody = isMarkdownPreviewFile(buffer.path);
+  const primaryIsAsciidoc = isAsciidocPreviewFile(buffer.path);
+  const secondaryIsAsciidoc = isAsciidocPreviewFile(secondaryBuffer?.path || '');
   const previewAsSource = isSourcePreviewFile(buffer.path);
   const secondaryPreviewAsSource = isSourcePreviewFile(secondaryBuffer?.path || '');
+
   const frontmatter = useMemo(() => markdownPreviewBody ? parseFrontmatter(visibleContent) : { entries: [], body: visibleContent }, [markdownPreviewBody, visibleContent]);
   const secondaryFrontmatter = useMemo(
     () => isMarkdownPreviewFile(secondaryBuffer?.path || '') ? parseFrontmatter(secondaryVisibleContent) : { entries: [], body: secondaryVisibleContent },
@@ -366,15 +461,74 @@ export function EditorPane({
   );
   const previewSource = previewAsSource ? visibleContent : frontmatter.body || visibleContent;
   const secondaryPreviewSource = secondaryPreviewAsSource ? secondaryVisibleContent : secondaryFrontmatter.body || secondaryVisibleContent;
-  const previewHtml = useMemo(
-    () => renderPreviewHtml(previewSource, buffer.path),
-    [previewSource, buffer.path],
-  );
-  const secondaryPreviewHtml = useMemo(
-    () => renderPreviewHtml(secondaryPreviewSource, secondaryBuffer?.path || ''),
-    [secondaryPreviewSource, secondaryBuffer?.path],
-  );
-  const headings = useMemo(() => markdownPreviewBody ? parseHeadings(previewSource) : [], [markdownPreviewBody, previewSource]);
+
+  useEffect(() => {
+    if (!primaryIsAsciidoc) return;
+    const key = asciidocPreviewCacheKey(buffer.path, previewSource);
+    if (asciidocResult?.key === key) return;
+    const cachedHtml = getCachedAsciidocHtml(key);
+    if (cachedHtml !== undefined) {
+      setAsciidocResult({ key, html: cachedHtml });
+      return;
+    }
+    let cancelled = false;
+    convertAsciidoc(previewSource, buffer.path)
+      .then(result => {
+        setCachedAsciidocHtml(key, result.html);
+        if (!cancelled) setAsciidocResult({ key, html: result.html });
+      })
+      .catch(error => {
+        console.error('AsciiDoc render failed', error);
+        if (!cancelled) setAsciidocResult({ key, html: ASCIIDOC_PREVIEW_ERROR_HTML });
+      });
+    return () => { cancelled = true; };
+  }, [primaryIsAsciidoc, buffer.path, previewSource, asciidocResult]);
+
+  useEffect(() => {
+    if (!secondaryIsAsciidoc) return;
+    const key = asciidocPreviewCacheKey(secondaryBuffer?.path || '', secondaryPreviewSource);
+    if (secondaryAsciidocResult?.key === key) return;
+    const cachedHtml = getCachedAsciidocHtml(key);
+    if (cachedHtml !== undefined) {
+      setSecondaryAsciidocResult({ key, html: cachedHtml });
+      return;
+    }
+    let cancelled = false;
+    convertAsciidoc(secondaryPreviewSource, secondaryBuffer?.path || '')
+      .then(result => {
+        setCachedAsciidocHtml(key, result.html);
+        if (!cancelled) setSecondaryAsciidocResult({ key, html: result.html });
+      })
+      .catch(error => {
+        console.error('AsciiDoc render failed', error);
+        if (!cancelled) setSecondaryAsciidocResult({ key, html: ASCIIDOC_PREVIEW_ERROR_HTML });
+      });
+    return () => { cancelled = true; };
+  }, [secondaryIsAsciidoc, secondaryBuffer?.path, secondaryPreviewSource, secondaryAsciidocResult]);
+
+  const previewHtml = useMemo(() => {
+    if (primaryIsAsciidoc) {
+      const key = asciidocPreviewCacheKey(buffer.path, previewSource);
+      return asciidocResult?.key === key
+        ? asciidocResult.html
+        : getCachedAsciidocHtml(key) ?? ASCIIDOC_PREVIEW_PENDING_HTML;
+    }
+    return renderPreviewHtml(previewSource, buffer.path);
+  }, [primaryIsAsciidoc, asciidocResult, previewSource, buffer.path]);
+  const secondaryPreviewHtml = useMemo(() => {
+    if (secondaryIsAsciidoc) {
+      const key = asciidocPreviewCacheKey(secondaryBuffer?.path || '', secondaryPreviewSource);
+      return secondaryAsciidocResult?.key === key
+        ? secondaryAsciidocResult.html
+        : getCachedAsciidocHtml(key) ?? ASCIIDOC_PREVIEW_PENDING_HTML;
+    }
+    return renderPreviewHtml(secondaryPreviewSource, secondaryBuffer?.path || '');
+  }, [secondaryIsAsciidoc, secondaryAsciidocResult, secondaryPreviewSource, secondaryBuffer?.path]);
+  const headings = useMemo(() => {
+    if (markdownPreviewBody) return parseHeadings(previewSource);
+    if (primaryIsAsciidoc) return parseHeadingsFromHtml(previewHtml, previewSource);
+    return [];
+  }, [markdownPreviewBody, previewSource, primaryIsAsciidoc, previewHtml]);
   const diffRows = useMemo(() => markdownBlockDiffRows(baseContent, visibleContent), [baseContent, visibleContent]);
   const compareOn = Boolean(secondaryBuffer?.path) && canPreviewBody && canPreviewSecondaryBody && !diffOn && mode !== 'edit';
   const previewCompareStyle = {
@@ -431,6 +585,46 @@ export function EditorPane({
     const timer = window.setTimeout(() => setCopyFeedback(''), 1400);
     return () => window.clearTimeout(timer);
   }, [copyFeedback]);
+
+  useEffect(() => {
+    return () => {
+      if (activeHeadingFrameRef.current !== null) {
+        window.cancelAnimationFrame(activeHeadingFrameRef.current);
+        activeHeadingFrameRef.current = null;
+      }
+      if (activeHeadingScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(activeHeadingScrollFrameRef.current);
+        activeHeadingScrollFrameRef.current = null;
+      }
+      if (activeHeadingScrollIdleRef.current !== null) {
+        window.clearTimeout(activeHeadingScrollIdleRef.current);
+        activeHeadingScrollIdleRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const scheduleRefresh = () => {
+      if (activeHeadingFrameRef.current !== null) window.cancelAnimationFrame(activeHeadingFrameRef.current);
+      activeHeadingFrameRef.current = window.requestAnimationFrame(() => {
+        activeHeadingFrameRef.current = null;
+        cachePreviewHeadingOffsets();
+        updateActiveHeading();
+      });
+    };
+    scheduleRefresh();
+    const preview = previewRef.current;
+    preview?.addEventListener('load', scheduleRefresh, true);
+    window.addEventListener('resize', scheduleRefresh);
+    return () => {
+      preview?.removeEventListener('load', scheduleRefresh, true);
+      window.removeEventListener('resize', scheduleRefresh);
+      if (activeHeadingFrameRef.current !== null) {
+        window.cancelAnimationFrame(activeHeadingFrameRef.current);
+        activeHeadingFrameRef.current = null;
+      }
+    };
+  }, [previewHtml, headings.length, previewWidth]);
 
   useEffect(() => {
     if (!previewFindOpen) return undefined;
@@ -615,20 +809,12 @@ export function EditorPane({
     block?.classList.add('preview-picked');
   }, [previewHtml, selectedPreviewIndex]);
 
-  useLayoutEffect(() => {
-    annotatePreviewLineNumbers(previewRef.current, previewSource);
-    const frame = window.requestAnimationFrame(() => {
-      annotatePreviewLineNumbers(previewRef.current, previewSource);
-    });
-    return () => window.cancelAnimationFrame(frame);
+  useEffect(() => {
+    return schedulePreviewLineNumbers(previewRef.current, previewSource);
   }, [previewHtml, previewSource, compareOn]);
 
-  useLayoutEffect(() => {
-    annotatePreviewLineNumbers(secondaryPreviewRef.current, secondaryPreviewSource);
-    const frame = window.requestAnimationFrame(() => {
-      annotatePreviewLineNumbers(secondaryPreviewRef.current, secondaryPreviewSource);
-    });
-    return () => window.cancelAnimationFrame(frame);
+  useEffect(() => {
+    return schedulePreviewLineNumbers(secondaryPreviewRef.current, secondaryPreviewSource);
   }, [secondaryPreviewHtml, secondaryPreviewSource, compareOn]);
 
   useLayoutEffect(() => {
@@ -661,6 +847,13 @@ export function EditorPane({
     setWholeDocumentSelected(false);
     setPreviewCopyTarget(null);
   }, [buffer.path, previewHtml]);
+
+  useEffect(() => {
+    if (!shouldScrollTocActiveRef.current) return;
+    shouldScrollTocActiveRef.current = false;
+    const activeItem = tocRef.current?.querySelector<HTMLElement>('.toc-item[data-active="true"]');
+    activeItem?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [activeHeadingIndex]);
 
   useEffect(() => {
     if (!previewCopyTarget) return undefined;
@@ -712,23 +905,57 @@ export function EditorPane({
     if (preview && heading instanceof HTMLElement) {
       preview.scrollTo({ top: Math.max(0, heading.offsetTop - 28), behavior: 'smooth' });
     }
+    shouldScrollTocActiveRef.current = index !== activeHeadingIndex;
     setActiveHeadingIndex(index);
   }
 
   function syncActiveHeading() {
     if (diffOn) return;
     const preview = previewRef.current;
+    preview?.classList.add('is-scrolling');
+    if (activeHeadingScrollIdleRef.current !== null) {
+      window.clearTimeout(activeHeadingScrollIdleRef.current);
+    }
+    activeHeadingScrollIdleRef.current = window.setTimeout(() => {
+      activeHeadingScrollIdleRef.current = null;
+      previewRef.current?.classList.remove('is-scrolling');
+      activeHeadingLastUpdateRef.current = performance.now();
+      updateActiveHeading();
+    }, 120);
+    if (activeHeadingScrollFrameRef.current !== null) return;
+    activeHeadingScrollFrameRef.current = window.requestAnimationFrame(() => {
+      activeHeadingScrollFrameRef.current = null;
+      const now = performance.now();
+      if (now - activeHeadingLastUpdateRef.current < 120) return;
+      activeHeadingLastUpdateRef.current = now;
+      updateActiveHeading();
+    });
+  }
+
+  function cachePreviewHeadingOffsets() {
+    const preview = previewRef.current;
+    if (!preview) {
+      headingOffsetsRef.current = [];
+      return;
+    }
+    headingOffsetsRef.current = Array.from(preview.querySelectorAll('h1,h2,h3,h4,h5,h6'))
+      .map(heading => heading instanceof HTMLElement ? heading.offsetTop : 0);
+  }
+
+  function updateActiveHeading() {
+    const preview = previewRef.current;
     if (!preview) return;
-    const headingNodes = Array.from(preview.querySelectorAll('h1,h2,h3,h4,h5,h6'));
-    if (!headingNodes.length) {
+    let headingOffsets = headingOffsetsRef.current;
+    if (!headingOffsets.length && headings.length) {
+      cachePreviewHeadingOffsets();
+      headingOffsets = headingOffsetsRef.current;
+    }
+    if (!headingOffsets.length) {
       setActiveHeadingIndex(0);
       return;
     }
-    const previewTop = preview.getBoundingClientRect().top;
-    let nextIndex = 0;
-    headingNodes.forEach((heading, index) => {
-      if (heading.getBoundingClientRect().top - previewTop <= 96) nextIndex = index;
-    });
+    const threshold = preview.scrollTop + 96;
+    const nextIndex = headingIndexForScrollTop(headingOffsets, threshold);
     setActiveHeadingIndex(current => current === nextIndex ? current : nextIndex);
   }
 
@@ -744,13 +971,9 @@ export function EditorPane({
 
     if (compareOn && secondary) {
       if (targetPreview === primary) {
-        event.preventDefault();
-        primary.scrollTop += scrollAmount;
         return;
       }
       if (targetPreview === secondary) {
-        event.preventDefault();
-        secondary.scrollTop += scrollAmount;
         return;
       }
       const targetPane = target?.closest('.preview-compare-pane');
@@ -766,6 +989,8 @@ export function EditorPane({
       return;
     }
 
+    if (targetPreview === primary) return;
+    if (target?.closest('.toc-rail, .document-context-rail, .preview-find-bar, .preview-copy-popover')) return;
     event.preventDefault();
     primary.scrollTop += scrollAmount;
   }
@@ -988,8 +1213,8 @@ export function EditorPane({
     const preview = previewRef.current;
     if (!preview) return 1;
     const blocks = Array.from(preview.querySelectorAll<HTMLElement>('[data-line-start]'));
-    if (!blocks.length) return 1;
     const previewTop = preview.getBoundingClientRect().top;
+    if (!blocks.length) return currentPreviewHeadingLine(preview, previewTop);
     let bestLine = Number(blocks[0].dataset.lineStart || 1);
     let bestDistance = Number.POSITIVE_INFINITY;
     for (const block of blocks) {
@@ -1002,6 +1227,20 @@ export function EditorPane({
       }
     }
     return bestLine;
+  }
+
+  function currentPreviewHeadingLine(preview: HTMLElement, previewTop: number) {
+    const renderedHeadings = Array.from(preview.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6'));
+    if (!renderedHeadings.length || !headings.length) return 1;
+    let bestIndex = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    renderedHeadings.forEach((heading, index) => {
+      const distance = Math.abs(heading.getBoundingClientRect().top - previewTop - 24);
+      if (distance >= bestDistance) return;
+      bestIndex = index;
+      bestDistance = distance;
+    });
+    return Math.max(1, (headings[bestIndex]?.line ?? 0) + 1);
   }
 
   function scrollEditorToLine(lineNumber: number) {
@@ -1024,8 +1263,24 @@ export function EditorPane({
       const end = Number(block.dataset.lineEnd || start);
       return start <= lineNumber && end >= lineNumber;
     }) || blocks.find(block => Number(block.dataset.lineStart || 0) >= lineNumber) || blocks[0];
-    if (!target) return;
+    if (!target) {
+      scrollPreviewToHeadingLine(lineNumber);
+      return;
+    }
     preview.scrollTo({ top: Math.max(0, target.offsetTop - 28), behavior: 'auto' });
+  }
+
+  function scrollPreviewToHeadingLine(lineNumber: number) {
+    const preview = previewRef.current;
+    if (!preview || !headings.length) return;
+    let targetIndex = 0;
+    for (let index = 0; index < headings.length; index += 1) {
+      if (headings[index].line + 1 > lineNumber) break;
+      targetIndex = index;
+    }
+    const heading = preview.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')[targetIndex];
+    if (!heading) return;
+    preview.scrollTo({ top: Math.max(0, heading.offsetTop - 28), behavior: 'auto' });
   }
 
   function startPreviewSplitResize(event: MouseEvent<HTMLButtonElement>) {
@@ -1085,8 +1340,8 @@ export function EditorPane({
   return (
     <section className="editor-pane">
       {commandPaletteOpen ? (
-        <div className="command-palette-overlay" role="dialog" aria-modal="true" aria-label="명령 팔레트">
-          <div className="command-palette-panel">
+        <div className="command-palette-overlay" role="dialog" aria-modal="true" aria-label="명령 팔레트" onClick={closeCommandPalette}>
+          <div className="command-palette-panel" onClick={event => event.stopPropagation()}>
             <input
               autoFocus
               value={commandQuery}
@@ -1330,7 +1585,7 @@ export function EditorPane({
           ) : (
             <>
               {mode !== 'edit' ? (
-                <nav className={`toc-rail ${headings.length ? '' : 'empty'}`} aria-label="문서 목차">
+                <nav ref={tocRef} className={`toc-rail ${headings.length ? '' : 'empty'}`} aria-label="문서 목차">
                   {headings.length ? headings.map((heading, index) => (
                     <button
                       className={`toc-item toc-h${heading.level}`}
@@ -1391,10 +1646,17 @@ export function EditorPane({
   );
 }
 
-function previewTextRangeForElement(source: string, text: string, target: HTMLElement, blocks: Element[], index: number) {
-  const blockText = target.innerText.trim();
-  const occurrence = blocks.slice(0, Math.max(index, 0))
-    .filter(block => block instanceof HTMLElement && block.innerText.trim() === blockText)
+function previewTextRangeForElement(
+  source: string,
+  text: string,
+  target: HTMLElement,
+  blocks: Element[],
+  index: number,
+  knownOccurrence?: number,
+) {
+  const blockText = target.textContent?.trim() ?? '';
+  const occurrence = knownOccurrence ?? blocks.slice(0, Math.max(index, 0))
+    .filter(block => block instanceof HTMLElement && block.textContent?.trim() === blockText)
     .length;
   const blockRange = findTextRange(source, blockText, occurrence);
   if (text === blockText) return blockRange;
@@ -1405,33 +1667,169 @@ function previewTextRangeForElement(source: string, text: string, target: HTMLEl
   return findTextRange(source, text);
 }
 
-function annotatePreviewLineNumbers(preview: HTMLElement | null, source: string) {
-  if (!preview || !source) return;
+type PreviewLineAnnotationState = {
+  source: string;
+  lineStarts: number[];
+  sourceIndex: ReturnType<typeof buildSearchIndex>;
+  occurrenceCounts: Map<string, number>;
+  cursor: number;
+};
+
+function schedulePreviewLineNumbers(preview: HTMLElement | null, source: string) {
+  if (!preview || !source) return undefined;
+  if (preview.querySelector('.docpilot-preview-loading')) return undefined;
   const blocks = previewBlocks(preview);
-  blocks.forEach((block, index) => {
-    const element = block instanceof HTMLElement ? block : null;
-    if (!element) return;
-    if (element.matches('pre.code-block') && element.dataset.lineStart && element.dataset.lineEnd) {
-      const start = Number(element.dataset.lineStart);
-      const end = Number(element.dataset.lineEnd);
-      if (Number.isFinite(start) && Number.isFinite(end) && start > 0 && end >= start) {
-        element.dataset.lineLabel = start === end ? String(start) : `${start}-${end}`;
-        return;
-      }
-    }
-    const text = element.innerText.trim();
-    if (!text) {
-      delete element.dataset.lineLabel;
-      delete element.dataset.lineStart;
-      delete element.dataset.lineEnd;
+  if (!blocks.length) return undefined;
+
+  let cancelled = false;
+  let timer = 0;
+  let idleHandle = 0;
+  let index = 0;
+  const state: PreviewLineAnnotationState = {
+    source,
+    lineStarts: buildLineStartOffsets(source),
+    sourceIndex: buildSearchIndex(source, 0),
+    occurrenceCounts: new Map<string, number>(),
+    cursor: 0,
+  };
+
+  const schedule = () => {
+    const idleScheduler = window as typeof window & {
+      requestIdleCallback?: (callback: (deadline: { timeRemaining: () => number }) => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    if (idleScheduler.requestIdleCallback) {
+      idleHandle = idleScheduler.requestIdleCallback(runChunk, { timeout: 80 });
       return;
     }
-    const range = previewTextRangeForElement(source, text, element, blocks, index);
-    const lines = lineRangeForOffsets(source, range.from, range.to);
-    element.dataset.lineStart = String(lines.start);
-    element.dataset.lineEnd = String(lines.end);
-    element.dataset.lineLabel = lines.start === lines.end ? String(lines.start) : `${lines.start}-${lines.end}`;
-  });
+    timer = window.setTimeout(() => runChunk(), 0);
+  };
+
+  const runChunk = (deadline?: { timeRemaining: () => number }) => {
+    if (cancelled) return;
+    const startedAt = performance.now();
+    while (index < blocks.length && !cancelled) {
+      annotatePreviewLineNumberBlock(blocks[index], state);
+      index += 1;
+      const spent = performance.now() - startedAt;
+      const timeRemaining = deadline?.timeRemaining() ?? 0;
+      if (index < blocks.length && spent >= 8 && (!deadline || timeRemaining < 4)) break;
+    }
+    if (index < blocks.length && !cancelled) schedule();
+  };
+
+  const frame = window.requestAnimationFrame(schedule);
+  return () => {
+    cancelled = true;
+    window.cancelAnimationFrame(frame);
+    if (timer) window.clearTimeout(timer);
+    if (idleHandle) {
+      const idleScheduler = window as typeof window & { cancelIdleCallback?: (handle: number) => void };
+      idleScheduler.cancelIdleCallback?.(idleHandle);
+    }
+  };
+}
+
+function annotatePreviewLineNumberBlock(block: Element | undefined, state: PreviewLineAnnotationState) {
+  const element = block instanceof HTMLElement ? block : null;
+  if (!element) return;
+  if (element.matches('pre.code-block') && element.dataset.lineStart && element.dataset.lineEnd) {
+    const start = Number(element.dataset.lineStart);
+    const end = Number(element.dataset.lineEnd);
+    if (Number.isFinite(start) && Number.isFinite(end) && start > 0 && end >= start) {
+      element.dataset.lineLabel = start === end ? String(start) : `${start}-${end}`;
+      return;
+    }
+  }
+
+  const text = element.textContent?.trim() ?? '';
+  if (!text) {
+    delete element.dataset.lineLabel;
+    delete element.dataset.lineStart;
+    delete element.dataset.lineEnd;
+    return;
+  }
+
+  const occurrence = state.occurrenceCounts.get(text) ?? 0;
+  state.occurrenceCounts.set(text, occurrence + 1);
+  const range = findTextRangeForLineAnnotation(state, text, occurrence);
+  state.cursor = Math.max(state.cursor, range.to);
+  const lines = lineRangeForOffsetsWithStarts(state.source, state.lineStarts, range.from, range.to);
+  element.dataset.lineStart = String(lines.start);
+  element.dataset.lineEnd = String(lines.end);
+  element.dataset.lineLabel = lines.start === lines.end ? String(lines.start) : `${lines.start}-${lines.end}`;
+}
+
+function findTextRangeForLineAnnotation(state: PreviewLineAnnotationState, text: string, occurrence: number) {
+  const needle = text.trim();
+  if (!needle) return { from: state.cursor, to: state.cursor };
+
+  const orderedExact = state.source.indexOf(needle, state.cursor);
+  if (orderedExact !== -1) return { from: orderedExact, to: orderedExact + needle.length };
+
+  const exact = nthIndexOf(state.source, needle, occurrence);
+  if (exact !== -1) return { from: exact, to: exact + needle.length };
+
+  const needleIndex = buildSearchIndex(needle, 0);
+  if (!needleIndex.text) return { from: state.cursor, to: state.cursor };
+  let from = 0;
+  for (let count = 0; count <= occurrence; count += 1) {
+    const found = state.sourceIndex.text.indexOf(needleIndex.text, from);
+    if (found === -1) break;
+    if (count === occurrence) {
+      const rangeStart = state.sourceIndex.map[found] ?? state.cursor;
+      const rangeEnd = (state.sourceIndex.map[found + needleIndex.text.length - 1] ?? rangeStart) + 1;
+      return { from: rangeStart, to: rangeEnd };
+    }
+    from = found + needleIndex.text.length;
+  }
+  return { from: state.cursor, to: Math.min(state.source.length, state.cursor + needle.length) };
+}
+
+function buildLineStartOffsets(source: string) {
+  const starts = [0];
+  for (let index = 0; index < source.length; index += 1) {
+    if (source.charCodeAt(index) === 10) starts.push(index + 1);
+  }
+  return starts;
+}
+
+function lineRangeForOffsetsWithStarts(source: string, lineStarts: number[], from: number, to: number) {
+  const safeFrom = Math.max(0, Math.min(from, source.length));
+  const safeTo = Math.max(safeFrom, Math.min(to, source.length));
+  const adjustedEnd = safeTo > safeFrom && source[safeTo - 1] === '\n' ? safeTo - 1 : safeTo;
+  const start = lineNumberForOffsetWithStarts(lineStarts, safeFrom);
+  return {
+    start,
+    end: Math.max(start, lineNumberForOffsetWithStarts(lineStarts, adjustedEnd)),
+  };
+}
+
+function lineNumberForOffsetWithStarts(lineStarts: number[], offset: number) {
+  let low = 0;
+  let high = lineStarts.length - 1;
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (lineStarts[mid] <= offset) low = mid + 1;
+    else high = mid - 1;
+  }
+  return Math.max(1, high + 1);
+}
+
+function headingIndexForScrollTop(offsets: number[], threshold: number) {
+  let low = 0;
+  let high = offsets.length - 1;
+  let best = 0;
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (offsets[mid] <= threshold) {
+      best = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return best;
 }
 
 function previewBlocks(preview: HTMLElement) {
@@ -1738,7 +2136,10 @@ function renderPreviewHtml(source: string, filePath: string) {
     const previewSource = formatSourcePreviewContent(source, language);
     return `${renderHighlightedCode(previewSource, language, 1, sourceLineCount(previewSource))}\n`;
   }
-  return markdownRenderer.render(source);
+  if (isAsciidocPreviewFile(filePath)) {
+    return ASCIIDOC_PREVIEW_PENDING_HTML;
+  }
+  return markdownRenderer.render(source, { docId: filePath });
 }
 
 function isSourcePreviewFile(filePath: string) {
@@ -1755,9 +2156,13 @@ function isMarkdownPreviewFile(filePath: string) {
   return /\.(md|markdown|mdown)$/i.test(String(filePath || ''));
 }
 
+function isAsciidocPreviewFile(filePath: string) {
+  return /\.(adoc|asciidoc|asc)$/i.test(String(filePath || ''));
+}
+
 function isPreviewableFile(filePath: string) {
   const value = String(filePath || '');
-  return isMarkdownPreviewFile(value) || /\.json$/i.test(value);
+  return isMarkdownPreviewFile(value) || isAsciidocPreviewFile(value) || /\.json$/i.test(value);
 }
 
 function formatSourcePreviewContent(source: string, language: string) {
@@ -1971,8 +2376,10 @@ function normalizeHighlightLanguage(language: string) {
 
 function editorLanguageExtension(filePath: string): Extension {
   const value = String(filePath || '');
+  if (/\.(adoc|asciidoc|asc)$/i.test(value)) return [markdown(), asciidocEditorSyntaxHighlighting()];
   if (/\.json$/i.test(value)) return codeMirrorJson();
-  if (/\.(js|mjs|cjs)$/i.test(value)) return codeMirrorJavascript({ jsx: true });
+  if (/\.(js|mjs|cjs|jsx)$/i.test(value)) return codeMirrorJavascript({ jsx: true });
+  if (/\.(ts|tsx)$/i.test(value)) return codeMirrorJavascript({ jsx: /\.tsx$/i.test(value), typescript: true });
   return markdown();
 }
 
@@ -2026,6 +2433,104 @@ function buildLeadingIndentDecorations(view: EditorView, tabSize: number): Decor
     }
   }
   return builder.finish();
+}
+
+type EditorSyntaxRange = {
+  from: number;
+  to: number;
+  className: string;
+};
+
+function asciidocEditorSyntaxHighlighting(): Extension {
+  return ViewPlugin.fromClass(class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = buildAsciiDocSyntaxDecorations(view);
+    }
+
+    update(update: ViewUpdate) {
+      if (!update.docChanged && !update.viewportChanged) return;
+      this.decorations = buildAsciiDocSyntaxDecorations(update.view);
+    }
+  }, {
+    decorations: plugin => plugin.decorations,
+  });
+}
+
+function buildAsciiDocSyntaxDecorations(view: EditorView): DecorationSet {
+  const ranges: EditorSyntaxRange[] = [];
+  for (const visible of view.visibleRanges) {
+    let position = visible.from;
+    while (position <= visible.to) {
+      const line = view.state.doc.lineAt(position);
+      collectAsciiDocLineSyntaxRanges(line.text, line.from, ranges);
+      if (line.to >= view.state.doc.length) break;
+      position = line.to + 1;
+    }
+  }
+
+  ranges.sort((left, right) => left.from - right.from || left.to - right.to);
+  const builder = new RangeSetBuilder<Decoration>();
+  let lastTo = -1;
+  for (const range of ranges) {
+    if (range.to <= range.from || range.from < lastTo) continue;
+    builder.add(range.from, range.to, Decoration.mark({ class: range.className }));
+    lastTo = range.to;
+  }
+  return builder.finish();
+}
+
+function collectAsciiDocLineSyntaxRanges(text: string, lineFrom: number, ranges: EditorSyntaxRange[]) {
+  const trimmed = text.trim();
+  if (!trimmed) return;
+
+  const heading = /^(={1,6})\s+(.+)$/.exec(text);
+  if (heading) {
+    ranges.push({
+      from: lineFrom,
+      to: lineFrom + text.length,
+      className: `cm-adoc-heading cm-adoc-heading-${Math.min(heading[1].length, 6)}`,
+    });
+    return;
+  }
+
+  if (/^\s*\[[^\]]+\]\s*$/.test(text)) {
+    ranges.push({ from: lineFrom, to: lineFrom + text.length, className: 'cm-adoc-attribute' });
+    return;
+  }
+
+  if (/^\s*(----+|====+|____+|\*\*\*\*+)\s*$/.test(text)) {
+    ranges.push({ from: lineFrom, to: lineFrom + text.length, className: 'cm-adoc-delimiter' });
+    return;
+  }
+
+  addAsciiDocMatchRange(text, lineFrom, ranges, /^(\s*(NOTE|TIP|WARNING|IMPORTANT|CAUTION):)/, 'cm-adoc-admonition');
+  addAsciiDocMatchRange(text, lineFrom, ranges, /^(\s*[*.-]\s+)/, 'cm-adoc-list-marker');
+  addAsciiDocMatchRange(text, lineFrom, ranges, /`[^`\n]+`/g, 'cm-adoc-inline-code');
+  addAsciiDocMatchRange(text, lineFrom, ranges, /\*[^*\n]+\*/g, 'cm-adoc-strong');
+  addAsciiDocMatchRange(text, lineFrom, ranges, /\b[A-Z][A-Z0-9_]{2,}\b/g, 'cm-adoc-constant');
+}
+
+function addAsciiDocMatchRange(
+  text: string,
+  lineFrom: number,
+  ranges: EditorSyntaxRange[],
+  expression: RegExp,
+  className: string,
+) {
+  if (!expression.global) {
+    const match = expression.exec(text);
+    if (!match?.[0]) return;
+    const index = match.index ?? 0;
+    ranges.push({ from: lineFrom + index, to: lineFrom + index + match[0].length, className });
+    return;
+  }
+  for (const match of text.matchAll(expression)) {
+    if (!match[0]) continue;
+    const index = match.index ?? 0;
+    ranges.push({ from: lineFrom + index, to: lineFrom + index + match[0].length, className });
+  }
 }
 
 class IndentWhitespaceWidget extends WidgetType {
@@ -2258,6 +2763,46 @@ function parseHeadings(markdownText: string) {
     });
   }
   return headings;
+}
+
+// AsciiDoc has no markdown-it token stream to walk, but scrollToHeading()
+// only ever looks up rendered h1-h6 DOM nodes by index anyway — so parsing
+// the converted HTML directly works the same way for both formats.
+function parseHeadingsFromHtml(html: string, source = '') {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const headings: Array<{ level: number; text: string; line: number }> = [];
+  const sourceLines = source.split(/\r?\n/);
+  let searchFromLine = 0;
+  doc.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(node => {
+    const text = node.textContent?.trim() || '';
+    if (!text) return;
+    const line = findHeadingLineInSource(sourceLines, text, searchFromLine);
+    if (line !== -1) searchFromLine = line + 1;
+    headings.push({ level: Number(node.tagName.slice(1)), text, line: line === -1 ? headings.length : line });
+  });
+  return headings;
+}
+
+function findHeadingLineInSource(lines: string[], headingText: string, startLine: number) {
+  const normalizedHeading = normalizeHeadingText(headingText);
+  if (!normalizedHeading) return -1;
+  for (let index = Math.max(0, startLine); index < lines.length; index += 1) {
+    if (normalizeHeadingText(lines[index]) === normalizedHeading) return index;
+  }
+  for (let index = 0; index < Math.max(0, startLine); index += 1) {
+    if (normalizeHeadingText(lines[index]) === normalizedHeading) return index;
+  }
+  return -1;
+}
+
+function normalizeHeadingText(value: string) {
+  return value
+    .replace(/^[=\s#.\d]+/, '')
+    .replace(/\[[^\]]+\]/g, '')
+    .replace(/[#*_`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 }
 
 function parseFrontmatter(markdownText: string) {

@@ -10,6 +10,7 @@ const path  = require('path');
 const crypto = require('crypto');
 const os = require('os');
 const { spawn } = require('child_process');
+const { Worker } = require('worker_threads');
 const { buildSessionPromptPackage } = require('./prompt-package');
 const { chooseContextMode } = require('./shared/core/context-policy');
 const { AgentProcessManager } = require('./shared/core/agent-process-manager');
@@ -27,8 +28,74 @@ const SESSION_LOGS_DIR = path.join(DOCPILOT_DIR, 'session-logs');
 const GLOBAL_DOCPILOT_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'docpilot');
 const GLOBAL_INSTRUCTION_SETS_FILE = path.join(GLOBAL_DOCPILOT_DIR, 'instruction-sets.json');
 const HIDDEN_DIRS = new Set(['.git', '.docpilot', 'node_modules', '.next', 'dist', 'build', 'coverage']);
-const DOC_EXTENSIONS = new Set(['.md', '.markdown', '.mdown', '.txt', '.text', '.yaml', '.yml', '.json', '.js', '.mjs', '.cjs']);
+const DOC_EXTENSIONS = new Set(['.md', '.markdown', '.mdown', '.adoc', '.asciidoc', '.asc', '.txt', '.text', '.yaml', '.yml', '.json', '.js', '.mjs', '.cjs']);
 const FOLDER_STARTER_DOC_NAME = 'edit-me.md';
+
+// AsciiDoc conversion runs on a separate worker_threads thread (adoc-worker.js),
+// lazily started on first request. asciidoctor.convert() is synchronous CPU work
+// (~500ms for a large manual page) — running it on bridge.js's own event loop
+// would stall every other request (image fetches, file listing, the project
+// watch poll) for that whole time.
+let asciidocWorker = null;
+let asciidocWorkerReqId = 0;
+const asciidocWorkerPending = new Map();
+
+function getAsciidocWorker() {
+  if (asciidocWorker) return asciidocWorker;
+  asciidocWorker = new Worker(path.join(__dirname, 'adoc-worker.js'));
+  asciidocWorker.on('message', msg => {
+    const pending = asciidocWorkerPending.get(msg.reqId);
+    if (!pending) return;
+    asciidocWorkerPending.delete(msg.reqId);
+    if (msg.error) pending.reject(new Error(msg.error));
+    else pending.resolve(msg.html);
+  });
+  asciidocWorker.on('error', err => {
+    for (const pending of asciidocWorkerPending.values()) pending.reject(err);
+    asciidocWorkerPending.clear();
+    asciidocWorker = null;
+  });
+  asciidocWorker.on('exit', () => { asciidocWorker = null; });
+  return asciidocWorker;
+}
+
+function convertAsciidocInWorker(source) {
+  return new Promise((resolve, reject) => {
+    const reqId = ++asciidocWorkerReqId;
+    asciidocWorkerPending.set(reqId, { resolve, reject });
+    getAsciidocWorker().postMessage({ reqId, source });
+  });
+}
+
+// Converting a large .adoc file costs ~500ms; cache by content hash so
+// switching between tabs of unchanged files is instant instead of
+// re-running the whole Opal parse every time.
+const adocConvertCache = new Map();
+const ADOC_CONVERT_CACHE_LIMIT = 20;
+
+// AsciiDoc image::[] targets are relative to the source file's own
+// directory. The converted HTML keeps that relative path as-is, which
+// resolves against the renderer page's own origin instead — so we rewrite
+// it here to a /workspace-asset URL resolved against the document's id.
+// Antora modules keep pages and images as siblings (modules/<name>/pages/,
+// modules/<name>/images/) and resolve image::[] targets against the images
+// family implicitly — authors don't write an explicit imagesdir attribute.
+// Non-Antora .adoc files fall back to plain file-relative resolution.
+function adocImageBaseDir(docId) {
+  const normalized = String(docId || '').replace(/\\/g, '/');
+  const pagesIdx = normalized.lastIndexOf('/pages/');
+  if (pagesIdx !== -1) return `${normalized.slice(0, pagesIdx)}/images`;
+  return path.posix.dirname(normalized);
+}
+
+function rewriteAdocImageSrc(html, docId) {
+  const docDir = adocImageBaseDir(docId);
+  return html.replace(/(<img[^>]*\ssrc=")([^"]+)(")/g, (match, pre, src, post) => {
+    if (/^(https?:|data:|\/\/)/i.test(src)) return match;
+    const resolved = path.posix.normalize(docDir === '.' ? src : `${docDir}/${src}`);
+    return `${pre}http://localhost:${PORT}/workspace-asset?id=${encodeURIComponent(resolved)}${post}`;
+  });
+}
 const ASSETS_DIR = path.join(__dirname, 'assets');
 const agentProcesses = new AgentProcessManager();
 const terminalSessions = new Map();
@@ -1649,6 +1716,48 @@ const server = http.createServer(async (req, res) => {
     if (!stopped) { res.writeHead(404, CORS); res.end(JSON.stringify({ error: 'terminal session not found' })); return; }
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, session: summarizeTerminalSession(stopped) }));
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/adoc-convert') {
+    let payload;
+    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    const source = typeof payload.source === 'string' ? payload.source : '';
+    const id = typeof payload.id === 'string' ? payload.id : '';
+    const cacheKey = `${id}:${crypto.createHash('sha1').update(source).digest('hex')}`;
+    let html = adocConvertCache.get(cacheKey);
+    if (html === undefined) {
+      try {
+        html = rewriteAdocImageSrc(await convertAsciidocInWorker(source), id);
+      } catch (err) {
+        res.writeHead(500, { ...CORS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+        return;
+      }
+      adocConvertCache.set(cacheKey, html);
+      if (adocConvertCache.size > ADOC_CONVERT_CACHE_LIMIT) {
+        adocConvertCache.delete(adocConvertCache.keys().next().value);
+      }
+    }
+    res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ html }));
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/workspace-asset') {
+    const resolved = resolveWorkspaceFileId(url.searchParams.get('id') || '');
+    if (!resolved) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('not found'); return; }
+    const ext = path.extname(resolved.abs).toLowerCase();
+    const type = ASSET_TYPES.get(ext);
+    if (!type) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('not found'); return; }
+    try {
+      if (!fs.statSync(resolved.abs).isFile()) throw new Error('not a file');
+      res.writeHead(200, { ...CORS, 'Content-Type': type, 'Cache-Control': 'no-cache' });
+      fs.createReadStream(resolved.abs).pipe(res);
+    } catch {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('not found');
+    }
     return;
   }
 

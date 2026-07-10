@@ -27,6 +27,28 @@ type ReleaseNoteItem = {
 };
 
 const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
+  '1.0.28': [
+    {
+      title: '큰 AsciiDoc 문서가 바로 열립니다',
+      body: 'AsciiDoc 변환을 별도 worker로 옮기고 프리뷰 계산을 줄여, 큰 manual.adoc 파일도 열 때마다 오래 멈추지 않습니다.',
+    },
+    {
+      title: '프리뷰 스크롤이 더 가벼워졌습니다',
+      body: '목차 동기화와 라인 표시 작업을 스크롤 흐름에 맞게 조정해 긴 문서를 빠르게 내려도 끊김을 줄였습니다.',
+    },
+    {
+      title: '편집모드 하이라이트를 보강했습니다',
+      body: 'AsciiDoc, Markdown, JSON, JavaScript, TypeScript 편집 화면에 VSCode 2026 Light/Dark 기반 색상 팔레트를 적용했습니다.',
+    },
+    {
+      title: '프리뷰와 편집 위치를 이어갑니다',
+      body: '프리뷰에서 편집으로, 편집에서 프리뷰로 전환할 때 현재 보고 있던 위치에 가깝게 이동합니다.',
+    },
+    {
+      title: '문서 패널과 코드블록 가독성을 다듬었습니다',
+      body: 'NOTE/WARNING 정보 패널, 코드블록 강조색, 제목 크기 단계를 라이트/다크 테마에 맞춰 다시 조정했습니다.',
+    },
+  ],
   '1.0.27': [
     {
       title: '들여쓰기 선택지를 간단하게 정리했습니다',
@@ -46,7 +68,7 @@ const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
     },
     {
       title: '들여쓰기 설정을 명령 팔레트에서 바꿀 수 있습니다',
-      body: 'Cmd+Shift+P에서 탭과 스페이스를 선택하고, 언어별 권장 들여쓰기 기준을 적용할 수 있습니다. 들여쓰기 영역도 화면에서 구분됩니다.',
+      body: '⌘ + Shift + P에서 탭과 스페이스를 선택하고, 언어별 권장 들여쓰기 기준을 적용할 수 있습니다. 들여쓰기 영역도 화면에서 구분됩니다.',
     },
     {
       title: '파일트리 마지막 항목도 편하게 우클릭할 수 있습니다',
@@ -54,7 +76,7 @@ const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
     },
     {
       title: '홈 이동과 주요 단축키를 정리했습니다',
-      body: '좌측 상단 DocPilot 로고로 홈 화면에 돌아갈 수 있고, Cmd+P 빠른 이동과 Cmd+Shift+P 명령 팔레트 사용법을 매뉴얼에 보강했습니다.',
+      body: '좌측 상단 DocPilot 로고로 홈 화면에 돌아갈 수 있고, ⌘ + P 빠른 이동과 ⌘ + Shift + P 명령 팔레트 사용법을 매뉴얼에 보강했습니다.',
     },
   ],
   '1.0.26': [
@@ -64,7 +86,7 @@ const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
     },
     {
       title: '검색창을 찾기 중심으로 줄였습니다',
-      body: '프리뷰와 편집 모드의 Cmd+F 창을 더 작게 정리하고, 다른 영역을 클릭하면 닫히도록 했습니다.',
+      body: '프리뷰와 편집 모드의 ⌘ + F 창을 더 작게 정리하고, 다른 영역을 클릭하면 닫히도록 했습니다.',
     },
     {
       title: '본문 폭 기본값을 넓혔습니다',
@@ -101,7 +123,7 @@ const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
     { title: '분할 탭을 분리했습니다', body: '주 파일과 분할 파일의 탭이 각 pane 안에 따로 표시됩니다.' },
     { title: '분할 크기 조절을 추가했습니다', body: '좌우/상하 분할에서 각 영역의 크기를 직접 조절할 수 있습니다.' },
     { title: '프리뷰와 편집 위치를 맞췄습니다', body: '프리뷰와 편집 모드를 오갈 때 현재 읽던 위치에 가깝게 이동합니다.' },
-    { title: '검색 단축키를 추가했습니다', body: '프리뷰와 편집 모드에서 각각 Cmd+F 검색을 사용할 수 있습니다.' },
+    { title: '검색 단축키를 추가했습니다', body: '프리뷰와 편집 모드에서 각각 ⌘ + F 검색을 사용할 수 있습니다.' },
     { title: '파일 트리를 정리했습니다', body: '수정 표시, Markdown/YAML 아이콘, 프리뷰 하이라이트 색을 조정했습니다.' },
   ],
 };
@@ -254,6 +276,15 @@ export function App() {
     if (buffer.path && buffer.dirtyByUser) ids.add(buffer.path);
     return Array.from(ids);
   }, [buffer.dirtyByUser, buffer.path, openTabs, secondaryOpenTabs]);
+  const homeRecentFiles = useMemo(() => {
+    const visibleFiles = new Set(workspaceFiles);
+    return quickOpenRecent.filter(file => visibleFiles.has(file)).slice(0, 5);
+  }, [quickOpenRecent, workspaceFiles]);
+  const homeSuggestedFiles = useMemo(() => {
+    const recent = new Set(homeRecentFiles);
+    return workspaceFiles.filter(file => !recent.has(file)).slice(0, 6);
+  }, [homeRecentFiles, workspaceFiles]);
+  const showHome = !buffer.path && !secondaryBuffer.path;
 
   useEffect(() => {
     setQuickOpenIndex(current => clamp(current, 0, Math.max(quickOpenResults.length - 1, 0)));
@@ -817,8 +848,11 @@ export function App() {
           <button className="app-logo" type="button" onClick={goHome} aria-label="홈으로 이동">
             <span className="logo-dot" />DocPilot
           </button>
-          <span className="topbar-chip" title={workspaceRoot}>root: {folderName(workspaceRoot) || '...'}</span>
-          <span className="topbar-crumb">{buffer.path || '파일을 선택하세요'}</span>
+          <span className="topbar-chip" title={workspaceRoot}>
+            <span className="topbar-chip-label">Workspace</span>
+            <span className="topbar-chip-value">{folderName(workspaceRoot) || '...'}</span>
+          </span>
+          <span className="topbar-crumb" title={buffer.path || undefined}>{buffer.path || '파일을 선택하세요'}</span>
         </div>
         <div className="topbar-right">
           <div className="theme-toggle" aria-label="테마 전환">
@@ -870,8 +904,8 @@ export function App() {
         onMouseDown={startPanelResize}
       />
       {quickOpenOpen ? (
-        <div className="quick-open-overlay" role="dialog" aria-modal="true" aria-label="파일 빠른 이동">
-          <div className="quick-open-panel">
+        <div className="quick-open-overlay" role="dialog" aria-modal="true" aria-label="파일 빠른 이동" onClick={closeQuickOpen}>
+          <div className="quick-open-panel" onClick={event => event.stopPropagation()}>
             <input
               autoFocus
               value={quickOpenQuery}
@@ -914,8 +948,8 @@ export function App() {
         </div>
       ) : null}
       {releaseNotice ? (
-        <div className="release-notice-overlay" role="dialog" aria-modal="true" aria-label="새 버전 안내">
-          <section className="release-notice-modal">
+        <div className="release-notice-overlay" role="dialog" aria-modal="true" aria-label="새 버전 안내" onClick={closeReleaseNotice}>
+          <section className="release-notice-modal" onClick={event => event.stopPropagation()}>
             <header>
               <div className="release-notice-brand">
                 <span className="release-notice-dot" />
@@ -947,37 +981,137 @@ export function App() {
         </div>
       ) : null}
       <section className="editor-stack">
-        <EditorPane
-          buffer={buffer}
-          error={openError}
-          saving={saving}
-          primaryFileTabs={renderOpenFileTabs(openTabs, activeTabId, 'primary', selectOpenTab, closeOpenTab)}
-          secondaryFileTabs={renderOpenFileTabs(
-            secondaryOpenTabs,
-            secondaryActiveTabId,
-            'secondary',
-            selectSecondaryOpenTab,
-            closeSecondaryOpenTab,
-          )}
-          reviewDiff={reviewDiff}
-          secondaryBuffer={secondaryBuffer.path ? secondaryBuffer : undefined}
-          activePreviewPane={activePreviewPane}
-          splitOrientation={splitOrientation}
-          contextChips={contextChips}
-          onSelectionChange={setSelectedContext}
-          onPreviewContextPick={addContextChip}
-          onRemoveContextChip={removeContextChip}
-          onCopyContextChips={copyContextChips}
-          onClearContextChips={clearContextChips}
-          onChange={content => setBuffer(current => updateEditorContent(current, content))}
-          onSave={saveFile}
-          onCloseSecondary={closeSplitPreview}
-          onOpenCurrentInSplit={openCurrentFileInSplit}
-          onActivePreviewPaneChange={setActivePane}
-          onSplitOrientationChange={setSplitOrientation}
-        />
+        {showHome ? (
+          <HomeScreen
+            workspaceRoot={workspaceRoot}
+            bridgeState={bridgeState}
+            fileCount={workspaceFiles.length}
+            recentFiles={homeRecentFiles}
+            suggestedFiles={homeSuggestedFiles}
+            error={openError}
+            onQuickOpen={openQuickOpen}
+            onOpenFile={openFile}
+          />
+        ) : (
+          <EditorPane
+            buffer={buffer}
+            error={openError}
+            saving={saving}
+            primaryFileTabs={renderOpenFileTabs(openTabs, activeTabId, 'primary', selectOpenTab, closeOpenTab)}
+            secondaryFileTabs={renderOpenFileTabs(
+              secondaryOpenTabs,
+              secondaryActiveTabId,
+              'secondary',
+              selectSecondaryOpenTab,
+              closeSecondaryOpenTab,
+            )}
+            reviewDiff={reviewDiff}
+            secondaryBuffer={secondaryBuffer.path ? secondaryBuffer : undefined}
+            activePreviewPane={activePreviewPane}
+            splitOrientation={splitOrientation}
+            contextChips={contextChips}
+            onSelectionChange={setSelectedContext}
+            onPreviewContextPick={addContextChip}
+            onRemoveContextChip={removeContextChip}
+            onCopyContextChips={copyContextChips}
+            onClearContextChips={clearContextChips}
+            onChange={content => setBuffer(current => updateEditorContent(current, content))}
+            onSave={saveFile}
+            onCloseSecondary={closeSplitPreview}
+            onOpenCurrentInSplit={openCurrentFileInSplit}
+            onActivePreviewPaneChange={setActivePane}
+            onSplitOrientationChange={setSplitOrientation}
+          />
+        )}
       </section>
     </main>
+  );
+}
+
+function HomeScreen({
+  workspaceRoot,
+  bridgeState,
+  fileCount,
+  recentFiles,
+  suggestedFiles,
+  error,
+  onQuickOpen,
+  onOpenFile,
+}: {
+  workspaceRoot: string;
+  bridgeState: 'checking' | 'connected' | 'disconnected';
+  fileCount: number;
+  recentFiles: string[];
+  suggestedFiles: string[];
+  error: string;
+  onQuickOpen: () => void;
+  onOpenFile: (id: string) => void;
+}) {
+  const firstFile = recentFiles[0] || suggestedFiles[0] || '';
+  return (
+    <div className="home-screen">
+      <section className="home-hero" aria-label="DocPilot 홈">
+        <div className="home-hero-copy">
+          <div className="home-brand-lockup">
+            <span className="home-brand-dot" />
+            <span>DocPilot</span>
+          </div>
+          <h1>문서 작업공간</h1>
+          <p>{workspaceRoot ? folderName(workspaceRoot) : '작업공간 연결 대기 중'}</p>
+        </div>
+        <div className="home-actions" aria-label="빠른 작업">
+          <button type="button" onClick={onQuickOpen} disabled={!fileCount}>빠른 이동</button>
+          <button type="button" onClick={() => firstFile && onOpenFile(firstFile)} disabled={!firstFile}>최근 문서 열기</button>
+        </div>
+      </section>
+
+      {error ? <div className="home-error">{error}</div> : null}
+
+      <section className="home-stats" aria-label="작업공간 상태">
+        <div>
+          <span>{bridgeState === 'connected' ? 'Connected' : bridgeState === 'checking' ? 'Checking' : 'Offline'}</span>
+          <strong>Bridge</strong>
+        </div>
+        <div>
+          <span>{fileCount.toLocaleString()}</span>
+          <strong>Files</strong>
+        </div>
+        <div>
+          <span>{recentFiles.length.toLocaleString()}</span>
+          <strong>Recent</strong>
+        </div>
+      </section>
+
+      <div className="home-grid">
+        <section className="home-panel">
+          <header>
+            <span>최근 문서</span>
+            <button className="home-shortcut-button" type="button" onClick={onQuickOpen} disabled={!fileCount}>⌘ + P</button>
+          </header>
+          <div className="home-file-list">
+            {(recentFiles.length ? recentFiles : suggestedFiles.slice(0, 5)).map(file => (
+              <button type="button" key={file} onClick={() => onOpenFile(file)}>
+                <span className={`tree-icon tree-icon-file tree-icon-${quickOpenFileIconType(file)}`} aria-hidden="true" />
+                <span>{pathFileName(file)}</span>
+                <small>{parentPath(file) || 'workspace'}</small>
+              </button>
+            ))}
+            {!fileCount ? <div className="home-empty">열 수 있는 문서가 없습니다</div> : null}
+          </div>
+        </section>
+
+        <section className="home-panel home-flow-panel">
+          <header>
+            <span>작업 흐름</span>
+          </header>
+          <div className="home-flow">
+            <div><strong>01</strong><span>문서 열기</span></div>
+            <div><strong>02</strong><span>편집과 Diff</span></div>
+            <div><strong>03</strong><span>참고 복사</span></div>
+          </div>
+        </section>
+      </div>
+    </div>
   );
 }
 

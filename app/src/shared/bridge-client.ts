@@ -284,6 +284,13 @@ export function readWorkspaceFileBase(id: string) {
   return bridgeJson<FileReadResponse & { source: string }>(`/file-base?id=${encodeURIComponent(id)}`);
 }
 
+export function convertAsciidoc(source: string, id: string) {
+  return bridgeJson<{ html: string }>('/adoc-convert', {
+    method: 'POST',
+    body: JSON.stringify({ source, id }),
+  });
+}
+
 export function createWorkspaceFile(dir: string, name: string, content = '') {
   return bridgeJson<WorkspaceFilesResponse & { ok: true; id: string }>('/file-create', {
     method: 'POST',

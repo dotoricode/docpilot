@@ -1,6 +1,6 @@
 {
   "name": "docpilot",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "description": "Local Markdown editor with AI assistance",
   "main": "main.js",
   "scripts": {
@@ -17,6 +17,7 @@
     "asar": true,
     "asarUnpack": [
       "bridge.js",
+      "adoc-worker.js",
       "store.js",
       "prompt-package.js",
       "shared/core/**",
@@ -28,6 +29,7 @@
       "preload.js",
       "store.js",
       "start.html",
+      "adoc-worker.js",
       "bridge.js",
       "prompt-package.js",
       "shared/**",
@@ -58,6 +60,7 @@
     }
   },
   "dependencies": {
+    "@asciidoctor/core": "^2.2.9",
     "highlight.js": "^11.11.1",
     "node-pty": "^1.1.0"
   },
