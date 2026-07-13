@@ -27,12 +27,6 @@ type ReleaseNoteItem = {
 };
 
 const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
-  '1.0.29': [
-    {
-      title: 'AsciiDoc 사용 안내를 보강했습니다',
-      body: '매뉴얼에서 .adoc, .asciidoc, .asc 파일의 프리뷰, 하이라이트, 코드블록, 긴 문서 작업 방식을 한곳에서 확인할 수 있습니다.',
-    },
-  ],
   '1.0.28': [
     {
       title: '큰 AsciiDoc 문서가 바로 열립니다',
