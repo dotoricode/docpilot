@@ -3,6 +3,7 @@
 interface Window {
   docpilot?: {
     getRecent?: () => Promise<string[]>;
+    rememberRecentFolder?: (folderPath: string) => Promise<string[]>;
     getAppVersion?: () => Promise<string>;
     openFolder?: (folderPath: string) => Promise<void>;
     chooseWorkspaceFolder?: () => Promise<string | null>;

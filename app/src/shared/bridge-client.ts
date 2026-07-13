@@ -341,6 +341,10 @@ export function getRecentFolders() {
   return window.docpilot?.getRecent?.() || Promise.resolve([]);
 }
 
+export function rememberRecentFolder(folderPath: string) {
+  return window.docpilot?.rememberRecentFolder?.(folderPath) || Promise.resolve([]);
+}
+
 export function getAppVersion() {
   return window.docpilot?.getAppVersion?.() || Promise.resolve('');
 }

@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('docpilot', {
   getRecent:        ()       => ipcRenderer.invoke('get-recent'),
+  rememberRecentFolder: (p)  => ipcRenderer.invoke('remember-recent-folder', p),
   getAppVersion:    ()       => ipcRenderer.invoke('get-app-version'),
   openFolderDialog: ()       => ipcRenderer.invoke('open-folder-dialog'),
   chooseWorkspaceFolder: ()  => ipcRenderer.invoke('choose-workspace-folder'),

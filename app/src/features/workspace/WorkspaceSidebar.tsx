@@ -12,6 +12,7 @@ import {
   listFileStatuses,
   listWorkspaceFiles,
   openLocalPath,
+  rememberRecentFolder,
   renameWorkspaceFile,
   type FileStatus,
   type WorkspaceFilesResponse,
@@ -230,6 +231,7 @@ export function WorkspaceSidebar({ activeFile, dirtyFileIds = [], refreshSignal,
       if (!folder) return;
       const data = await attachWorkspaceRoot(folder);
       applyWorkspaceData(data);
+      setRecentFolders(await rememberRecentFolder(data.root.path));
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -267,6 +269,7 @@ export function WorkspaceSidebar({ activeFile, dirtyFileIds = [], refreshSignal,
       }
       const data = await attachWorkspaceRoot(folderPath);
       applyWorkspaceData(data);
+      setRecentFolders(await rememberRecentFolder(data.root.path));
       setExpandedFolders(current => new Set([...current, data.root.id]));
       setNotice(`${folderName(folderPath)} 폴더를 현재 작업공간에 추가했습니다.`);
       setError('');

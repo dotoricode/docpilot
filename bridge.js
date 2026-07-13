@@ -477,10 +477,11 @@ function normalizeSettingsInput(input = {}) {
   const claudeCommand = String(input.claudeCommand || previous.claudeCommand).trim().slice(0, 240) || previous.claudeCommand;
   const codexCommand = String(input.codexCommand || previous.codexCommand).trim().slice(0, 240) || previous.codexCommand;
   const fileWatcherIgnore = String(input.fileWatcherIgnore || '').slice(0, 2000);
+  const recentWorkspaceSeen = new Set();
   const recentWorkspaces = Array.isArray(input.recentWorkspaces)
     ? input.recentWorkspaces
       .map(item => String(item || '').trim())
-      .filter(Boolean)
+      .filter(item => item && !recentWorkspaceSeen.has(item) && recentWorkspaceSeen.add(item))
       .slice(0, 12)
     : [];
   return {
@@ -1510,6 +1511,7 @@ const server = http.createServer(async (req, res) => {
     try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
     const root = addWorkspaceRoot(payload.path || payload.folderPath);
     if (!root) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'invalid folder path' })); return; }
+    rememberWorkspaceInSettings(root.path);
     const { files, folders, roots } = await collectProjectFiles();
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, root, roots, files, folders }));

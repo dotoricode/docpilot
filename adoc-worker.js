@@ -6,11 +6,27 @@
  * converts. See bridge.js's convertAsciidocInWorker() for the caller side.
  */
 const { parentPort } = require('worker_threads');
-const hljs = require('highlight.js');
+const path = require('path');
+
+// bridge.js and this worker are unpacked from app.asar for Electron's child
+// process. Their normal Node resolution therefore cannot walk back into
+// app.asar's node_modules. Load from the archive explicitly when packaged,
+// while keeping ordinary `node` execution working in development.
+function requireRuntimeDependency(name) {
+  try {
+    return require(name);
+  } catch (error) {
+    const resourcesPath = process.resourcesPath;
+    if (!resourcesPath) throw error;
+    return require(path.join(resourcesPath, 'app.asar', 'node_modules', name));
+  }
+}
+
+const hljs = requireRuntimeDependency('highlight.js');
 
 let asciidoctorProcessor = null;
 function getAsciidoctor() {
-  if (!asciidoctorProcessor) asciidoctorProcessor = require('@asciidoctor/core')();
+  if (!asciidoctorProcessor) asciidoctorProcessor = requireRuntimeDependency('@asciidoctor/core')();
   return asciidoctorProcessor;
 }
 

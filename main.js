@@ -237,13 +237,25 @@ function configureAboutPanel() {
 }
 
 // ── Recent folders ───────────────────────────────────────
-function getRecent() { return store.get('recentFolders') || []; }
+function normalizeRecentFolders(folders) {
+  const seen = new Set();
+  return (Array.isArray(folders) ? folders : []).filter(folderPath => {
+    const normalized = String(folderPath || '').trim();
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  }).slice(0, 10);
+}
+
+function getRecent() { return normalizeRecentFolders(store.get('recentFolders')); }
 
 function addRecent(folderPath) {
-  let list = getRecent().filter(p => p !== folderPath);
-  list.unshift(folderPath);
-  store.set('recentFolders', list.slice(0, 10));
+  const current = String(folderPath || '').trim();
+  if (!current) return getRecent();
+  const list = normalizeRecentFolders([current, ...getRecent().filter(p => p !== current)]);
+  store.set('recentFolders', list);
   buildAppMenu();
+  return list;
 }
 
 function clearRecent() {
@@ -424,6 +436,7 @@ async function closeFolder() {
 
 // ── IPC ─────────────────────────────────────────────────
 ipcMain.handle('get-recent', () => getRecent());
+ipcMain.handle('remember-recent-folder', (_, folderPath) => addRecent(folderPath));
 ipcMain.handle('get-app-version', () => app.getVersion());
 
 ipcMain.handle('open-folder-dialog', async () => {
