@@ -1,0 +1,151 @@
+{
+  "generatedAt": "2026-07-15",
+  "current": {
+    "version": "2.0.0",
+    "state": "release",
+    "tag": "v2.0.0",
+    "implementationCommit": "adcf9de46f9bbd2c7433da6ec9d681cb6c6cb050",
+    "implementationDate": "2026-07-15",
+    "note": "Release source is prepared through a reviewed PR; public deployment is gated on the v2.0.0 tag and GitHub Release."
+  },
+  "features": [
+    {
+      "id": "workbench",
+      "title": "Document workbench",
+      "claim": "Projects, recent documents, the file explorer, open tabs, the document canvas, and tool panes now share one local project workspace.",
+      "implementation": [
+        "app/src/screens/App.tsx",
+        "app/src/features/workspace/WorkspaceSidebar.tsx"
+      ],
+      "verification": [
+        "scripts/check-react-home-workbench.js",
+        "scripts/check-react-launch-experience.js"
+      ],
+      "documentation": ["docs/architecture/orca-parity-redesign.md"],
+      "commit": "adcf9de46f9bbd2c7433da6ec9d681cb6c6cb050",
+      "date": "2026-07-15",
+      "limitations": ["This release does not add worktree orchestration or remote project management."]
+    },
+    {
+      "id": "document-modes",
+      "title": "Format-aware document modes",
+      "claim": "Markdown exposes Source, guarded Rich, and Preview modes; AsciiDoc exposes Source and Preview; JSON exposes Source, Tree, formatting, and parse validation.",
+      "implementation": [
+        "shared/core/document-adapters.js",
+        "app/src/features/editor/EditorPane.tsx",
+        "app/src/features/editor/RichMarkdownEditor.tsx",
+        "app/src/features/editor/JsonTreeView.tsx"
+      ],
+      "verification": ["tests/document-adapters.test.js"],
+      "documentation": ["docs/architecture/orca-parity-redesign.md"],
+      "commit": "adcf9de46f9bbd2c7433da6ec9d681cb6c6cb050",
+      "date": "2026-07-15",
+      "limitations": [
+        "Rich mode is disabled for documents larger than 300,000 characters and for syntax that cannot safely round-trip.",
+        "JavaScript, TypeScript, YAML, and plain text remain Source-only."
+      ]
+    },
+    {
+      "id": "pane-layout",
+      "title": "Draggable tabs and panes",
+      "claim": "Document tabs and the terminal pane can be placed around the document area with a before-drop spatial preview, resizable splits, and persisted layout state.",
+      "implementation": [
+        "shared/core/workbench-pane-layout.js",
+        "app/src/screens/App.tsx"
+      ],
+      "verification": [
+        "tests/workbench-pane-layout.test.js",
+        "scripts/check-react-document-tab-split-drag.js",
+        "scripts/check-react-pane-drag-drop.js"
+      ],
+      "documentation": ["docs/architecture/orca-parity-redesign.md"],
+      "commit": "adcf9de46f9bbd2c7433da6ec9d681cb6c6cb050",
+      "date": "2026-07-15",
+      "limitations": ["The root workbench currently models one document area and one terminal area rather than an arbitrary pane tree."]
+    },
+    {
+      "id": "terminal",
+      "title": "Project login-shell terminal",
+      "claim": "A generic terminal opens the user's default login shell in the project directory, supports multiple sessions, preserves ordered output, and restores a renderer from a bounded screen snapshot while the bridge process is running.",
+      "implementation": [
+        "bridge.js",
+        "shared/core/terminal-session-model.js",
+        "app/src/features/terminal/TerminalPane.tsx"
+      ],
+      "verification": [
+        "tests/terminal-session-model.test.js",
+        "scripts/check-terminal-session.js"
+      ],
+      "documentation": ["docs/architecture/orca-parity-redesign.md"],
+      "commit": "adcf9de46f9bbd2c7433da6ec9d681cb6c6cb050",
+      "date": "2026-07-15",
+      "limitations": [
+        "Shell processes are owned by the app's bridge process and are not guaranteed to survive a full DocPilot restart.",
+        "DocPilot does not automatically launch or manage Codex, Claude, or another agent CLI."
+      ]
+    },
+    {
+      "id": "diff-review",
+      "title": "Source and rendered Diff review",
+      "claim": "Source and Preview can display document changes, including a side-by-side option and a Changes rail that navigates between review locations.",
+      "implementation": ["app/src/features/editor/EditorPane.tsx"],
+      "verification": [
+        "scripts/check-react-diff-review.js",
+        "scripts/check-react-preview-diff-layout.js",
+        "scripts/check-react-context-diff-acceptance.js"
+      ],
+      "documentation": ["docs/architecture/orca-parity-redesign.md"],
+      "commit": "adcf9de46f9bbd2c7433da6ec9d681cb6c6cb050",
+      "date": "2026-07-15",
+      "limitations": ["Rendered Diff is a document review surface, not a replacement for a full Git client."]
+    },
+    {
+      "id": "project-search",
+      "title": "Project search",
+      "claim": "Command-Shift-F searches file names or local text with include, exclude, case, whole-word, and regular-expression controls and opens a selected result.",
+      "implementation": ["app/src/features/search/ProjectSearchPanel.tsx"],
+      "verification": ["scripts/check-react-project-search.js"],
+      "documentation": ["docs/architecture/orca-parity-redesign.md"],
+      "commit": "adcf9de46f9bbd2c7433da6ec9d681cb6c6cb050",
+      "date": "2026-07-15",
+      "limitations": [
+        "Search reads files in the current local workspace and does not provide remote or indexed code search."
+      ]
+    }
+  ],
+  "history": [
+    {
+      "version": "1.0.28",
+      "tag": "v1.0.28",
+      "date": "2026-07-10",
+      "releasePublishedAt": "2026-07-10T06:29:25Z",
+      "releaseCreatedAt": "2026-07-13T10:55:41Z",
+      "releaseTarget": "315b5be4416758aff39b41a9e0f743f1e85af5f4",
+      "tagDate": "2026-07-13",
+      "commit": "b7dca9c2f0ed8d5b111eebfb3e1723a83d1d9f61",
+      "baselineOnly": false,
+      "claims": [
+        {
+          "title": "AsciiDoc preview support",
+          "claim": "Added AsciiDoc conversion through a worker, editor highlighting, preview rendering, and corresponding manual guidance.",
+          "sourceCommit": "315b5be4416758aff39b41a9e0f743f1e85af5f4",
+          "documentationCommit": "91d66bb96db67aa4730d90c966b54b0207728392"
+        }
+      ],
+      "note": "The v1.0.28 line contains temporary 1.0.29 version commits that were reverted before the tag; the tagged state is the authority."
+    },
+    {
+      "version": "1.0.27",
+      "tag": "v1.0.27",
+      "date": "2026-07-08",
+      "releasePublishedAt": "2026-07-08T00:42:48Z",
+      "releaseCreatedAt": "2026-07-08T10:06:34Z",
+      "releaseTarget": "main",
+      "tagDate": "2026-07-08",
+      "commit": "461ab0aa84fbd6c811ca3eafb3b415d1ab3805cb",
+      "baselineOnly": true,
+      "claims": [],
+      "note": "This is the earliest repository tag. It is retained as a verified baseline without reconstructing unsupported feature-level history."
+    }
+  ]
+}

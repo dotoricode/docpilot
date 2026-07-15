@@ -28,6 +28,7 @@ async function launchWithTheme(repoRoot, theme) {
       colorScheme: getComputedStyle(document.documentElement).colorScheme,
       bodyBackground: getComputedStyle(document.body).backgroundColor,
       primaryAction: document.querySelector('#open-btn')?.textContent?.trim(),
+      shortcutVisible: Boolean(document.querySelector('.shortcut, kbd')),
       hasEmoji: /[\u{1F300}-\u{1FAFF}]/u.test(document.body.textContent || ''),
     }));
     if (surface.theme !== theme || surface.preference !== theme) {
@@ -35,6 +36,9 @@ async function launchWithTheme(repoRoot, theme) {
     }
     if (!surface.primaryAction?.includes('프로젝트 폴더 열기') || surface.hasEmoji) {
       throw new Error(`project-open surface must keep the polished non-emoji primary action: ${JSON.stringify(surface)}`);
+    }
+    if (surface.shortcutVisible) {
+      throw new Error(`project-open surface must not show a shortcut badge: ${JSON.stringify(surface)}`);
     }
     await page.screenshot({ path: path.join(artifactRoot, `project-open-${theme}.png`) });
     const identity = await app.evaluate(({ app: electronApp, Menu }) => ({

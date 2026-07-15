@@ -49,6 +49,121 @@ final result: passed
 
 ---
 
+## Manual navigation, readable demos, and centered preview correction — 2026-07-15
+
+### Evidence
+
+- Reported preview state: `/var/folders/bk/3mxkf8t509dfnfs5b911qms80000gn/T/orca-paste-1784089339882-e9a11d80-a7f9-49f6-9137-0e56883469fb.png`
+- Same-state preview comparison: `.tink/current/artifacts/app-preview-reference-vs-centered-light.png`
+- Preview light/dark and maximum-width captures: `.tink/current/artifacts/app-preview-centered-default-light.png`, `.tink/current/artifacts/app-preview-centered-default-dark.png`, `.tink/current/artifacts/app-preview-centered-light.png`, `.tink/current/artifacts/app-preview-centered-dark.png`
+- Manual light/dark captures: `.tink/current/artifacts/manual-browser-final/docs-light-1440x1024.png`, `.tink/current/artifacts/manual-browser-final/docs-dark-wide-1440x1024.png`
+- Manual constrained/search/changelog/dialog states: `.tink/current/artifacts/manual-browser-final/`
+- Demo timing and encoding facts: `prototypes/manual-v2/content/demo-metadata.json`
+
+### Findings and corrections
+
+- P1 — A lone preview was anchored to the left of the editor stage and could not expand past the old fixed cap. The stage now centers between the Project rail and outline, expands equally on both sides, restores its width, and reaches a measured 24px gutter at each edge.
+- P1 — Manual sidebar links only changed the selected appearance. Each link now replaces the article, outline, URL hash, and scroll position; browser checks cover forward and back navigation.
+- P1 — Demos were too short and could describe a different feature from the surrounding article. Six topic-specific masters now run for 14 seconds at 30fps, including a dedicated split-guide recording with readable pauses and a two-second result hold.
+- P2 — Manual surfaces used an adjacent palette instead of the application palette. Light and dark shells now use the exact DocPilot semantic background, border, text, muted, faint, and focus values while retaining orange only as the manual identity accent.
+- P2 — Demo playback lacked an intentional reading model. A demo auto-plays once when at least 60% visible, then exposes play, pause, and replay without looping.
+- P2 — The project-open shortcut badge competed with the primary action and its Shift glyph was illegible. The badge is removed entirely as requested; the primary open action and scrollable recent-project list remain.
+- Verification correction — The first FFmpeg retiming pass produced a 402-second intermediate because presentation timestamps were compounded. The processor now normalizes first, probes the baseline, and applies one bounded retime pass; all published assets verify at 14 seconds.
+
+### Result
+
+- No actionable P0/P1/P2 visual findings remain in the checked light, dark, wide, and constrained states.
+- The renderer, launch flow, preview geometry, manual contract, media metadata, and both production builds pass.
+
+final result: passed
+
+---
+
+## Manual v2 demo-media final QA
+
+### Final evidence
+
+- Selected visual: `.tink/current/artifacts/selected/manual-v2-release-led-handbook.png`
+- Changelog dark: `.tink/current/artifacts/prototype/changelog-dark-1440x1024.png`
+- Docs dark wide: `.tink/current/artifacts/prototype/docs-dark-wide-1440x1024.png`
+- Docs light: `.tink/current/artifacts/prototype/docs-light-1440x1024.png`
+- Demo modal light: `.tink/current/artifacts/prototype/demo-dialog-light-1440x1024.png`
+- Constrained desktop: `.tink/current/artifacts/prototype/docs-dark-constrained-980x760.png`
+
+### Findings and fixes
+
+- P1 — Electron's content window was narrower than the 1440 × 900 recording canvas, leaving a gray band in every demo. The capture harness now sets the Electron content size before each scenario; final posters fill the frame.
+- P1 — holding the last frame initially inherited an invalid zoom-filter timebase and reported a 121-second file. The processing pipeline now normalizes the 25fps capture timeline, converts to 30fps, then appends a fixed number of completion frames. All final masters are 4.2–6.47 seconds at 30fps.
+- P2 — the release timeline exposed static guide links but did not provide direct access to each demo. Each of the five workflow rows now opens a keyboard-dismissible video dialog with WebM/MP4 sources and a poster fallback.
+- Reduced-motion capture shows the poster and does not autoplay. The toolbar retains an explicit play/pause action.
+- No remaining P0/P1/P2 visual or interaction findings. The real product imagery is denser than the generated direction by design; shell, hierarchy, typography, media ratio, and timeline rhythm remain aligned.
+
+### Verification
+
+- `node scripts/check-manual-v2-prototype.js`: pass.
+- `node scripts/check-manual-v2-content.js`: pass.
+- `node scripts/check-manual-v2-media.js`: pass.
+- `node scripts/capture-manual-v2-prototype.mjs`: pass; reading width 760 → 820px; no page or console errors.
+- `npm run build` in `prototypes/manual-v2`: pass.
+- `git diff --check`: pass.
+
+final result: passed
+
+---
+
+## Manual v2 release-led handbook prototype
+
+### Comparison target
+
+- Source visual truth: `.tink/current/artifacts/selected/manual-v2-release-led-handbook.png`
+- Browser-rendered implementation: `.tink/current/artifacts/prototype/changelog-dark-1440x1024.png`
+- Full-view comparison: `.tink/current/artifacts/prototype/changelog-comparison-final-v2-1440x2048.png`
+- Focused header/media comparison: `.tink/current/artifacts/prototype/changelog-focused-comparison-1960x640.png`
+- Supporting states: `.tink/current/artifacts/prototype/docs-dark-wide-1440x1024.png`, `search-dark-1440x1024.png`, `docs-light-1440x1024.png`, and `docs-dark-constrained-980x760.png`
+- Viewport: 1440 × 1024 CSS pixels for target matching; 980 × 760 for constrained behavior
+- Primary state: dark-theme v2.0.0 Changelog handbook
+
+### Findings
+
+- No actionable P0/P1/P2 findings remain.
+- Fonts and typography: Inter Variable, Noto Sans KR Variable, and JetBrains Mono reproduce the source's editorial hierarchy, Korean optical weight, version/date treatment, and 14–17 px reading scale. The implementation keeps the title strong without reverting to the previous manual's heavy dashboard typography.
+- Spacing and layout rhythm: the 66 px top bar, 288 px handbook rail, wide main article, 220 px optional outline, and hairline dividers align closely with the selected target. The single-document Docs view is centered within the available canvas, and its reading boundary expands from 760 px to 834 px at the target viewport.
+- Colors and visual tokens: near-black neutral surfaces, muted text, restrained orange selection/timeline accents, and subtle borders map to the selected direction without copying Orca branding. Light mode uses the same semantic hierarchy rather than an inverted afterthought.
+- Image quality and asset fidelity: the prototype intentionally uses an actual DocPilot split-view capture instead of the generated mock's synthetic product image. It preserves the target crop, wide cinematic placement, toolbar treatment, rounded frame, and restrained elevation while providing truthful product detail.
+- Copy and content: the release headline, outcome-focused summary, and five workflow groups describe the approved DocPilot v2.0.0 surface. No Orca product copy is reused.
+- Icons: Phosphor icons provide one consistent neutral stroke family. The left rail includes subtle task icons as a product-consistency deviation from the source's text-only branches; their weight remains subordinate to labels.
+- Interaction and accessibility: Docs/Changelog navigation, `Cmd+K` search, Escape dismissal, theme switching, hash-addressable views, reading-width drag, semantic labels, alt text, focusable controls, and reduced-motion behavior were exercised. Browser console and page-error listeners reported no errors.
+- Responsiveness: at 980 × 760 the right outline collapses, the document remains centered, the top controls remain available, and no persistent control is clipped.
+
+### Comparison history
+
+1. P1 — The first Docs capture could not widen beyond 758 px, so the visible separator changed state without changing the rendered article.
+   - Fix: rebalance sidebar, content padding, outline, and grid tracks; replace transient window listeners with pointer capture handlers on the separator; persist width from state.
+   - Post-fix evidence: the interaction capture reports `beforeWidth: 760`, `afterWidth: 834`, `widthChanged: true`.
+2. P2 — The first release capture gave the hero media too much vertical weight, leaving fewer timeline entries above the fold than the source.
+   - Fix: change the product-media crop to a cinematic 2.75:1 ratio and tighten timeline row spacing while retaining readable summaries.
+   - Post-fix evidence: `.tink/current/artifacts/prototype/changelog-comparison-final-v2-1440x2048.png`.
+
+### Primary interactions and console checks
+
+- Open Changelog and verify the v2.0.0 release handbook.
+- Switch to Docs and confirm the centered single-document state.
+- Drag the broad right-edge reading separator from 760 px to 834 px.
+- Open `Cmd+K`, search for `Diff`, and verify both document and release results.
+- Dismiss search with Escape and switch to light theme.
+- Resize to 980 × 760 and verify outline collapse and control availability.
+- No browser console errors or page errors were observed.
+
+### Accepted deviations and follow-up polish
+
+- P3: the real DocPilot screenshot is denser than the generated product image; actual short demo media will improve legibility without fabricating UI.
+- P3: the implementation shows subtle left-rail task icons for consistency with DocPilot's product navigation, while the selected image uses mostly text branches.
+- P3: longer evidence-backed release copy places the third timeline item slightly lower than the visual concept at 1024 px height.
+
+final result: passed
+
+---
+
 ## Selected identity and document-tab split preview follow-up
 
 ### Comparison target
@@ -294,5 +409,36 @@ final result: passed
 - `node scripts/check-react-pane-drag-drop.js`: pass twice with real Playwright mouse input, including blank-surface drag, broad edge activation, pre-drop preview, cancel rollback, drop persistence, reload restore, and renderer error listeners.
 - `node scripts/check-orca-workbench-regressions.js`: pass, including the 108 px topbar clearance assertion.
 - `git diff --check`: pass.
+
+final result: passed
+
+---
+
+## Manual content completeness and resize performance — 2026-07-15
+
+### Evidence
+
+- Content audit: `.tink/current/artifacts/manual-content-audit.md`
+- Release highlights, dark: `.tink/current/artifacts/manual-content-final/release-highlights-dark-1440x1024.png`
+- Full changelog, dark: `.tink/current/artifacts/manual-content-final/full-changelog-dark-1440x1024.png`
+- Detailed guide, light/dark/wide/constrained: `.tink/current/artifacts/manual-content-final/`
+- App preview geometry: `.tink/current/artifacts/app-preview-centered-default-light.png`, `.tink/current/artifacts/app-preview-centered-dark.png`
+- Performance measurement: `scripts/check-react-preview-resize-performance.js`
+
+### Findings and corrections
+
+- P1 — All 12 guide routes rendered the same shallow anatomy: introduction, three broad steps, and one tip. Each guide now states a concrete outcome, prerequisites, actionable procedure, visible completion cues, and recovery or limitation guidance backed by current repository behavior.
+- P1 — “v2.0.0 새로운 기능” and “변경 사항 전체 보기” shared one renderer. The first is now a five-workflow, demo-led orientation page; the second is a versioned reference organized into Added, Changed, Known limitations, and Upgrade checks.
+- P1 — The full changelog route initially returned to release highlights after reload because changelog hashes ignored the item id. `#/changelog/all-releases` now survives reload and is covered by the browser walkthrough.
+- P1 — Preview-width dragging committed React state and synchronous local storage for almost every pointer event. The focused fixture measured 48 writes for 49 moves. Dragging now coalesces visual width updates with `requestAnimationFrame` and commits React state/storage once on release; the same fixture measures one write for 49 moves.
+- P2 — Manual reading-width dragging used the same per-event state pattern. It now uses the same frame-coalesced visual update/final-commit model and the browser walkthrough records one storage write for the full drag.
+- P2 — The page outline previously sent every label to one `#how-to` anchor. Each prerequisite, procedure, verification, and recovery/limits section now has its own stable anchor.
+
+### Visual result
+
+- Release highlights retain demo-led hierarchy; the full changelog is visibly denser and optimized for scanning rather than repeating the timeline.
+- Detailed guides remain centered and readable at 760–834px, with semantic verification rows and quieter recovery/limit rows.
+- Light and dark states preserve DocPilot semantic tokens, restrained orange identity, and the existing responsive sidebar/outline behavior.
+- No actionable P0/P1/P2 visual findings remain in the checked 1440×1024 and 980×760 states.
 
 final result: passed

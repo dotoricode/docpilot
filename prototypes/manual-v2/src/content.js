@@ -1,0 +1,277 @@
+import { DOC_ROUTES } from './routes.mjs';
+
+const guide = ({ description, outcome, before, steps, verify, notes, media, related = [] }) => ({
+  description,
+  outcome,
+  sections: [
+    { id: 'before', title: '시작하기 전에', kind: 'list', items: before },
+    { id: 'steps', title: '작업 순서', kind: 'steps', items: steps },
+    { id: 'verify', title: '완료 확인', kind: 'checks', items: verify },
+    { id: 'notes', title: '문제가 생기면', kind: 'notes', items: notes },
+  ],
+  media,
+  related,
+});
+
+export const pages = {
+  overview: guide({
+    description: 'DocPilot은 로컬 프로젝트의 문서를 탐색하고 편집하고 검토하는 문서 중심 워크벤치입니다. 파일 트리, 형식별 보기, Diff와 실제 셸 터미널을 한 창에서 사용합니다.',
+    outcome: '프로젝트 폴더를 기준으로 문서를 열고, 형식에 맞는 보기와 검토 도구를 선택할 수 있습니다.',
+    before: ['DocPilot은 로컬 파일을 직접 읽고 씁니다. 작업할 폴더의 읽기·쓰기 권한을 확인하세요.', '전용 코드 IDE의 빌드·디버그 기능을 대체하지 않습니다.'],
+    steps: ['프로젝트 폴더를 열어 기본 작업공간을 만듭니다.', 'Project 패널에서 문서를 선택해 탭으로 엽니다.', 'Source, Rich, Preview 또는 Tree 중 파일 형식에 제공되는 보기를 선택합니다.', '변경을 확인할 때 Diff를 켜고, 프로젝트 명령은 Terminal에서 실행합니다.'],
+    verify: ['상단에 프로젝트 이름과 활성 문서 경로가 보입니다.', '문서와 터미널이 같은 기본 프로젝트 경로를 사용합니다.'],
+    notes: ['미리보기를 지원하지 않는 텍스트 파일은 Source로 열립니다.', 'Agent CLI는 DocPilot이 고정하지 않습니다. Terminal에서 사용자가 직접 실행합니다.'],
+    media: { demo: 'workbench', label: '문서 중심 워크벤치', alt: 'DocPilot 홈에서 문서를 열어 Preview로 확인하는 흐름' },
+    related: ['first-workspace', 'editing/markdown', 'terminal/overview'],
+  }),
+  install: guide({
+    description: 'macOS용 DMG를 내려받아 Applications에 설치합니다. 사이트의 Download는 최신 릴리스의 DMG 파일을 바로 내려받습니다.',
+    outcome: 'DocPilot을 실행하고 폴더 선택 화면까지 도달합니다.',
+    before: ['macOS에서 앱을 설치할 권한이 필요합니다.', '기존 버전을 사용 중이면 열려 있는 문서를 저장하세요.'],
+    steps: ['상단 Download를 눌러 최신 DMG를 내려받습니다.', 'DMG를 열고 DocPilot을 Applications 폴더로 옮깁니다.', 'Applications에서 DocPilot을 실행합니다.', '폴더 접근 요청이 나오면 작업할 위치에 필요한 권한을 허용합니다.'],
+    verify: ['macOS 메뉴 막대에 앱 이름이 DocPilot로 표시됩니다.', '시작 화면에서 프로젝트 폴더를 선택할 수 있습니다.'],
+    notes: ['macOS가 실행을 막으면 설치 파일의 릴리스 버전과 출처를 먼저 확인하세요.', '업데이트 후 이전 창이 남아 있으면 모든 DocPilot 창을 닫고 다시 실행하세요.'],
+    related: ['first-workspace', 'install/updates', 'troubleshooting'],
+  }),
+  'first-workspace': guide({
+    description: '처음에는 기준이 될 프로젝트 폴더 하나를 엽니다. 이 폴더가 파일 트리, 검색과 터미널의 기본 경로가 됩니다.',
+    outcome: '첫 문서를 열고 렌더링된 본문을 확인합니다.',
+    before: ['문서가 들어 있는 로컬 폴더를 준비하세요.', 'Markdown, AsciiDoc 또는 JSON이면 형식별 보기를 바로 확인할 수 있습니다.'],
+    steps: ['시작 화면에서 프로젝트 폴더 열기를 선택합니다.', '폴더 선택기에서 기준 프로젝트를 고릅니다.', 'Project 패널에서 문서 파일을 선택합니다.', 'Markdown 또는 AsciiDoc은 Preview를 눌러 렌더링 결과를 확인합니다.'],
+    verify: ['시작 화면이 사라지고 Project 패널과 문서 탭이 나타납니다.', '선택한 파일 이름과 본문이 같은 문서를 가리킵니다.'],
+    notes: ['폴더 선택을 취소했다면 프로젝트 폴더 열기를 다시 실행하세요.', '비어 보이는 폴더는 접근 권한과 실제 파일 위치를 확인하세요.'],
+    related: ['workspace/file-explorer', 'editing/preview'],
+  }),
+  'workspace/additional-folders': guide({
+    description: '기본 프로젝트를 바꾸지 않고 다른 문서 폴더를 Project 패널에 추가할 수 있습니다.',
+    outcome: '여러 로컬 루트의 문서를 하나의 파일 트리에서 엽니다.',
+    before: ['추가 폴더는 현재 작업공간에 연결되는 보조 루트입니다.', '제거 동작은 연결만 해제하며 디스크의 폴더를 삭제하지 않습니다.'],
+    steps: ['Project 패널 상단의 폴더 추가 버튼을 누릅니다.', '연결할 폴더를 선택합니다.', '추가 폴더 수와 루트 이름을 확인합니다.', '추가 루트의 문서를 일반 파일과 같은 방식으로 엽니다.'],
+    verify: ['Project 패널에 추가 루트가 별도로 표시됩니다.', '기본 프로젝트 이름과 터미널 시작 경로는 바뀌지 않습니다.'],
+    notes: ['접근할 수 없는 폴더는 권한을 확인한 뒤 다시 추가하세요.', '루트가 더 이상 필요 없으면 목록의 제거를 사용하세요.'],
+    related: ['workspace/file-explorer', 'workspace/recent'],
+  }),
+  'workspace/file-explorer': guide({
+    description: '계층형 파일 트리와 이름 필터, 컨텍스트 메뉴를 사용해 문서를 찾고 관리합니다.',
+    outcome: '파일을 찾고 열며 새 파일·폴더 생성, 이름 변경, 삭제와 경로 복사를 수행합니다.',
+    before: ['삭제는 실제 디스크에 반영됩니다. 대상 경로를 확인하세요.', '파일 이름 필터는 본문을 검색하지 않습니다.'],
+    steps: ['폴더의 펼침 버튼으로 필요한 경로를 엽니다.', '파일 검색 입력에 이름 일부를 입력해 트리를 좁힙니다.', '파일을 선택해 문서 탭으로 엽니다.', '오른쪽 클릭 메뉴에서 만들기, 이름 변경, 삭제, Finder에서 열기 또는 경로 복사를 선택합니다.'],
+    verify: ['활성 파일 행과 문서 탭이 함께 강조됩니다.', '편집한 탭에는 저장 전 변경 표시가 나타납니다.'],
+    notes: ['본문을 찾으려면 프로젝트 검색을 사용하세요.', '바이너리 파일은 문서 편집 대상으로 취급하지 마세요.'],
+    related: ['find/project-search', 'workspace/tabs-panes-splits'],
+  }),
+  'workspace/recent': guide({
+    description: '최근 프로젝트는 전체 작업공간을 다시 열고, 최근 문서는 현재 작업공간 안에서 빠르게 이어서 엽니다.',
+    outcome: '최근 위치를 다시 열고 이동한 경로를 안전하게 정리합니다.',
+    before: ['최근 목록은 로컬에 저장됩니다.', '목록에서 제거해도 디스크의 파일은 삭제되지 않습니다.'],
+    steps: ['시작 화면에서 최근 프로젝트의 이름과 경로를 확인합니다.', '프로젝트를 선택해 기본 작업공간으로 다시 엽니다.', '홈의 최근 문서 또는 빠른 열기로 마지막 파일을 엽니다.', '이동하거나 삭제된 경로는 최근 목록에서 제거합니다.'],
+    verify: ['프로젝트 이름과 파일 트리가 선택한 경로 기준으로 바뀝니다.', '최근 문서를 열면 해당 파일 탭이 활성화됩니다.'],
+    notes: ['경로가 이동했다면 기존 항목을 지우고 새 위치를 직접 여세요.', '추가 폴더와 최근 프로젝트는 서로 다른 개념입니다.'],
+    related: ['first-workspace', 'find/quick-open'],
+  }),
+  'workspace/tabs-panes-splits': guide({
+    description: '여러 문서를 탭으로 열고, 탭을 가장자리로 끌어 상하 또는 좌우 비교 공간을 만듭니다.',
+    outcome: '문서 두 개를 나란히 열고 각 Pane의 탭을 독립적으로 전환합니다.',
+    before: ['분할할 문서를 두 개 이상 열어 두면 결과를 확인하기 쉽습니다.', '저장하지 않은 탭은 실수로 닫히지 않습니다.'],
+    steps: ['파일을 여러 개 열어 상단 탭을 만듭니다.', '이동할 탭을 잡고 작업 영역의 위·아래·왼쪽·오른쪽 가장자리로 끕니다.', '파란 배치 미리보기를 확인하고 마우스를 놓습니다.', '분할선을 드래그해 두 문서의 크기를 조절합니다.'],
+    verify: ['놓기 전 미리보기와 실제 분할 방향이 같습니다.', '각 Pane에서 파일 탭을 따로 선택할 수 있습니다.'],
+    notes: ['분할을 닫을 때 활성 보조 문서는 주 문서로 승격됩니다.', '단축키로는 Cmd/Ctrl+D가 좌우, Shift를 함께 누르면 상하 분할입니다.'],
+    media: { demo: 'guide-split', label: '문서 탭 분할', alt: '문서 탭을 오른쪽 가장자리로 끌어 좌우 분할하는 흐름' },
+    related: ['workspace/pane-layout', 'reference/shortcuts'],
+  }),
+  'workspace/pane-layout': guide({
+    description: 'Document와 Terminal Pane을 서로의 상하좌우로 이동하고 크기를 저장합니다.',
+    outcome: '작업에 맞는 Pane 배치를 만들고 다시 실행해도 같은 구성을 사용합니다.',
+    before: ['Terminal Pane이 닫혀 있으면 상단 Terminal 버튼으로 먼저 여세요.', '드래그는 탭 텍스트가 아니라 탭바의 빈 이동 영역에서 시작합니다.'],
+    steps: ['이동할 Pane의 탭바 빈 영역을 잡습니다.', '워크벤치 가장자리의 넓은 드롭 범위로 이동합니다.', '전체 결과 배치를 보여 주는 미리보기를 확인합니다.', '놓은 뒤 분할선을 움직여 크기를 맞춥니다.'],
+    verify: ['Pane이 선택한 가장자리에 배치됩니다.', '앱을 다시 열면 마지막 위치와 크기가 복원됩니다.'],
+    notes: ['Alt+방향키로도 포커스된 Pane을 이동할 수 있습니다.', '잘못 놓았다면 같은 이동 영역에서 다시 드래그하세요.'],
+    media: { demo: 'split', label: 'Pane 배치', alt: '터미널 Pane을 상하좌우로 이동하고 크기를 조절하는 흐름' },
+    related: ['terminal/layout', 'workspace/tabs-panes-splits'],
+  }),
+  'find/quick-open': guide({
+    description: '빠른 열기는 파일 이름을 퍼지 검색하고 최근에 연 문서를 먼저 보여 줍니다.',
+    outcome: '파일 트리를 펼치지 않고 키보드로 문서를 엽니다.',
+    before: ['현재 작업공간과 추가 루트에 포함된 파일만 검색됩니다.'],
+    steps: ['Cmd/Ctrl+P를 누릅니다.', '파일 이름이나 경로 일부를 입력합니다.', '방향키로 결과를 선택하고 Enter를 누릅니다.', '분할이 필요하면 결과를 선택한 상태에서 분할 단축키를 사용합니다.'],
+    verify: ['선택한 파일이 새 탭 또는 기존 탭으로 열립니다.', '다시 열면 최근 파일이 결과 위쪽에 나타납니다.'],
+    notes: ['파일 본문은 검색하지 않습니다.', '결과가 없다면 추가 루트 연결 여부를 확인하세요.'],
+    related: ['find/project-search', 'reference/shortcuts'],
+  }),
+  'find/project-search': guide({
+    description: '프로젝트 검색은 파일 이름 또는 모든 텍스트 파일의 본문을 찾습니다. 대/소문자, 단어, 정규식과 경로 필터를 조합할 수 있습니다.',
+    outcome: '큰 작업공간에서 정확한 파일과 줄을 찾습니다.',
+    before: ['검색 범위가 크면 본문 결과가 순차적으로 나타날 수 있습니다.', '잘못된 정규식은 결과 없이 안전하게 중단됩니다.'],
+    steps: ['Cmd/Ctrl+Shift+F를 눌러 Search 패널을 엽니다.', '이름 또는 내용 탭을 선택합니다.', '필요하면 Aa, 단어, 정규식 옵션을 켭니다.', '포함/제외 glob을 입력하고 결과를 선택합니다.'],
+    verify: ['본문 결과에는 파일 경로와 줄 번호, 일치 문장이 표시됩니다.', '결과를 누르면 해당 문서가 열립니다.'],
+    notes: ['현재 Preview 안에서만 찾으려면 Cmd/Ctrl+F를 사용하세요.', '필터를 너무 좁혔다면 포함/제외 입력을 먼저 비우세요.'],
+    media: { demo: 'search', label: '프로젝트 본문 검색', alt: '프로젝트 검색에서 본문과 경로 필터로 결과를 좁히는 흐름' },
+    related: ['find/quick-open', 'editing/preview'],
+  }),
+  'editing/source': guide({
+    description: 'Source는 파일의 원문을 손실 없이 편집하는 기본 보기입니다. 들여쓰기, 현재 문서 찾기, undo/redo와 명시적 저장을 제공합니다.',
+    outcome: '원문을 수정하고 저장 상태를 확인합니다.',
+    before: ['문서 형식이 복잡하거나 Rich에서 지원하지 않는 문법이 있으면 Source를 사용하세요.'],
+    steps: ['문서를 열고 Source를 선택합니다.', '더보기 메뉴에서 Spaces/Tabs와 2/4칸을 선택합니다.', '원문을 편집하고 Cmd/Ctrl+S로 저장합니다.', '외부 변경 알림이 있다면 충돌 상태를 확인한 뒤 저장 여부를 결정합니다.'],
+    verify: ['수정 시 탭의 변경 표시가 켜지고 저장 후 꺼집니다.', '다시 열었을 때 저장한 원문이 유지됩니다.'],
+    notes: ['저장하지 않은 탭은 닫히지 않습니다.', '자동 저장 설정은 현재 공개 매뉴얼의 보장 범위에 포함하지 않습니다.'],
+    related: ['editing/markdown', 'editing/asciidoc', 'editing/json'],
+  }),
+  'editing/markdown': guide({
+    description: 'Markdown은 Source, Rich, Preview 세 가지 보기를 제공합니다. Rich는 안전하게 왕복 가능한 문서에서만 활성화됩니다.',
+    outcome: 'Markdown 문법과 읽기 결과를 오가며 편집합니다.',
+    before: ['MDX import/export, 원시 HTML, 일부 확장 문법, 수식 또는 300,000자 초과 문서는 Rich가 비활성화될 수 있습니다.', '비활성화는 문서를 임의 변환하지 않기 위한 보호 동작입니다.'],
+    steps: ['Source에서 원문과 frontmatter를 확인합니다.', 'Rich가 활성화되어 있으면 구조 중심으로 내용을 편집합니다.', 'Preview에서 제목, 목록, 표, 코드와 상대 이미지 결과를 확인합니다.', 'Source로 돌아가 원문이 의도대로 유지되는지 검토하고 저장합니다.'],
+    verify: ['보기 전환 후 제목과 본문 구조가 일치합니다.', '프로젝트 안의 상대 이미지가 문서 위치 기준으로 표시됩니다.'],
+    notes: ['Rich가 비활성화된 문서는 Source와 Preview를 사용하세요.', 'HTML은 보안을 위해 Markdown Preview에서 그대로 실행되지 않습니다.'],
+    related: ['editing/preview', 'review/diff'],
+  }),
+  'editing/asciidoc': guide({
+    description: 'AsciiDoc은 Source 편집과 Preview, 문서 목차를 제공합니다. 렌더링은 안전한 서버 변환 경로를 사용하고 결과를 캐시합니다.',
+    outcome: 'AsciiDoc 원문을 수정하고 렌더링된 장문 문서를 탐색합니다.',
+    before: ['지원 확장자는 `.adoc`, `.asciidoc`, `.asc`입니다.', 'Rich 편집과 JSON Tree는 제공하지 않습니다.'],
+    steps: ['AsciiDoc 파일을 열고 Source에서 내용을 수정합니다.', 'Preview로 전환해 변환이 완료될 때까지 기다립니다.', '오른쪽 목차에서 제목을 선택해 해당 섹션으로 이동합니다.', '이미지와 표를 확인한 뒤 저장합니다.'],
+    verify: ['준비 표시가 사라지고 렌더링된 문서가 나타납니다.', '목차 항목과 본문 제목이 같은 순서로 표시됩니다.'],
+    notes: ['변환 오류가 나오면 먼저 Source의 AsciiDoc 구문과 include 경로를 확인하세요.', '큰 문서는 첫 변환 뒤 캐시된 결과가 더 빠르게 표시됩니다.'],
+    related: ['editing/source', 'editing/preview'],
+  }),
+  'editing/json': guide({
+    description: 'JSON은 Source와 Tree 보기를 제공하며, 파싱 오류를 표시하고 유효한 원문을 정렬할 수 있습니다.',
+    outcome: 'JSON 구조를 탐색하고 구문 오류를 수정합니다.',
+    before: ['Tree는 읽기 중심 보기입니다. 값 편집은 Source에서 수행하세요.'],
+    steps: ['JSON 파일을 열고 Tree에서 키와 배열을 펼칩니다.', 'Invalid JSON이 보이면 Source로 전환합니다.', '오류 메시지를 참고해 쉼표, 따옴표 또는 괄호를 수정합니다.', 'Format JSON으로 2칸 들여쓰기 정렬을 적용하고 저장합니다.'],
+    verify: ['Tree에 root와 키 수 또는 항목 수가 표시됩니다.', 'Format 이후에도 Tree가 오류 없이 열립니다.'],
+    notes: ['유효하지 않은 JSON에는 포맷을 강제로 적용하지 마세요.', 'JSON에는 Markdown Preview나 Rich 보기가 없습니다.'],
+    related: ['editing/source', 'reference/shortcuts'],
+  }),
+  'editing/preview': guide({
+    description: 'Preview는 렌더링된 문서를 가운데에 두고 목차, 본문 찾기, 줄 표시와 대칭형 읽기 폭 조절을 제공합니다.',
+    outcome: '긴 문서에서 원하는 섹션을 찾고 읽기 폭을 편안하게 맞춥니다.',
+    before: ['Markdown과 AsciiDoc에서 목차를 제공합니다.', 'JSON 구조는 Tree에서 확인합니다.'],
+    steps: ['Preview를 선택하고 오른쪽 목차에서 섹션을 고릅니다.', 'Cmd/Ctrl+F로 현재 Preview 본문을 찾습니다.', '본문 오른쪽 경계의 조절 영역을 좌우로 드래그합니다.', '필요하면 더보기 메뉴에서 줄 표시를 켜거나 끕니다.'],
+    verify: ['가로 폭은 문서 중심을 유지한 채 양쪽으로 함께 변합니다.', '검색의 이전/다음 이동이 현재 Preview 안에서 작동합니다.'],
+    notes: ['폭 조절은 드래그 중 프레임 단위로 반영되고 마지막 값만 저장됩니다.', '분할 또는 Diff 상태에서는 각 보기의 레이아웃 규칙을 우선합니다.'],
+    related: ['find/project-search', 'review/context-copy'],
+  }),
+  'review/diff': guide({
+    description: 'Diff는 저장된 기준과 현재 내용을 원문 또는 렌더링 문맥에서 비교합니다. Changes 레일로 변경 위치를 순서대로 검토합니다.',
+    outcome: '추가·삭제를 모두 확인하고 저장 또는 편집 복귀를 결정합니다.',
+    before: ['비교할 기준과 현재 변경 내용이 있어야 합니다.', 'Preview Diff는 문서 블록의 읽기 문맥을, Source Diff는 정확한 줄을 강조합니다.'],
+    steps: ['변경된 문서를 열고 Source 또는 Preview를 선택합니다.', 'Diff를 켜 추가와 삭제 표시를 확인합니다.', '필요하면 좌우 비교를 켭니다.', 'Changes 레일의 항목을 눌러 모든 변경 위치를 확인합니다.'],
+    verify: ['Summary의 변경 수와 Changes 목록 수가 일치합니다.', '항목을 선택하면 대응하는 본문 변경이 화면에 들어옵니다.'],
+    notes: ['변경이 없다면 Diff에 항목이 나타나지 않습니다.', '정확한 원문 줄이 필요하면 Preview Diff에서 Source Diff로 바꾸세요.'],
+    media: { demo: 'diff', label: '렌더링 Diff 검토', alt: 'Preview Diff와 Changes 레일을 따라 문서 변경을 검토하는 흐름' },
+    related: ['editing/markdown', 'review/context-copy'],
+  }),
+  'review/context-copy': guide({
+    description: 'Preview의 블록을 다음 요청에 쓸 참고 칩으로 보관하거나 전체 문서를 복사합니다. 드래그한 텍스트 선택은 복사 메뉴가 열려도 유지됩니다.',
+    outcome: '필요한 범위만 복사하고 성공 피드백을 바로 확인합니다.',
+    before: ['일반 선택 복사와 참고 칩 추가는 독립된 동작입니다.', '활성 지침이 있으면 지침 포함 복사 흐름에 함께 적용될 수 있습니다.'],
+    steps: ['Preview에서 필요한 문장이나 여러 블록을 드래그합니다.', '선택을 유지한 채 Cmd/Ctrl+C를 누르거나 가까운 복사 메뉴를 사용합니다.', '선택 근처에 잠시 나타나는 완료 피드백을 확인합니다.', '필요한 선택은 참고 내용에 추가하고 한 번에 복사합니다.'],
+    verify: ['참고 칩에 선택한 블록과 문서 위치가 표시됩니다.', '붙여 넣은 내용에 필요한 파일과 줄 맥락이 포함됩니다.'],
+    notes: ['선택한 범위가 Preview 안에 있을 때만 근접 복사 메뉴와 참고 칩 동작이 활성화됩니다.', '텍스트 선택이 비어 있으면 일반 시스템 복사 흐름을 방해하지 않습니다.'],
+    related: ['review/instructions', 'editing/preview'],
+  }),
+  'review/instructions': guide({
+    description: '반복해서 전달할 규칙을 지침으로 저장하고 프로젝트 또는 전역 프리셋으로 묶습니다.',
+    outcome: '활성 지침 세트를 만들고 문서 문맥과 함께 재사용합니다.',
+    before: ['지침은 짧고 검증 가능한 문장으로 작성하세요.', '프로젝트 프리셋과 전역 프리셋의 적용 범위를 구분하세요.'],
+    steps: ['Project 패널에서 지침 탭을 엽니다.', '제목과 본문을 입력하거나 지원되는 텍스트 파일을 가져옵니다.', '필요한 지침을 활성화합니다.', '활성 목록을 프로젝트 또는 전역 프리셋으로 저장하고 적용합니다.'],
+    verify: ['활성 지침 수와 적용된 프리셋이 패널에 표시됩니다.', '문맥 복사 결과에 활성 지침의 참조가 포함됩니다.'],
+    notes: ['파일 내용이 바뀌었으면 다시 가져와 현재 값을 확인하세요.', 'DocPilot은 특정 Agent를 실행하지 않습니다. 지침을 사용할 CLI는 터미널에서 선택합니다.'],
+    related: ['review/context-copy', 'terminal/overview'],
+  }),
+  'terminal/overview': guide({
+    description: 'DocPilot Terminal은 프로젝트 기본 경로에서 사용자의 로그인 셸을 실행하는 실제 PTY 세션입니다. Codex나 Claude 같은 CLI는 사용자가 직접 실행합니다.',
+    outcome: '여러 셸 세션을 만들고 프로젝트 명령 또는 원하는 Agent CLI를 실행합니다.',
+    before: ['셸 초기화 파일은 일반 터미널과 같은 방식으로 실행될 수 있습니다.', 'DocPilot은 특정 Agent 계정이나 명령에 종속되지 않습니다.'],
+    steps: ['상단 Terminal 버튼으로 Pane을 엽니다.', 'New terminal을 눌러 로그인 셸 세션을 만듭니다.', '프로젝트 명령이나 원하는 CLI를 입력합니다.', '추가 탭을 만들거나 필요 없는 세션을 삭제합니다.'],
+    verify: ['탭에 Terminal 이름과 현재 셸 이름이 표시됩니다.', '입력, 출력, 창 크기 변경이 실제 PTY 세션에 반영됩니다.'],
+    notes: ['네모 문자로 보이는 프롬프트 기호는 사용 중인 셸 테마와 Nerd Font 설치를 확인하세요.', '앱 전체 재시작 뒤 PTY 프로세스 생존은 현재 보장 범위가 아닙니다.'],
+    media: { demo: 'terminal', label: '실제 셸 터미널', alt: 'DocPilot 터미널에서 새 셸 세션을 열고 명령을 실행하는 흐름' },
+    related: ['terminal/layout', 'troubleshooting'],
+  }),
+  'terminal/layout': guide({
+    description: '터미널 탭바의 빈 영역을 드래그해 Document Pane의 상하좌우에 배치합니다. 닫은 뒤에는 작업 영역의 Terminal 버튼으로 다시 엽니다.',
+    outcome: '터미널을 원하는 위치로 이동하고 크기를 저장합니다.',
+    before: ['탭 이름이나 배치 아이콘이 아니라 탭바의 빈 영역을 잡으세요.'],
+    steps: ['터미널 탭바의 빈 이동 영역에서 드래그를 시작합니다.', '워크벤치 가장자리로 이동해 전체 배치 미리보기를 확인합니다.', '마우스를 놓고 분할선으로 크기를 조절합니다.', 'Pane을 닫은 뒤 Terminal 버튼으로 다시 열어 위치를 확인합니다.'],
+    verify: ['상하좌우 모든 위치에서 터미널 입력이 유지됩니다.', '마지막 배치와 크기가 로컬 설정에 저장됩니다.'],
+    notes: ['드래그 범위를 놓쳤다면 탭바 빈 영역에서 다시 시작하세요.', 'Alt+방향키는 동일한 이동 기능의 키보드 대안입니다.'],
+    related: ['workspace/pane-layout', 'terminal/overview'],
+  }),
+  'settings/appearance': guide({
+    description: 'Light, Dark 또는 System 테마를 선택합니다. 선택은 시작 화면, 문서 워크벤치와 다음 실행에 이어집니다.',
+    outcome: '주변 환경에 맞는 테마를 설정하고 두 테마에서 문서와 터미널을 읽을 수 있습니다.',
+    before: ['System은 macOS의 현재 외관 설정을 따릅니다.'],
+    steps: ['Settings에서 테마 선택을 엽니다.', 'Dark, Light 또는 System을 선택합니다.', '저장을 누릅니다.', '시작 화면과 워크벤치의 배경, 글자, 경계와 터미널을 확인합니다.'],
+    verify: ['창을 다시 열어도 마지막 테마 선택이 유지됩니다.', '라이트와 다크 모두에서 포커스와 상태 표시를 구분할 수 있습니다.'],
+    notes: ['테마 전환 직후 일부 네이티브 영역이 남으면 창을 다시 열어 확인하세요.', '공개 매뉴얼도 마지막 수동 선택 또는 시스템 테마를 따릅니다.'],
+    related: ['settings/reference', 'troubleshooting'],
+  }),
+  'settings/reference': guide({
+    description: '테마, 파일 감시 제외 경로, 최근 작업공간과 진단 위치를 관리합니다.',
+    outcome: '설정 파일과 로그 위치를 확인하고 파일 감시 범위를 조정합니다.',
+    before: ['제외 glob을 넓게 지정하면 필요한 변경 알림도 사라질 수 있습니다.'],
+    steps: ['Settings 패널을 엽니다.', '필요한 테마와 파일 감시 제외 패턴을 수정합니다.', '저장을 누르고 상태가 저장됨으로 바뀌는지 확인합니다.', '진단 및 로그에서 메타 폴더, 세션 로그 또는 settings.json을 Finder로 엽니다.'],
+    verify: ['설정을 다시 불러와 저장한 값이 유지됩니다.', '진단 버튼이 실제 로컬 경로를 엽니다.'],
+    notes: ['문제가 반복되면 세션 로그 수와 설정 파일 위치를 함께 기록하세요.', '자동 저장 토글은 UI에 있지만 현재 공개 가이드에서는 동작을 보장하지 않습니다.'],
+    related: ['settings/appearance', 'troubleshooting'],
+  }),
+  'install/updates': guide({
+    description: 'DocPilot은 최신 릴리스를 확인해 새 버전 안내와 변경 항목을 표시합니다. 공개 사이트의 Download는 최신 DMG 자산을 직접 엽니다.',
+    outcome: '버전 변경을 확인하고 안전하게 새 DMG로 교체합니다.',
+    before: ['업데이트 전에 열려 있는 문서를 저장하세요.', '릴리스 변경사항에서 알려진 제한과 호환성 항목을 먼저 확인하세요.'],
+    steps: ['새 버전 안내에서 버전과 주요 변경을 확인합니다.', '이 사이트의 Changelog에서 전체 릴리스 내용을 읽습니다.', 'Download를 눌러 최신 DMG를 바로 내려받습니다.', 'DocPilot을 종료하고 Applications의 기존 앱을 새 버전으로 교체합니다.'],
+    verify: ['About DocPilot에 설치한 버전이 표시됩니다.', '처음 실행 시 업데이트 항목이 마지막 테마로 표시됩니다.'],
+    notes: ['Download가 실패하면 잠시 뒤 다시 시도하세요. 릴리스 API 또는 자산 게시가 지연될 수 있습니다.', '이 사이트는 릴리스 정보를 자체 UI로 표시하며 외부 저장소 화면으로 이동하지 않습니다.'],
+    related: ['install', 'troubleshooting'],
+  }),
+  'reference/shortcuts': {
+    description: '자주 쓰는 탐색, 편집과 분할 동작의 기본 단축키입니다. macOS의 Cmd는 Windows/Linux에서 Ctrl에 해당합니다.',
+    outcome: '키보드로 파일을 찾고 열고 저장하고 분할합니다.',
+    shortcuts: [
+      ['Cmd/Ctrl+O', '파일 열기'], ['Cmd/Ctrl+Shift+O', '프로젝트 폴더 열기'], ['Cmd/Ctrl+S', '현재 문서 저장'],
+      ['Cmd/Ctrl+P', '빠른 열기'], ['Cmd/Ctrl+Shift+F', '프로젝트 검색'], ['Cmd/Ctrl+F', '현재 편집기 또는 Preview 찾기'],
+      ['Cmd/Ctrl+Shift+P', '편집기 명령 팔레트'], ['Cmd/Ctrl+D', '현재 문서 좌우 분할'], ['Cmd/Ctrl+Shift+D', '현재 문서 상하 분할'],
+      ['Cmd/Ctrl+W', '활성 문서 탭 닫기'], ['Alt+방향키', '포커스된 Workbench Pane 이동'],
+    ],
+    sections: [
+      { id: 'scope', title: '단축키 범위', kind: 'list', items: ['현재 포커스가 Source인지 Preview인지에 따라 Cmd/Ctrl+F의 대상이 달라집니다.', '빠른 열기가 열려 있을 때 분할 단축키를 사용하면 선택한 결과를 분할로 엽니다.'] },
+      { id: 'conflict', title: '충돌할 때', kind: 'notes', items: ['운영체제 또는 입력기 단축키가 먼저 실행되면 시스템 설정을 확인하세요.', '메뉴의 단축키 표시는 현재 플랫폼 기준입니다.'] },
+    ],
+    related: ['find/quick-open', 'workspace/tabs-panes-splits'],
+  },
+  troubleshooting: guide({
+    description: '프로젝트 열기, 미리보기, 검색, 터미널과 업데이트에서 자주 만나는 증상을 확인합니다.',
+    outcome: '증상을 범위별로 나누고 재현 정보와 로그를 준비합니다.',
+    before: ['문제가 생긴 문서 경로, 파일 형식, 현재 테마와 DocPilot 버전을 기록하세요.'],
+    steps: ['프로젝트 문제는 폴더 권한과 실제 경로를 확인합니다.', '문서 문제는 Source에서 원문 구문을 확인하고 형식별 제한을 검토합니다.', '터미널 문제는 기본 셸, 초기화 파일과 폰트 설치를 확인합니다.', '반복되는 문제는 Settings의 진단 경로에서 로그를 확인합니다.'],
+    verify: ['최소 재현 폴더 또는 파일 하나로 같은 문제가 반복되는지 확인합니다.', '재실행 전후의 차이와 오류 문구를 기록합니다.'],
+    notes: ['앱 UI가 깨졌다면 Light/Dark 양쪽에서 확인하고 창 크기도 기록하세요.', '데이터 손상이 의심되면 원본 파일을 백업한 뒤 재현하세요.'],
+    related: ['settings/reference', 'terminal/overview', 'editing/source'],
+  }),
+};
+
+export const navigationGroups = DOC_ROUTES.reduce((groups, route) => {
+  const last = groups.at(-1);
+  if (!last || last.label !== route.group) groups.push({ label: route.group, items: [] });
+  groups.at(-1).items.push(route);
+  return groups;
+}, []);
+
+export const curatedReleaseMedia = {
+  '2.0.0': [
+    { demo: 'workbench', label: '문서 중심 워크벤치', alt: 'DocPilot 홈에서 문서를 열어 작업공간으로 전환하는 흐름' },
+    { demo: 'split', label: 'Split everything', alt: '문서와 터미널 Pane을 상하좌우로 배치하는 흐름' },
+    { demo: 'diff', label: '렌더링 Diff', alt: '문서 문맥 안에서 변경사항을 검토하는 흐름' },
+  ],
+};
+
+export function pageForSlug(slug) {
+  return pages[slug] || pages.overview;
+}
+
+export function searchablePages() {
+  return DOC_ROUTES.map(route => ({ ...route, description: pages[route.slug]?.description || '' }));
+}

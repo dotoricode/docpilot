@@ -1,0 +1,111 @@
+{
+  "generatedAt": "2026-07-15T09:35:40.906Z",
+  "source": "Playwright Electron recording with phase metadata and continuous FFmpeg camera motion",
+  "viewport": "1440x900",
+  "demos": [
+    {
+      "name": "workbench",
+      "durationSeconds": 4.07,
+      "fps": 30,
+      "masterBytes": 374432,
+      "webBytes": 115846,
+      "phases": [
+        "start",
+        "inputEnd",
+        "focusEnd",
+        "actionEnd",
+        "resultEnd"
+      ],
+      "goal": "Open README.md from the workspace home with Quick open.",
+      "outcome": "README.md opens in the document workbench with Preview visible.",
+      "contactSheet": ".tink/current/artifacts/demo-processed/workbench-contact.jpg"
+    },
+    {
+      "name": "guide-split",
+      "durationSeconds": 4.8,
+      "fps": 30,
+      "masterBytes": 266982,
+      "webBytes": 105569,
+      "phases": [
+        "start",
+        "inputEnd",
+        "focusEnd",
+        "actionEnd",
+        "previewEnd",
+        "resultEnd"
+      ],
+      "goal": "Move beta.md to the right of alpha.md.",
+      "outcome": "Both documents remain visible in a left-right split.",
+      "contactSheet": ".tink/current/artifacts/demo-processed/guide-split-contact.jpg"
+    },
+    {
+      "name": "split",
+      "durationSeconds": 5.2,
+      "fps": 30,
+      "masterBytes": 275949,
+      "webBytes": 98422,
+      "phases": [
+        "start",
+        "inputEnd",
+        "focusEnd",
+        "actionEnd",
+        "previewEnd",
+        "resultEnd"
+      ],
+      "goal": "Move the Terminal Pane from below the document to its right.",
+      "outcome": "The document and terminal settle into a left-right layout without losing the shell session.",
+      "contactSheet": ".tink/current/artifacts/demo-processed/split-contact.jpg"
+    },
+    {
+      "name": "search",
+      "durationSeconds": 5.07,
+      "fps": 30,
+      "masterBytes": 343051,
+      "webBytes": 116364,
+      "phases": [
+        "start",
+        "inputEnd",
+        "focusEnd",
+        "actionEnd",
+        "resultEnd"
+      ],
+      "goal": "Find a phrase across the project and open its result.",
+      "outcome": "docs/review.md opens from the selected body-search result.",
+      "contactSheet": ".tink/current/artifacts/demo-processed/search-contact.jpg"
+    },
+    {
+      "name": "diff",
+      "durationSeconds": 4.23,
+      "fps": 30,
+      "masterBytes": 426197,
+      "webBytes": 131383,
+      "phases": [
+        "start",
+        "inputEnd",
+        "focusEnd",
+        "actionEnd",
+        "resultEnd"
+      ],
+      "goal": "Review a changed Markdown document in rendered Diff.",
+      "outcome": "Rendered changes and their matching Changes summary are visible together.",
+      "contactSheet": ".tink/current/artifacts/demo-processed/diff-contact.jpg"
+    },
+    {
+      "name": "terminal",
+      "durationSeconds": 5.13,
+      "fps": 30,
+      "masterBytes": 301321,
+      "webBytes": 100492,
+      "phases": [
+        "start",
+        "inputEnd",
+        "focusEnd",
+        "actionEnd",
+        "resultEnd"
+      ],
+      "goal": "Open a real shell session and run one project command.",
+      "outcome": "The shell output appears in the terminal beside the project document.",
+      "contactSheet": ".tink/current/artifacts/demo-processed/terminal-contact.jpg"
+    }
+  ]
+}

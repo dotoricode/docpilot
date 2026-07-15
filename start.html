@@ -17,13 +17,12 @@ body{height:100vh;overflow:hidden;background:var(--bg);color:var(--text);font:13
 .titlebar{height:48px}
 .launch-stage{height:calc(100vh - 48px);display:grid;place-items:center;padding:28px 40px 52px}
 .launch-shell{width:min(760px,100%);height:min(440px,100%);display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);grid-template-rows:1fr auto;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:var(--panel);box-shadow:var(--shadow);-webkit-app-region:no-drag}
-.launch-intro{padding:34px 34px 28px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-width:0}
+.launch-intro{padding:34px 34px 28px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-width:0;min-height:0}
 .brand{display:flex;align-items:center;gap:11px}.brand img{width:31px;height:31px;border-radius:8px}.brand strong{font-size:14px;letter-spacing:-.01em}
 .eyebrow{margin-top:56px;color:var(--faint);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
 h1{margin-top:10px;font-size:22px;line-height:1.28;letter-spacing:-.018em;font-weight:560}
 .intro-copy{margin-top:14px;max-width:280px;color:var(--muted);font-size:12px;line-height:1.65}
-.shortcut{margin-top:auto;color:var(--faint);font-size:11px}.shortcut kbd{display:inline-grid;place-items:center;min-width:25px;height:22px;margin-right:6px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--panel-2);color:var(--muted);font:11px ui-monospace,SFMono-Regular,Menlo,monospace}
-.launch-recents{min-width:0;padding:32px 26px 22px;display:flex;flex-direction:column}.recents-head{display:flex;align-items:end;justify-content:space-between;padding:0 8px 13px}.recents-head strong{font-size:13px}.recents-head span{color:var(--faint);font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+.launch-recents{min-width:0;min-height:0;padding:32px 26px 22px;display:flex;flex-direction:column}.recents-head{display:flex;align-items:end;justify-content:space-between;padding:0 8px 13px}.recents-head strong{font-size:13px}.recents-head span{color:var(--faint);font-size:10px;letter-spacing:.06em;text-transform:uppercase}
 .recent-list{flex:1;min-height:0;overflow:auto;border-top:1px solid var(--border)}.recent-empty{padding:54px 12px;text-align:center;color:var(--faint);font-size:12px}
 .recent-item{position:relative;display:flex;align-items:center;gap:10px;min-height:58px;padding:10px 34px 10px 9px;border-bottom:1px solid var(--border);cursor:pointer}.recent-item:hover{background:var(--hover)}.recent-info{min-width:0}.recent-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:620}.recent-path{margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--faint);font:10px ui-monospace,SFMono-Regular,Menlo,monospace}.recent-del{position:absolute;right:8px;top:17px;width:25px;height:25px;border:0;border-radius:5px;background:transparent;color:var(--faint);font:16px inherit;opacity:0;cursor:pointer}.recent-item:hover .recent-del,.recent-del:focus-visible{opacity:1}.recent-del:hover{background:var(--panel-2);color:var(--text)}
 .launch-action{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 22px;border-top:1px solid var(--border);background:var(--panel-2)}.launch-action p{color:var(--faint);font-size:11px}.open-btn{height:36px;padding:0 22px;border:0;border-radius:6px;background:var(--button);color:var(--button-text);font:650 12px inherit;cursor:pointer}.open-btn:hover{filter:brightness(.92)}
@@ -40,7 +39,6 @@ h1{margin-top:10px;font-size:22px;line-height:1.28;letter-spacing:-.018em;font-w
       <span class="eyebrow">Document workbench</span>
       <h1>프로젝트를 선택해<br>작업을 이어가세요.</h1>
       <p class="intro-copy">프로젝트의 문서와 터미널을 한 작업 공간에서 연결합니다. 마지막 테마와 최근 프로젝트를 그대로 이어갑니다.</p>
-      <p class="shortcut"><kbd>⌘⇧O</kbd> 프로젝트 폴더 열기</p>
     </div>
     <div class="launch-recents">
       <div class="recents-head"><strong>최근 프로젝트</strong><span>Local</span></div>

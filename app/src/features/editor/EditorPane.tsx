@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type WheelEvent } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type WheelEvent } from 'react';
 import { Compartment, EditorState, RangeSetBuilder, type Extension } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, highlightActiveLine, keymap, lineNumbers, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
@@ -160,9 +160,13 @@ const emptyDocument = `# DocPilot
 `;
 
 const PREVIEW_WIDTH_MIN = 480;
-const PREVIEW_WIDTH_MAX = 1200;
+const PREVIEW_WIDTH_MAX = 2400;
 const PREVIEW_WIDTH_STEP = 20;
 const PREVIEW_WIDTH_STORAGE_KEY = 'docpilot:preview-width';
+
+const RenderedPreviewHtml = memo(function RenderedPreviewHtml({ html }: { html: string }) {
+  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+});
 
 function readPreviewWidth() {
   const stored = Number(window.localStorage.getItem(PREVIEW_WIDTH_STORAGE_KEY));
@@ -426,6 +430,7 @@ export function EditorPane({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLElement | null>(null);
   const secondaryPreviewRef = useRef<HTMLElement | null>(null);
+  const previewShellRef = useRef<HTMLDivElement | null>(null);
   const tocRef = useRef<HTMLElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const activePreviewPaneRef = useRef<'primary' | 'secondary'>(activePreviewPane);
@@ -457,6 +462,7 @@ export function EditorPane({
   const [diffSplit, setDiffSplit] = useState(false);
   const [baseContent, setBaseContent] = useState('');
   const [previewWidth, setPreviewWidth] = useState(readPreviewWidth);
+  const [previewMaxWidth, setPreviewMaxWidth] = useState(PREVIEW_WIDTH_MAX);
   const [selectedPreviewIndex, setSelectedPreviewIndex] = useState<number | null>(null);
   const [activeHeadingIndex, setActiveHeadingIndex] = useState(0);
   const [wholeDocumentSelected, setWholeDocumentSelected] = useState(false);
@@ -566,6 +572,40 @@ export function EditorPane({
   }, [markdownPreviewBody, previewSource, primaryIsAsciidoc, previewHtml]);
   const diffRows = useMemo(() => markdownBlockDiffRows(baseContent, visibleContent), [baseContent, visibleContent]);
   const compareOn = Boolean(secondaryBuffer?.path) && canPreviewBody && canPreviewSecondaryBody && !diffOn && mode === 'preview';
+
+  useEffect(() => {
+    const shell = previewShellRef.current;
+    if (!shell || compareOn || diffOn || mode !== 'preview') return;
+
+    let frame = 0;
+    const updateMaximum = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const shellRect = shell.getBoundingClientRect();
+        const outlineRect = tocRef.current?.getBoundingClientRect();
+        const availableRight = outlineRect && outlineRect.left > shellRect.left
+          ? outlineRect.left
+          : shellRect.right;
+        const nextMaximum = clampNumber(
+          Math.floor(availableRight - shellRect.left - 48),
+          PREVIEW_WIDTH_MIN,
+          PREVIEW_WIDTH_MAX,
+        );
+        setPreviewMaxWidth(nextMaximum);
+        setPreviewWidth(current => Math.min(current, nextMaximum));
+      });
+    };
+
+    const observer = new ResizeObserver(updateMaximum);
+    observer.observe(shell);
+    if (tocRef.current) observer.observe(tocRef.current);
+    updateMaximum();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [compareOn, diffOn, headings.length, contextChips.length, mode]);
+
   const previewCompareStyle = {
     '--preview-split-primary-size': `${Math.round(previewSplitRatio * 100)}%`,
   } as CSSProperties;
@@ -1404,23 +1444,36 @@ export function EditorPane({
   function setPreviewWidthFromPointer(event: MouseEvent<HTMLInputElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
     const ratio = clampNumber((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1);
-    const rawWidth = PREVIEW_WIDTH_MIN + ratio * (PREVIEW_WIDTH_MAX - PREVIEW_WIDTH_MIN);
+    const rawWidth = PREVIEW_WIDTH_MIN + ratio * (previewMaxWidth - PREVIEW_WIDTH_MIN);
     const steppedWidth = Math.round(rawWidth / PREVIEW_WIDTH_STEP) * PREVIEW_WIDTH_STEP;
-    setPreviewWidth(clampNumber(steppedWidth, PREVIEW_WIDTH_MIN, PREVIEW_WIDTH_MAX));
+    setPreviewWidth(clampNumber(steppedWidth, PREVIEW_WIDTH_MIN, previewMaxWidth));
   }
 
   function startPreviewWidthResize(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
-    const stage = event.currentTarget.parentElement;
+    const resizer = event.currentTarget;
+    const stage = resizer.parentElement;
     if (!stage) return;
     const startX = event.clientX;
     const startWidth = stage.getBoundingClientRect().width;
+    let pendingWidth = Math.round(startWidth);
+    let frame = 0;
+
+    const renderPendingWidth = () => {
+      frame = 0;
+      stage.style.setProperty('--preview-width', `${pendingWidth}px`);
+      resizer.setAttribute('aria-valuenow', String(pendingWidth));
+    };
     document.body.classList.add('resizing-preview-width');
     const move = (moveEvent: globalThis.MouseEvent) => {
-      const nextWidth = clampNumber(startWidth + moveEvent.clientX - startX, PREVIEW_WIDTH_MIN, PREVIEW_WIDTH_MAX);
-      setPreviewWidth(Math.round(nextWidth));
+      const nextWidth = clampNumber(startWidth + (moveEvent.clientX - startX) * 2, PREVIEW_WIDTH_MIN, previewMaxWidth);
+      pendingWidth = Math.round(nextWidth);
+      if (!frame) frame = window.requestAnimationFrame(renderPendingWidth);
     };
     const stop = () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      renderPendingWidth();
+      setPreviewWidth(pendingWidth);
       document.body.classList.remove('resizing-preview-width');
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', stop);
@@ -1434,8 +1487,8 @@ export function EditorPane({
     if (!delta && event.key !== 'Home' && event.key !== 'End') return;
     event.preventDefault();
     if (event.key === 'Home') setPreviewWidth(PREVIEW_WIDTH_MIN);
-    else if (event.key === 'End') setPreviewWidth(PREVIEW_WIDTH_MAX);
-    else setPreviewWidth(current => clampNumber(current + delta, PREVIEW_WIDTH_MIN, PREVIEW_WIDTH_MAX));
+    else if (event.key === 'End') setPreviewWidth(previewMaxWidth);
+    else setPreviewWidth(current => clampNumber(current + delta, PREVIEW_WIDTH_MIN, previewMaxWidth));
   }
 
   function closeCommandPalette() {
@@ -1620,11 +1673,11 @@ export function EditorPane({
               <input
                 type="range"
                 min={PREVIEW_WIDTH_MIN}
-                max={PREVIEW_WIDTH_MAX}
+                max={previewMaxWidth}
                 step={PREVIEW_WIDTH_STEP}
                 value={previewWidth}
-                onInput={event => setPreviewWidth(Number(event.currentTarget.value))}
-                onChange={event => setPreviewWidth(Number(event.currentTarget.value))}
+                onInput={event => setPreviewWidth(clampNumber(Number(event.currentTarget.value), PREVIEW_WIDTH_MIN, previewMaxWidth))}
+                onChange={event => setPreviewWidth(clampNumber(Number(event.currentTarget.value), PREVIEW_WIDTH_MIN, previewMaxWidth))}
                 onPointerDown={setPreviewWidthFromPointer}
               />
               <span>Width {previewWidth}</span>
@@ -1650,6 +1703,7 @@ export function EditorPane({
           </div>
         ) : null}
         <div
+          ref={previewShellRef}
           className={`preview-shell ${showPreviewLineNumbers ? 'show-line-numbers' : 'hide-line-numbers'} ${mode !== 'edit' && contextChips.length ? 'with-context-rail' : ''} ${compareOn ? `preview-compare-active split-${splitOrientation}` : ''} ${diffOn ? 'diff-review-shell' : ''}`}
           onWheel={handlePreviewShellWheel}
         >
@@ -1706,7 +1760,7 @@ export function EditorPane({
                     onScroll={syncActiveHeading}
                   >
                     {!previewAsSource && frontmatter.entries.length ? <FrontmatterCard entries={frontmatter.entries} /> : null}
-                    <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                    <RenderedPreviewHtml html={previewHtml} />
                   </article>
                 </section>
                 <button
@@ -1733,7 +1787,7 @@ export function EditorPane({
                     onMouseUp={event => selectPreviewRange(event, 'secondary')}
                   >
                     {!secondaryPreviewAsSource && secondaryFrontmatter.entries.length ? <FrontmatterCard entries={secondaryFrontmatter.entries} /> : null}
-                    <div dangerouslySetInnerHTML={{ __html: secondaryPreviewHtml }} />
+                    <RenderedPreviewHtml html={secondaryPreviewHtml} />
                   </article>
                 </section>
               </div>
@@ -1775,7 +1829,7 @@ export function EditorPane({
                   ) : (
                     <>
                       {frontmatter.entries.length ? <FrontmatterCard entries={frontmatter.entries} /> : null}
-                      <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                      <RenderedPreviewHtml html={previewHtml} />
                     </>
                   )}
                 </article>
@@ -1786,7 +1840,7 @@ export function EditorPane({
                   aria-label="본문 가로 폭 조절"
                   aria-orientation="vertical"
                   aria-valuemin={PREVIEW_WIDTH_MIN}
-                  aria-valuemax={PREVIEW_WIDTH_MAX}
+                  aria-valuemax={previewMaxWidth}
                   aria-valuenow={previewWidth}
                   onMouseDown={startPreviewWidthResize}
                   onKeyDown={adjustPreviewWidthFromKeyboard}
