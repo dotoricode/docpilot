@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, net, Menu, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, net, Menu, clipboard, nativeTheme } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -6,6 +6,12 @@ const { fork } = require('child_process');
 const http = require('http');
 const nodeNet = require('net');
 const Store = require('./store');
+
+if (process.env.DOCPILOT_USER_DATA_DIR) {
+  app.setPath('userData', process.env.DOCPILOT_USER_DATA_DIR);
+}
+app.setName('DocPilot');
+process.title = 'DocPilot';
 
 const store = new Store();
 const DEFAULT_BRIDGE_PORT = 7474;
@@ -101,6 +107,7 @@ function startBridge(root, port) {
   const child = fork(getBridgePath(), ['--root', root], {
     env: buildBridgeEnv(port),
     stdio: 'ignore',
+    detached: true,
   });
   bridgeProcesses.add(child);
   bridgeProc = child;
@@ -108,6 +115,7 @@ function startBridge(root, port) {
     bridgeProcesses.delete(child);
     if (bridgeProc === child) bridgeProc = null;
   });
+  child.unref();
   return child;
 }
 
@@ -227,6 +235,15 @@ function waitForBridgeRoot(root, port = bridgePort, timeoutMs = 2500) {
   });
 }
 
+async function findRunningBridgeForRoot(root) {
+  const normalizedRoot = path.resolve(root);
+  for (let port = DEFAULT_BRIDGE_PORT; port < DEFAULT_BRIDGE_PORT + 30; port += 1) {
+    const status = await getBridgeStatus(port);
+    if (status?.root && path.resolve(status.root) === normalizedRoot) return port;
+  }
+  return null;
+}
+
 function configureAboutPanel() {
   app.setAboutPanelOptions({
     applicationName: 'DocPilot',
@@ -274,19 +291,45 @@ async function chooseFile(owner) {
 }
 
 // ── Windows ──────────────────────────────────────────────
+function normalizeThemePreference(value) {
+  return value === 'light' || value === 'dark' || value === 'system' ? value : 'system';
+}
+
+function storedThemePreference() {
+  return normalizeThemePreference(store.get('themePreference'));
+}
+
+function resolveEffectiveTheme(preference) {
+  if (preference === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+  return preference;
+}
+
+function windowBackground(theme) {
+  return theme === 'light' ? '#f3f3f4' : '#0c0d0f';
+}
+
+function applyNativeTheme(preference) {
+  nativeTheme.themeSource = normalizeThemePreference(preference);
+}
+
 function createStartWindow() {
+  const preference = storedThemePreference();
+  const effectiveTheme = resolveEffectiveTheme(preference);
+  applyNativeTheme(preference);
   const win = new BrowserWindow({
-    width: 560,
-    height: 420,
-    resizable: false,
+    width: 920,
+    height: 620,
+    minWidth: 760,
+    minHeight: 520,
+    resizable: true,
     titleBarStyle: 'hiddenInset',
-    backgroundColor: '#0d0e10',
+    backgroundColor: windowBackground(effectiveTheme),
     show: false,
     webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
   });
   win._docpilotWindowKind = 'start';
   startWin = win;
-  win.loadFile('start.html');
+  win.loadFile('start.html', { query: { theme: effectiveTheme, preference } });
   win.once('ready-to-show', () => win.show());
   win.on('closed', () => {
     if (startWin === win) startWin = null;
@@ -296,12 +339,12 @@ function createStartWindow() {
 
 function createEditorWindow(root, openFileRel = '', port = bridgePort, bridge = null) {
   const win = new BrowserWindow({
-    width: 1280,
-    height: 820,
+    width: 1440,
+    height: 1024,
     minWidth: 760,
     minHeight: 500,
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 17 },
+    trafficLightPosition: { x: 14, y: 15 },
     backgroundColor: '#07080a',
     show: false,
     webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
@@ -322,7 +365,6 @@ function createEditorWindow(root, openFileRel = '', port = bridgePort, bridge = 
     activeRoot = win._docpilotRoot || activeRoot;
   });
   win.on('closed', () => {
-    stopOwnedBridge(win._docpilotBridgeProc);
     if (editorWin === win) editorWin = null;
     if (!switchingFolder) {
       const remaining = BrowserWindow.getAllWindows().filter(item => item !== win && !item.isDestroyed());
@@ -398,8 +440,9 @@ async function openFolder(folderPath, openFileRel = '', owner = BrowserWindow.ge
   }
   addRecent(folderPath);
   await sleep(120);
-  const nextBridgePort = await findBridgePort();
-  const nextBridgeProc = startBridge(folderPath, nextBridgePort);
+  const runningBridgePort = await findRunningBridgeForRoot(folderPath);
+  const nextBridgePort = runningBridgePort || await findBridgePort();
+  const nextBridgeProc = runningBridgePort ? null : startBridge(folderPath, nextBridgePort);
   bridgePort = nextBridgePort;
   await waitForBridgeRoot(folderPath, nextBridgePort);
   const win = createEditorWindow(folderPath, openFileRel, nextBridgePort, nextBridgeProc);
@@ -425,6 +468,15 @@ async function closeFolder() {
 // ── IPC ─────────────────────────────────────────────────
 ipcMain.handle('get-recent', () => getRecent());
 ipcMain.handle('get-app-version', () => app.getVersion());
+ipcMain.handle('get-launch-preferences', () => {
+  const themePreference = storedThemePreference();
+  return {
+    appName: 'DocPilot',
+    version: app.getVersion(),
+    themePreference,
+    effectiveTheme: resolveEffectiveTheme(themePreference),
+  };
+});
 
 ipcMain.handle('open-folder-dialog', async () => {
   return chooseFolder(startWin || editorWin);
@@ -476,6 +528,18 @@ ipcMain.handle('window-toggle-maximize', event => {
   return win.isMaximized();
 });
 
+ipcMain.handle('set-window-theme', (event, requestedTheme) => {
+  const preference = normalizeThemePreference(requestedTheme);
+  const theme = resolveEffectiveTheme(preference);
+  store.set('themePreference', preference);
+  applyNativeTheme(preference);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && !win.isDestroyed()) {
+    win.setBackgroundColor(windowBackground(theme));
+  }
+  return true;
+});
+
 // ── Application menu ───────────────────────────────────
 function focusedEditorWindow() {
   const focused = BrowserWindow.getFocusedWindow();
@@ -520,7 +584,7 @@ function buildAppMenu() {
   configureAboutPanel();
   const template = [
     ...(isMac ? [{
-      label: app.name,
+      label: 'DocPilot',
       submenu: [
         { role: 'about' },
         { type: 'separator' },
@@ -611,20 +675,27 @@ function checkForUpdates(targetWin = focusedEditorWindow()) {
 }
 
 // ── App lifecycle ────────────────────────────────────────
-app.setName('DocPilot');
+function initialWorkspaceFromArgs() {
+  const candidate = process.argv
+    .slice(app.isPackaged ? 1 : 2)
+    .map(value => path.resolve(value))
+    .find(value => fs.existsSync(value) && fs.statSync(value).isDirectory());
+  return candidate || '';
+}
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (process.platform === 'darwin') {
     app.dock.setIcon(path.join(__dirname, 'assets', 'icon.png'));
   }
   buildAppMenu();
   startDevWatchers();
-  createStartWindow();
+  const initialWorkspace = initialWorkspaceFromArgs();
+  if (initialWorkspace) await openFolder(initialWorkspace);
+  else createStartWindow();
 });
 
 app.on('window-all-closed', () => {
   if (switchingFolder) return;
-  for (const proc of Array.from(bridgeProcesses)) stopOwnedBridge(proc);
   activeRoot = '';
   app.quit();
 });

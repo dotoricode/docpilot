@@ -1,7 +1,7 @@
 {
   "name": "docpilot",
-  "version": "1.0.28",
-  "description": "Local Markdown editor with AI assistance",
+  "version": "2.0.0",
+  "description": "Local-first document workbench with integrated terminal and review workflows",
   "main": "main.js",
   "scripts": {
     "prestart": "npm run renderer:build",
@@ -61,6 +61,14 @@
   },
   "dependencies": {
     "@asciidoctor/core": "^2.2.9",
+    "@fontsource-variable/geist": "^5.2.9",
+    "@fontsource-variable/geist-mono": "^5.2.8",
+    "@phosphor-icons/react": "^2.1.10",
+    "@tiptap/markdown": "^3.27.4",
+    "@tiptap/react": "^3.27.4",
+    "@tiptap/starter-kit": "^3.27.4",
+    "@xterm/addon-serialize": "^0.14.0",
+    "@xterm/headless": "^6.0.0",
     "highlight.js": "^11.11.1",
     "node-pty": "^1.1.0"
   },

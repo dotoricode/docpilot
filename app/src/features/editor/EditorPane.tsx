@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type WheelEvent } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type WheelEvent } from 'react';
 import { Compartment, EditorState, RangeSetBuilder, type Extension } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, highlightActiveLine, keymap, lineNumbers, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
@@ -32,10 +32,14 @@ import swift from 'highlight.js/lib/languages/swift';
 import typescript from 'highlight.js/lib/languages/typescript';
 import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
+import { DotsThreeVertical } from '@phosphor-icons/react';
 import { markdownBlockDiffRows, markdownPreviewBlocks } from '../../../../shared/core/markdown-block-diff';
-import { bridgeBaseUrl, convertAsciidoc, readWorkspaceFileBase } from '../../shared/bridge-client';
+import { markdownRichSafety } from '../../../../shared/core/document-adapters';
+import { bridgeBaseUrl, convertAsciidoc, copyText, readWorkspaceFileBase } from '../../shared/bridge-client';
 import { copyTextWithActiveInstructions } from '../../shared/copy-with-instructions';
 import { formatContextLocation } from '../../shared/context-format';
+import { RichMarkdownEditor } from './RichMarkdownEditor';
+import { JsonTreeView } from './JsonTreeView';
 
 type FileBuffer = {
   path: string;
@@ -110,6 +114,20 @@ type SemanticRule = {
 
 type IndentMode = 'spaces' | 'tabs';
 type CommandPaletteMode = 'commands' | 'tab-size';
+type BodyMode = 'preview' | 'rich' | 'tree' | 'edit';
+
+type CopyFeedback = {
+  text: string;
+  x: number;
+  y: number;
+};
+
+type PreviewSelectionBookmark = {
+  pane: 'primary' | 'secondary';
+  blockIndex: number;
+  start: number;
+  end: number;
+};
 
 type CommandItem = {
   id: string;
@@ -142,8 +160,20 @@ const emptyDocument = `# DocPilot
 `;
 
 const PREVIEW_WIDTH_MIN = 480;
-const PREVIEW_WIDTH_MAX = 1200;
+const PREVIEW_WIDTH_MAX = 2400;
 const PREVIEW_WIDTH_STEP = 20;
+const PREVIEW_WIDTH_STORAGE_KEY = 'docpilot:preview-width';
+
+const RenderedPreviewHtml = memo(function RenderedPreviewHtml({ html }: { html: string }) {
+  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+});
+
+function readPreviewWidth() {
+  const stored = Number(window.localStorage.getItem(PREVIEW_WIDTH_STORAGE_KEY));
+  return Number.isFinite(stored) && stored > 0
+    ? clampNumber(stored, PREVIEW_WIDTH_MIN, PREVIEW_WIDTH_MAX)
+    : PREVIEW_WIDTH_MAX;
+}
 
 registerHighlightLanguages();
 
@@ -400,6 +430,7 @@ export function EditorPane({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLElement | null>(null);
   const secondaryPreviewRef = useRef<HTMLElement | null>(null);
+  const previewShellRef = useRef<HTMLDivElement | null>(null);
   const tocRef = useRef<HTMLElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const activePreviewPaneRef = useRef<'primary' | 'secondary'>(activePreviewPane);
@@ -410,9 +441,11 @@ export function EditorPane({
   const shouldScrollTocActiveRef = useRef(false);
   const headingOffsetsRef = useRef<number[]>([]);
   const rangeSelectionHandledRef = useRef(false);
+  const previewSelectionBookmarkRef = useRef<PreviewSelectionBookmark | null>(null);
   const lastExternalDocRef = useRef('');
   const pathRef = useRef(buffer.path);
   const findInputRef = useRef<HTMLInputElement | null>(null);
+  const editorMoreMenuRef = useRef<HTMLDetailsElement | null>(null);
   const previewFindShouldScrollRef = useRef(false);
   const pendingModeLineRef = useRef<number | null>(null);
   const languageCompartment = useMemo(() => new Compartment(), []);
@@ -424,17 +457,18 @@ export function EditorPane({
   const [commandPaletteMode, setCommandPaletteMode] = useState<CommandPaletteMode>('commands');
   const [commandQuery, setCommandQuery] = useState('');
   const [commandIndex, setCommandIndex] = useState(0);
-  const [mode, setMode] = useState<'preview' | 'edit'>(() => isPreviewableFile(buffer.path) ? 'preview' : 'edit');
+  const [mode, setMode] = useState<BodyMode>(() => isPreviewableFile(buffer.path) ? 'preview' : 'edit');
   const [diffOn, setDiffOn] = useState(false);
   const [diffSplit, setDiffSplit] = useState(false);
   const [baseContent, setBaseContent] = useState('');
-  const [previewWidth, setPreviewWidth] = useState(PREVIEW_WIDTH_MAX);
+  const [previewWidth, setPreviewWidth] = useState(readPreviewWidth);
+  const [previewMaxWidth, setPreviewMaxWidth] = useState(PREVIEW_WIDTH_MAX);
   const [selectedPreviewIndex, setSelectedPreviewIndex] = useState<number | null>(null);
   const [activeHeadingIndex, setActiveHeadingIndex] = useState(0);
   const [wholeDocumentSelected, setWholeDocumentSelected] = useState(false);
   const [showPreviewLineNumbers, setShowPreviewLineNumbers] = useState(() => window.localStorage.getItem('docpilot:preview-line-numbers') !== '0');
   const [previewCopyTarget, setPreviewCopyTarget] = useState<PreviewCopyTarget | null>(null);
-  const [copyFeedback, setCopyFeedback] = useState('');
+  const [copyFeedback, setCopyFeedback] = useState<CopyFeedback | null>(null);
   const [previewFindOpen, setPreviewFindOpen] = useState(false);
   const [previewFindQuery, setPreviewFindQuery] = useState('');
   const [previewFindIndex, setPreviewFindIndex] = useState(0);
@@ -444,17 +478,24 @@ export function EditorPane({
   const [asciidocResult, setAsciidocResult] = useState<{ key: string; html: string } | null>(null);
   const [secondaryAsciidocResult, setSecondaryAsciidocResult] = useState<{ key: string; html: string } | null>(null);
 
+  useEffect(() => {
+    window.localStorage.setItem(PREVIEW_WIDTH_STORAGE_KEY, String(previewWidth));
+  }, [previewWidth]);
+
   const visibleContent = buffer.path ? buffer.editorContent : emptyDocument;
   const secondaryVisibleContent = secondaryBuffer?.path ? secondaryBuffer.editorContent : '';
   const canPreviewBody = isPreviewableFile(buffer.path);
   const canPreviewSecondaryBody = isPreviewableFile(secondaryBuffer?.path || '');
   const markdownPreviewBody = isMarkdownPreviewFile(buffer.path);
+  const jsonDocument = /\.json$/i.test(buffer.path);
   const primaryIsAsciidoc = isAsciidocPreviewFile(buffer.path);
   const secondaryIsAsciidoc = isAsciidocPreviewFile(secondaryBuffer?.path || '');
   const previewAsSource = isSourcePreviewFile(buffer.path);
   const secondaryPreviewAsSource = isSourcePreviewFile(secondaryBuffer?.path || '');
 
   const frontmatter = useMemo(() => markdownPreviewBody ? parseFrontmatter(visibleContent) : { entries: [], body: visibleContent }, [markdownPreviewBody, visibleContent]);
+  const frontmatterPrefix = visibleContent.slice(0, Math.max(0, visibleContent.length - frontmatter.body.length));
+  const richSafety = useMemo(() => markdownRichSafety(frontmatter.body), [frontmatter.body]);
   const secondaryFrontmatter = useMemo(
     () => isMarkdownPreviewFile(secondaryBuffer?.path || '') ? parseFrontmatter(secondaryVisibleContent) : { entries: [], body: secondaryVisibleContent },
     [secondaryBuffer?.path, secondaryVisibleContent],
@@ -530,7 +571,41 @@ export function EditorPane({
     return [];
   }, [markdownPreviewBody, previewSource, primaryIsAsciidoc, previewHtml]);
   const diffRows = useMemo(() => markdownBlockDiffRows(baseContent, visibleContent), [baseContent, visibleContent]);
-  const compareOn = Boolean(secondaryBuffer?.path) && canPreviewBody && canPreviewSecondaryBody && !diffOn && mode !== 'edit';
+  const compareOn = Boolean(secondaryBuffer?.path) && canPreviewBody && canPreviewSecondaryBody && !diffOn && mode === 'preview';
+
+  useEffect(() => {
+    const shell = previewShellRef.current;
+    if (!shell || compareOn || diffOn || mode !== 'preview') return;
+
+    let frame = 0;
+    const updateMaximum = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const shellRect = shell.getBoundingClientRect();
+        const outlineRect = tocRef.current?.getBoundingClientRect();
+        const availableRight = outlineRect && outlineRect.left > shellRect.left
+          ? outlineRect.left
+          : shellRect.right;
+        const nextMaximum = clampNumber(
+          Math.floor(availableRight - shellRect.left - 48),
+          PREVIEW_WIDTH_MIN,
+          PREVIEW_WIDTH_MAX,
+        );
+        setPreviewMaxWidth(nextMaximum);
+        setPreviewWidth(current => Math.min(current, nextMaximum));
+      });
+    };
+
+    const observer = new ResizeObserver(updateMaximum);
+    observer.observe(shell);
+    if (tocRef.current) observer.observe(tocRef.current);
+    updateMaximum();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [compareOn, diffOn, headings.length, contextChips.length, mode]);
+
   const previewCompareStyle = {
     '--preview-split-primary-size': `${Math.round(previewSplitRatio * 100)}%`,
   } as CSSProperties;
@@ -570,11 +645,15 @@ export function EditorPane({
   }, [buffer.path]);
 
   useEffect(() => {
-    setMode(canPreviewBody ? 'preview' : 'edit');
+    setMode(jsonDocument ? 'tree' : canPreviewBody ? 'preview' : 'edit');
     setPreviewFindOpen(false);
     setPreviewFindQuery('');
     if (!canPreviewBody) setDiffOn(false);
-  }, [canPreviewBody, buffer.path]);
+  }, [canPreviewBody, jsonDocument, buffer.path]);
+
+  useEffect(() => {
+    if (mode === 'rich' && (!markdownPreviewBody || !richSafety.safe)) setMode('edit');
+  }, [mode, markdownPreviewBody, richSafety.safe]);
 
   useEffect(() => {
     window.localStorage.setItem('docpilot:preview-line-numbers', showPreviewLineNumbers ? '1' : '0');
@@ -582,9 +661,37 @@ export function EditorPane({
 
   useEffect(() => {
     if (!copyFeedback) return undefined;
-    const timer = window.setTimeout(() => setCopyFeedback(''), 1400);
+    const timer = window.setTimeout(() => setCopyFeedback(null), 1400);
     return () => window.clearTimeout(timer);
   }, [copyFeedback]);
+
+  useEffect(() => {
+    const closeEditorMenuOnOutsideClick = (event: PointerEvent) => {
+      const menu = editorMoreMenuRef.current;
+      if (!menu?.open || menu.contains(event.target as Node)) return;
+      menu.open = false;
+    };
+    document.addEventListener('pointerdown', closeEditorMenuOnOutsideClick, true);
+    return () => document.removeEventListener('pointerdown', closeEditorMenuOnOutsideClick, true);
+  }, []);
+
+  useEffect(() => {
+    if (!previewCopyTarget) return undefined;
+    const copySelectedPreviewText = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'c') return;
+      const selection = window.getSelection();
+      const selectedText = selection?.toString() || '';
+      if (!selectedText.trim()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = selection?.rangeCount ? selection.getRangeAt(0).getBoundingClientRect() : null;
+      void copyText(selectedText).then(() => {
+        setCopyFeedback(feedbackNearRect('복사됨', rect));
+      });
+    };
+    window.addEventListener('keydown', copySelectedPreviewText, true);
+    return () => window.removeEventListener('keydown', copySelectedPreviewText, true);
+  }, [previewCopyTarget]);
 
   useEffect(() => {
     return () => {
@@ -740,6 +847,15 @@ export function EditorPane({
       }
     });
   }, [mode, previewHtml, visibleContent]);
+
+  useLayoutEffect(() => {
+    const bookmark = previewSelectionBookmarkRef.current;
+    if (!bookmark || !previewCopyTarget) return;
+    const preview = bookmark.pane === 'secondary' ? secondaryPreviewRef.current : previewRef.current;
+    const block = preview ? previewBlocks(preview)[bookmark.blockIndex] : null;
+    if (!(block instanceof HTMLElement)) return;
+    restoreTextSelection(block, bookmark.start, bookmark.end);
+  }, [contextChips, copyFeedback, previewCopyTarget, previewHtml, secondaryPreviewHtml]);
 
   useEffect(() => {
     const saveWithShortcut = (event: KeyboardEvent) => {
@@ -1053,6 +1169,12 @@ export function EditorPane({
       : null;
     const blocks = previewBlocks(preview);
     const index = target instanceof HTMLElement ? blocks.indexOf(target) : -1;
+    if (target instanceof HTMLElement && index >= 0) {
+      const offsets = selectionOffsetsWithin(target, selection.getRangeAt(0));
+      if (offsets) {
+        previewSelectionBookmarkRef.current = { pane, blockIndex: index, ...offsets };
+      }
+    }
     const range = target instanceof HTMLElement
       ? previewTextRangeForElement(paneState.source, text, target, blocks, index)
       : findTextRange(paneState.source, text);
@@ -1074,7 +1196,6 @@ export function EditorPane({
     onSelectionChange(null);
     onPreviewContextPick(context);
     showPreviewCopyTarget(event, pane, context);
-    selection.removeAllRanges();
   }
 
   function showPreviewCopyTarget(event: MouseEvent<HTMLElement>, pane: 'primary' | 'secondary', context: PreviewContext) {
@@ -1109,18 +1230,21 @@ export function EditorPane({
       '',
       context.text,
     ].join('\n'));
-    setCopyFeedback(feedback);
+    const activePreview = previewPaneState(activePreviewPaneRef.current).preview;
+    const target = (activePreview ? previewBlocks(activePreview) : [])
+      .find(block => block.textContent?.includes(context.text));
+    setCopyFeedback(feedbackNearRect(feedback, target?.getBoundingClientRect() || null));
   }
 
   async function copyAllSelectedContext() {
     await onCopyContextChips();
-    setCopyFeedback('선택 내용 복사됨');
+    setCopyFeedback(feedbackNearRect('선택 내용 복사됨', previewCopyTarget ? pointRect(previewCopyTarget.x, previewCopyTarget.y) : null));
     setPreviewCopyTarget(null);
   }
 
   async function copyContextChipsFromRail() {
     await onCopyContextChips();
-    setCopyFeedback('참고 내용 복사됨');
+    setCopyFeedback(feedbackNearRect('참고 내용 복사됨', null));
   }
 
   function renderDocumentContextRail() {
@@ -1164,6 +1288,7 @@ export function EditorPane({
   }
 
   function toggleDiff(next: boolean) {
+    if (next && mode === 'rich') setMode('preview');
     setDiffOn(next);
   }
 
@@ -1196,11 +1321,23 @@ export function EditorPane({
     setPreviewFindIndex(0);
   }
 
-  function switchBodyMode(nextMode: 'preview' | 'edit') {
+  function switchBodyMode(nextMode: BodyMode) {
     if (nextMode === 'preview' && !canPreviewBody) return;
+    if (nextMode === 'rich' && (!markdownPreviewBody || !richSafety.safe)) return;
+    if (nextMode === 'tree' && !jsonDocument) return;
     if (nextMode === mode) return;
     pendingModeLineRef.current = mode === 'edit' ? currentEditorLine() : currentPreviewLine();
     setMode(nextMode);
+  }
+
+  function formatJsonDocument() {
+    if (!jsonDocument) return;
+    try {
+      const formatted = `${JSON.stringify(JSON.parse(visibleContent), null, tabSize)}\n`;
+      onChange(formatted);
+    } catch {
+      setMode('tree');
+    }
   }
 
   function currentEditorLine() {
@@ -1307,9 +1444,51 @@ export function EditorPane({
   function setPreviewWidthFromPointer(event: MouseEvent<HTMLInputElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
     const ratio = clampNumber((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1);
-    const rawWidth = PREVIEW_WIDTH_MIN + ratio * (PREVIEW_WIDTH_MAX - PREVIEW_WIDTH_MIN);
+    const rawWidth = PREVIEW_WIDTH_MIN + ratio * (previewMaxWidth - PREVIEW_WIDTH_MIN);
     const steppedWidth = Math.round(rawWidth / PREVIEW_WIDTH_STEP) * PREVIEW_WIDTH_STEP;
-    setPreviewWidth(clampNumber(steppedWidth, PREVIEW_WIDTH_MIN, PREVIEW_WIDTH_MAX));
+    setPreviewWidth(clampNumber(steppedWidth, PREVIEW_WIDTH_MIN, previewMaxWidth));
+  }
+
+  function startPreviewWidthResize(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    const resizer = event.currentTarget;
+    const stage = resizer.parentElement;
+    if (!stage) return;
+    const startX = event.clientX;
+    const startWidth = stage.getBoundingClientRect().width;
+    let pendingWidth = Math.round(startWidth);
+    let frame = 0;
+
+    const renderPendingWidth = () => {
+      frame = 0;
+      stage.style.setProperty('--preview-width', `${pendingWidth}px`);
+      resizer.setAttribute('aria-valuenow', String(pendingWidth));
+    };
+    document.body.classList.add('resizing-preview-width');
+    const move = (moveEvent: globalThis.MouseEvent) => {
+      const nextWidth = clampNumber(startWidth + (moveEvent.clientX - startX) * 2, PREVIEW_WIDTH_MIN, previewMaxWidth);
+      pendingWidth = Math.round(nextWidth);
+      if (!frame) frame = window.requestAnimationFrame(renderPendingWidth);
+    };
+    const stop = () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      renderPendingWidth();
+      setPreviewWidth(pendingWidth);
+      document.body.classList.remove('resizing-preview-width');
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', stop);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', stop, { once: true });
+  }
+
+  function adjustPreviewWidthFromKeyboard(event: ReactKeyboardEvent<HTMLButtonElement>) {
+    const delta = event.key === 'ArrowLeft' ? -PREVIEW_WIDTH_STEP : event.key === 'ArrowRight' ? PREVIEW_WIDTH_STEP : 0;
+    if (!delta && event.key !== 'Home' && event.key !== 'End') return;
+    event.preventDefault();
+    if (event.key === 'Home') setPreviewWidth(PREVIEW_WIDTH_MIN);
+    else if (event.key === 'End') setPreviewWidth(previewMaxWidth);
+    else setPreviewWidth(current => clampNumber(current + delta, PREVIEW_WIDTH_MIN, previewMaxWidth));
   }
 
   function closeCommandPalette() {
@@ -1393,35 +1572,33 @@ export function EditorPane({
         <span>{markdownPreviewBlocks(visibleContent).length} blocks</span>
         {buffer.dirtyByUser ? <span className="dirty-pill">수정됨</span> : null}
         {buffer.conflictState !== 'clean' ? <span className="conflict-pill">{buffer.conflictState}</span> : null}
-        <label className="indent-mode-control" title="Tab 입력 방식">
-          <span>Tab</span>
-          <select
-            value={`${indentMode}:${tabSize === 4 ? 4 : 2}`}
-            onChange={event => {
-              const [nextMode, nextSize] = event.currentTarget.value.split(':');
-              setIndentMode(nextMode === 'tabs' ? 'tabs' : 'spaces');
-              setTabSize(nextSize === '4' ? 4 : 2);
-            }}
-          >
-            <option value="spaces:2">Spaces 2</option>
-            <option value="spaces:4">Spaces 4</option>
-            <option value="tabs:2">Tab 2</option>
-            <option value="tabs:4">Tab 4</option>
-          </select>
-        </label>
         {canPreviewBody ? (
           <div className="editor-mode-toggle" aria-label="본문 모드">
-            <button className={mode === 'preview' ? 'active' : ''} type="button" onClick={() => switchBodyMode('preview')}>프리뷰</button>
-            <button className={mode === 'edit' ? 'active' : ''} type="button" onClick={() => switchBodyMode('edit')}>편집</button>
+            <button className={mode === 'edit' ? 'active' : ''} type="button" onClick={() => switchBodyMode('edit')}>Source</button>
+            {jsonDocument ? (
+              <button className={mode === 'tree' ? 'active' : ''} type="button" onClick={() => switchBodyMode('tree')}>Tree</button>
+            ) : markdownPreviewBody ? (
+              <button
+                className={mode === 'rich' ? 'active' : ''}
+                type="button"
+                disabled={!richSafety.safe}
+                title={richSafety.safe ? 'Rich Markdown editor' : 'Unsupported syntax stays in Source mode'}
+                onClick={() => switchBodyMode('rich')}
+              >
+                Rich
+              </button>
+            ) : null}
+            {!jsonDocument ? <button className={mode === 'preview' ? 'active' : ''} type="button" onClick={() => switchBodyMode('preview')}>Preview</button> : null}
           </div>
         ) : null}
+        {jsonDocument ? <button className="editor-action" type="button" onClick={formatJsonDocument}>Format JSON</button> : null}
         <label className={`diff-toggle ${diffOn ? 'active' : ''}`}>
           <span>Diff</span>
           <input type="checkbox" checked={diffOn} onChange={event => toggleDiff(event.currentTarget.checked)} />
         </label>
         {!diffOn && canPreviewBody ? (
           <label className={`preview-split-toggle ${secondaryBuffer?.path ? 'active' : ''}`}>
-            <span>문서 분할</span>
+            <span>Split</span>
             <input
               type="checkbox"
               checked={Boolean(secondaryBuffer?.path)}
@@ -1455,36 +1632,58 @@ export function EditorPane({
             <button type="button" onClick={() => onCloseSecondary(activePreviewPaneRef.current)}>문서 분할 닫기</button>
           </div>
         ) : null}
-        <label className={`diff-toggle ${showPreviewLineNumbers ? 'active' : ''}`}>
-          <span>라인 번호</span>
-          <input
-            type="checkbox"
-            checked={showPreviewLineNumbers}
-            onChange={event => setShowPreviewLineNumbers(event.currentTarget.checked)}
-          />
-        </label>
-        <button className="editor-action" type="button" disabled={!buffer.path} onClick={selectWholeDocument}>전체 선택</button>
-        <button
-          className="editor-action"
-          type="button"
-          disabled={!buffer.path}
-          onMouseDown={copyWholeDocument}
-          onClick={copyWholeDocument}
-        >
-          전체 복사
-        </button>
-        <label className="preview-width-control" title="본문 너비">
-          <input
-            type="range"
-            min={PREVIEW_WIDTH_MIN}
-            max={PREVIEW_WIDTH_MAX}
-            step={PREVIEW_WIDTH_STEP}
-            value={previewWidth}
-            onChange={event => setPreviewWidth(Number(event.currentTarget.value))}
-            onPointerDown={setPreviewWidthFromPointer}
-          />
-          <span>폭 {previewWidth}</span>
-        </label>
+        <details className="editor-more-menu" ref={editorMoreMenuRef}>
+          <summary aria-label="More editor actions" title="More editor actions"><DotsThreeVertical size={17} weight="bold" /></summary>
+          <div className="editor-more-popover">
+            <label className="indent-mode-control" title="Tab input mode">
+              <span>Indentation</span>
+              <select
+                value={`${indentMode}:${tabSize === 4 ? 4 : 2}`}
+                onChange={event => {
+                  const [nextMode, nextSize] = event.currentTarget.value.split(':');
+                  setIndentMode(nextMode === 'tabs' ? 'tabs' : 'spaces');
+                  setTabSize(nextSize === '4' ? 4 : 2);
+                }}
+              >
+                <option value="spaces:2">Spaces 2</option>
+                <option value="spaces:4">Spaces 4</option>
+                <option value="tabs:2">Tab 2</option>
+                <option value="tabs:4">Tab 4</option>
+              </select>
+            </label>
+            <label className={`diff-toggle ${showPreviewLineNumbers ? 'active' : ''}`}>
+              <span>Line numbers</span>
+              <input
+                type="checkbox"
+                checked={showPreviewLineNumbers}
+                onChange={event => setShowPreviewLineNumbers(event.currentTarget.checked)}
+              />
+            </label>
+            <button className="editor-action" type="button" disabled={!buffer.path} onClick={selectWholeDocument}>Select all</button>
+            <button
+              className="editor-action"
+              type="button"
+              disabled={!buffer.path}
+              onMouseDown={copyWholeDocument}
+              onClick={copyWholeDocument}
+            >
+              Copy all
+            </button>
+            <label className="preview-width-control" title="Preview width">
+              <input
+                type="range"
+                min={PREVIEW_WIDTH_MIN}
+                max={previewMaxWidth}
+                step={PREVIEW_WIDTH_STEP}
+                value={previewWidth}
+                onInput={event => setPreviewWidth(clampNumber(Number(event.currentTarget.value), PREVIEW_WIDTH_MIN, previewMaxWidth))}
+                onChange={event => setPreviewWidth(clampNumber(Number(event.currentTarget.value), PREVIEW_WIDTH_MIN, previewMaxWidth))}
+                onPointerDown={setPreviewWidthFromPointer}
+              />
+              <span>Width {previewWidth}</span>
+            </label>
+          </div>
+        </details>
         <button className="save-button" type="button" disabled={!buffer.path || !buffer.dirtyByUser || saving} onClick={onSave}>
           {saving ? '저장 중' : '저장'}
         </button>
@@ -1492,8 +1691,20 @@ export function EditorPane({
       {error ? <div className="editor-error">{error}</div> : null}
       <div className={`editor-workspace ${mode} ${diffOn ? 'diffing' : ''}`}>
         <div className="editor-host" ref={hostRef} />
+        {mode === 'rich' ? (
+          <div className="rich-editor-shell">
+            {frontmatter.entries.length ? <FrontmatterCard entries={frontmatter.entries} /> : null}
+            <RichMarkdownEditor source={frontmatter.body} onChange={source => onChange(`${frontmatterPrefix}${source}`)} />
+          </div>
+        ) : null}
+        {mode === 'tree' ? (
+          <div className="json-tree-shell">
+            <JsonTreeView source={visibleContent} />
+          </div>
+        ) : null}
         <div
-          className={`preview-shell ${showPreviewLineNumbers ? 'show-line-numbers' : 'hide-line-numbers'} ${mode !== 'edit' && contextChips.length ? 'with-context-rail' : ''} ${compareOn ? `preview-compare-active split-${splitOrientation}` : ''}`}
+          ref={previewShellRef}
+          className={`preview-shell ${showPreviewLineNumbers ? 'show-line-numbers' : 'hide-line-numbers'} ${mode !== 'edit' && contextChips.length ? 'with-context-rail' : ''} ${compareOn ? `preview-compare-active split-${splitOrientation}` : ''} ${diffOn ? 'diff-review-shell' : ''}`}
           onWheel={handlePreviewShellWheel}
         >
           {previewFindOpen ? (
@@ -1549,7 +1760,7 @@ export function EditorPane({
                     onScroll={syncActiveHeading}
                   >
                     {!previewAsSource && frontmatter.entries.length ? <FrontmatterCard entries={frontmatter.entries} /> : null}
-                    <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                    <RenderedPreviewHtml html={previewHtml} />
                   </article>
                 </section>
                 <button
@@ -1576,7 +1787,7 @@ export function EditorPane({
                     onMouseUp={event => selectPreviewRange(event, 'secondary')}
                   >
                     {!secondaryPreviewAsSource && secondaryFrontmatter.entries.length ? <FrontmatterCard entries={secondaryFrontmatter.entries} /> : null}
-                    <div dangerouslySetInnerHTML={{ __html: secondaryPreviewHtml }} />
+                    <RenderedPreviewHtml html={secondaryPreviewHtml} />
                   </article>
                 </section>
               </div>
@@ -1584,7 +1795,7 @@ export function EditorPane({
             </>
           ) : (
             <>
-              {mode !== 'edit' ? (
+              {mode !== 'edit' && !diffOn ? (
                 <nav ref={tocRef} className={`toc-rail ${headings.length ? '' : 'empty'}`} aria-label="문서 목차">
                   {headings.length ? headings.map((heading, index) => (
                     <button
@@ -1599,34 +1810,60 @@ export function EditorPane({
                   )) : <span>목차 없음</span>}
                 </nav>
               ) : null}
-              <article
-                className={`markdown-preview ${diffOn ? 'diff-preview-mode' : ''}`}
-                ref={previewRef}
-                style={{ '--preview-width': `${previewWidth}px` } as CSSProperties}
-                onClick={event => selectPreviewBlock(event, 'primary')}
-                onMouseUp={event => selectPreviewRange(event, 'primary')}
-                onScroll={syncActiveHeading}
-              >
-                {diffOn ? (
-                  <DiffViewer
-                    oldText={baseContent}
-                    newText={visibleContent}
-                    rows={diffRows as DiffRow[]}
-                    view={mode === 'edit' ? 'raw' : 'preview'}
-                    split={diffSplit}
-                  />
-                ) : (
-                  <>
-                    {frontmatter.entries.length ? <FrontmatterCard entries={frontmatter.entries} /> : null}
-                    <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
-                  </>
-                )}
-              </article>
-              {renderDocumentContextRail()}
+              <div className="preview-document-stage" style={{ '--preview-width': `${previewWidth}px` } as CSSProperties}>
+                <article
+                  className={`markdown-preview ${diffOn ? 'diff-preview-mode' : ''}`}
+                  ref={previewRef}
+                  onClick={event => selectPreviewBlock(event, 'primary')}
+                  onMouseUp={event => selectPreviewRange(event, 'primary')}
+                  onScroll={syncActiveHeading}
+                >
+                  {diffOn ? (
+                    <DiffViewer
+                      oldText={baseContent}
+                      newText={visibleContent}
+                      rows={diffRows as DiffRow[]}
+                      view={mode === 'edit' ? 'raw' : 'preview'}
+                      split={diffSplit}
+                    />
+                  ) : (
+                    <>
+                      {frontmatter.entries.length ? <FrontmatterCard entries={frontmatter.entries} /> : null}
+                      <RenderedPreviewHtml html={previewHtml} />
+                    </>
+                  )}
+                </article>
+                <button
+                  className="preview-width-resizer"
+                  type="button"
+                  role="separator"
+                  aria-label="본문 가로 폭 조절"
+                  aria-orientation="vertical"
+                  aria-valuemin={PREVIEW_WIDTH_MIN}
+                  aria-valuemax={previewMaxWidth}
+                  aria-valuenow={previewWidth}
+                  onMouseDown={startPreviewWidthResize}
+                  onKeyDown={adjustPreviewWidthFromKeyboard}
+                />
+              </div>
+              {diffOn ? (
+                <DiffChangesRail
+                  rows={diffRows as DiffRow[]}
+                  onAccept={() => void onSave()}
+                  onExit={() => setDiffOn(false)}
+                />
+              ) : renderDocumentContextRail()}
             </>
           )}
           {selectedPreviewIndex !== null ? <span className="preview-selection-note">참고 내용에 추가됨</span> : null}
-          {copyFeedback ? <span className="preview-copy-feedback">{copyFeedback}</span> : null}
+          {copyFeedback ? (
+            <span
+              className="preview-copy-feedback"
+              style={{ left: copyFeedback.x, top: copyFeedback.y } as CSSProperties}
+            >
+              {copyFeedback.text}
+            </span>
+          ) : null}
           {previewCopyTarget ? (
             <div
               className="preview-copy-popover"
@@ -1644,6 +1881,54 @@ export function EditorPane({
       </div>
     </section>
   );
+}
+
+function feedbackNearRect(text: string, rect: Pick<DOMRect, 'left' | 'top' | 'right' | 'bottom'> | null): CopyFeedback {
+  const anchorX = rect ? rect.right : window.innerWidth - 28;
+  const anchorY = rect ? rect.top : window.innerHeight - 28;
+  return {
+    text,
+    x: clampNumber(anchorX + 8, 12, Math.max(12, window.innerWidth - 94)),
+    y: clampNumber(anchorY - 34, 12, Math.max(12, window.innerHeight - 40)),
+  };
+}
+
+function pointRect(x: number, y: number) {
+  return { left: x, right: x, top: y, bottom: y };
+}
+
+function selectionOffsetsWithin(container: HTMLElement, range: Range) {
+  if (!container.contains(range.startContainer) || !container.contains(range.endContainer)) return null;
+  const prefix = document.createRange();
+  prefix.selectNodeContents(container);
+  prefix.setEnd(range.startContainer, range.startOffset);
+  const start = prefix.toString().length;
+  const selectedLength = range.toString().length;
+  return { start, end: start + selectedLength };
+}
+
+function restoreTextSelection(container: HTMLElement, start: number, end: number) {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  let offset = 0;
+  let startSet = false;
+  let node = walker.nextNode();
+  while (node) {
+    const length = node.textContent?.length || 0;
+    if (!startSet && start <= offset + length) {
+      range.setStart(node, Math.max(0, start - offset));
+      startSet = true;
+    }
+    if (startSet && end <= offset + length) {
+      range.setEnd(node, Math.max(0, end - offset));
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      return;
+    }
+    offset += length;
+    node = walker.nextNode();
+  }
 }
 
 function previewTextRangeForElement(
@@ -2832,6 +3117,93 @@ function FrontmatterCard({ entries }: { entries: Array<{ key: string; value: str
   );
 }
 
+function DiffChangesRail({ rows, onAccept, onExit }: { rows: DiffRow[]; onAccept: () => void; onExit: () => void }) {
+  const changed = rows
+    .map((row, index) => ({ row, index }))
+    .filter(item => item.row.type !== 'same');
+  const groups = groupDiffChanges(rows);
+  const additions = changed.filter(item => item.row.type === 'add' || item.row.type === 'change').length;
+  const deletions = changed.filter(item => item.row.type === 'del' || item.row.type === 'change').length;
+  return (
+    <aside className="diff-changes-rail" aria-label="Document changes">
+      <header>
+        <div className="diff-rail-tabs" role="tablist" aria-label="Review rail">
+          <button type="button" role="tab" aria-selected="false" onClick={onExit}>Outline</button>
+          <button className="active" type="button" role="tab" aria-selected="true">Changes <span>{groups.length}</span></button>
+        </div>
+        <div className="diff-rail-summary">
+          <strong>Summary</strong>
+          <span>{groups.length} {groups.length === 1 ? 'change' : 'changes'}</span>
+          <span className="add">+{additions}</span>
+          <span className="del">−{deletions}</span>
+        </div>
+      </header>
+      <div className="diff-change-list">
+        {groups.map((group, changeIndex) => (
+          <button
+            key={`${group.startIndex}-${group.endIndex}`}
+            type="button"
+            onClick={() => scrollDiffChangeIntoView(group.startIndex)}
+          >
+            <span className="diff-change-index">{changeIndex + 1}</span>
+            <span>
+              <strong>{diffChangeGroupLabel(group.rows)}</strong>
+              <small>{diffChangeGroupSummary(group.rows)}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+      <footer>
+        <button className="diff-accept-button" type="button" onClick={onAccept}>Accept Changes</button>
+        <button className="diff-return-button" type="button" onClick={onExit}>Return to Edit</button>
+      </footer>
+    </aside>
+  );
+}
+
+function groupDiffChanges(rows: DiffRow[]) {
+  const groups: Array<{ startIndex: number; endIndex: number; rows: DiffRow[] }> = [];
+  rows.forEach((row, index) => {
+    if (row.type === 'same') return;
+    const current = groups.at(-1);
+    if (current && current.endIndex === index - 1) {
+      current.endIndex = index;
+      current.rows.push(row);
+      return;
+    }
+    groups.push({ startIndex: index, endIndex: index, rows: [row] });
+  });
+  return groups;
+}
+
+function diffChangeGroupLabel(rows: DiffRow[]) {
+  const types = new Set(rows.map(row => row.type));
+  if ([...types].every(type => type === 'add')) return 'Added';
+  if ([...types].every(type => type === 'del')) return 'Deleted';
+  return 'Changed';
+}
+
+function diffChangeGroupSummary(rows: DiffRow[]) {
+  const summaries = rows.map(diffChangeSummary).filter(Boolean);
+  const value = summaries.slice(0, 2).join(' · ');
+  return summaries.length > 2 ? `${value}…` : value || 'Document block';
+}
+
+function scrollDiffChangeIntoView(index: number) {
+  const target = document.querySelector<HTMLElement>(`[data-diff-index="${index}"]`);
+  const scroller = target?.closest<HTMLElement>('.markdown-preview');
+  if (!target || !scroller) return;
+  const targetRect = target.getBoundingClientRect();
+  const scrollerRect = scroller.getBoundingClientRect();
+  const centeredOffset = targetRect.top - scrollerRect.top - (scroller.clientHeight - targetRect.height) / 2;
+  scroller.scrollTo({ top: Math.max(0, scroller.scrollTop + centeredOffset), behavior: 'auto' });
+}
+
+function diffChangeSummary(row: DiffRow) {
+  const value = blockToDiffText(row.newBlock || row.oldBlock).replace(/\s+/g, ' ').trim();
+  return value.length > 88 ? `${value.slice(0, 85)}…` : value || 'Document block';
+}
+
 function DiffViewer({
   oldText,
   newText,
@@ -2938,7 +3310,7 @@ function PreviewDiffBlock({ row, side, lineLabel, split = false }: { row: DiffRo
       : null;
   const sideClass = row.type === 'change' ? (side === 'old' ? 'change-old' : 'change-new') : '';
   return (
-    <section className={`preview-diff-block ${row.type} ${sideClass} ${hidden ? 'hidden-placeholder' : ''} ${split ? 'split' : ''}`} data-line-label={lineLabel}>
+    <section className={`preview-diff-block ${row.type} ${sideClass} ${hidden ? 'hidden-placeholder' : ''} ${split ? 'split' : ''}`} data-line-label={lineLabel} data-diff-index={Number(lineLabel) - 1}>
       <PreviewDiffRenderedBlock block={block || ''} fallbackText={text} changedRange={changedRange} side={side} />
     </section>
   );
@@ -2977,14 +3349,10 @@ function PreviewDiffRenderedBlock({
 }
 
 function canRenderDiffBlockWithMarkdownIt(block: string) {
-  const lines = String(block || '').split(/\r?\n/).filter(line => line.trim());
-  if (!lines.length) return false;
-
-  // A single table row is a diff-friendly fragment, but markdown-it needs the
-  // table header/separator context to render it as an actual table.
-  if (lines.length === 1 && /^\|.+\|\s*$/.test(lines[0])) return false;
-
-  return true;
+  // The diff-aware renderer handles normal Markdown so it can preserve the
+  // unchanged prefix/suffix and highlight only the edited token. Fall back to
+  // markdown-it only for embedded media/interactive HTML it cannot model.
+  return /<(?:img|details|summary|video|audio|iframe|figure)\b/i.test(String(block || ''));
 }
 
 type InlineDiffPart = {

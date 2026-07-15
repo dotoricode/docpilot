@@ -127,7 +127,7 @@ async function main() {
       throw new Error('folder rows should not render file count badges');
     }
 
-    await editor.locator('.editor-mode-toggle button').filter({ hasText: '편집' }).click();
+    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Source' }).click();
     await editor.locator('.cm-content').click();
     await editor.keyboard.press('End');
     await editor.keyboard.type('\nUnsaved dirty marker');
@@ -159,7 +159,7 @@ async function main() {
     if (newDot.text.trim() || newDot.background === dirtyMarker.background) {
       throw new Error(`new file marker should be a textless blue dot distinct from modified, got: ${JSON.stringify({ dirtyMarker, newDot })}`);
     }
-    await editor.locator('.editor-mode-toggle button').filter({ hasText: '프리뷰' }).click();
+    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Preview' }).click();
     await editor.waitForSelector('.markdown-preview h1');
 
     createdInstructionId = await editor.evaluate(async () => {
@@ -193,7 +193,8 @@ async function main() {
     if (lineShape.display === 'none' || !lineShape.content.includes('1')) {
       throw new Error(`preview line labels should be visible by default: ${JSON.stringify(lineShape)}`);
     }
-    await editor.locator('.diff-toggle').filter({ hasText: '라인 번호' }).click();
+    await editor.locator('.editor-more-menu summary').click();
+    await editor.locator('.editor-more-popover .diff-toggle').filter({ hasText: 'Line numbers' }).click();
     const hiddenLineShape = await editor.locator('.markdown-preview').evaluate(preview => {
       const heading = preview.querySelector('h1');
       const lineStyle = heading ? getComputedStyle(heading, '::before') : null;
@@ -205,7 +206,7 @@ async function main() {
     if (hiddenLineShape.display !== 'none') {
       throw new Error(`preview line labels should hide when toggled off: ${JSON.stringify(hiddenLineShape)}`);
     }
-    await editor.locator('.diff-toggle').filter({ hasText: '라인 번호' }).click();
+    await editor.locator('.editor-more-popover .diff-toggle').filter({ hasText: 'Line numbers' }).click();
     const restoredLineShape = await editor.locator('.markdown-preview').evaluate(preview => {
       const heading = preview.querySelector('h1');
       const lineStyle = heading ? getComputedStyle(heading, '::before') : null;
@@ -217,6 +218,7 @@ async function main() {
     if (restoredLineShape.display === 'none' || !restoredLineShape.content.includes('1')) {
       throw new Error(`preview line labels should show again when toggled on: ${JSON.stringify(restoredLineShape)}`);
     }
+    await editor.locator('.editor-title').click();
 
     await editor.locator('.markdown-preview h1').first().click();
     await editor.waitForFunction(() => !document.querySelector('.preview-copy-popover'));

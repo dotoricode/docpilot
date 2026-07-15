@@ -14,6 +14,7 @@ const { Worker } = require('worker_threads');
 const { buildSessionPromptPackage } = require('./prompt-package');
 const { chooseContextMode } = require('./shared/core/context-policy');
 const { AgentProcessManager } = require('./shared/core/agent-process-manager');
+const { TerminalSessionModel } = require('./shared/core/terminal-session-model');
 
 const PORT = Number(process.env.DOCPILOT_BRIDGE_PORT || 7474);
 
@@ -382,6 +383,22 @@ function loadOptionalModule(name) {
   }
 }
 
+function prepareNodePtyRuntime() {
+  try {
+    const packageRoot = path.resolve(path.dirname(require.resolve('node-pty')), '..');
+    const candidates = [
+      path.join(packageRoot, 'build', 'Release', 'spawn-helper'),
+      path.join(packageRoot, 'prebuilds', `darwin-${process.arch}`, 'spawn-helper'),
+    ];
+    for (const helper of candidates) {
+      if (!fs.existsSync(helper)) continue;
+      fs.chmodSync(helper, 0o755);
+    }
+  } catch (error) {
+    console.warn('node-pty runtime preparation failed:', error.message);
+  }
+}
+
 function readAgentRuntime() {
   const settings = readSettingsStore();
   const useCustomCommands = settings.agentCommandMode === 'custom';
@@ -401,25 +418,20 @@ function readAgentRuntime() {
   };
 }
 
-function terminalSpawnSpec(agent) {
-  const normalizedAgent = agent === 'codex' ? 'codex' : 'claude';
+function terminalSpawnSpec() {
   if (shouldUseFakeAgent()) {
     return {
-      agent: normalizedAgent,
-      spawnArgs: [process.execPath, fakeAgentPath(), normalizedAgent, '--interactive'],
+      shell: process.execPath,
+      spawnArgs: [process.execPath, fakeAgentPath(), 'shell', '--interactive'],
       requiresCommand: process.execPath,
       mode: 'fake-interactive',
     };
   }
-  const settings = readSettingsStore();
-  const useCustomCommands = settings.agentCommandMode === 'custom';
-  const command = normalizedAgent === 'codex'
-    ? (useCustomCommands ? settings.codexCommand : 'codex')
-    : (useCustomCommands ? settings.claudeCommand : 'claude');
+  const shell = process.env.SHELL || '/bin/zsh';
   return {
-    agent: normalizedAgent,
-    spawnArgs: [command],
-    requiresCommand: command,
+    shell,
+    spawnArgs: [shell, '-l'],
+    requiresCommand: shell,
     usePty: readAgentRuntime().ptyAvailable,
     mode: readAgentRuntime().ptyAvailable ? 'node-pty' : 'child-process-interactive',
   };
@@ -430,17 +442,30 @@ function sendTerminalEvent(client, data) {
 }
 
 function broadcastTerminalEvent(session, data) {
-  for (const client of session.clients) sendTerminalEvent(client, data);
+  for (const client of session.clients) {
+    if (client.writableLength > 256 * 1024) {
+      client.docpilotNeedsSnapshot = true;
+      continue;
+    }
+    if (client.docpilotNeedsSnapshot) {
+      client.docpilotNeedsSnapshot = false;
+      sendTerminalEvent(client, { type: 'terminal.restore-needed', id: session.id, lastSeq: session.model.lastSeq });
+      continue;
+    }
+    sendTerminalEvent(client, data);
+  }
 }
 
 function summarizeTerminalSession(session) {
   return {
     id: session.id,
-    agent: session.agent,
+    title: session.title,
+    shell: session.shell,
     status: session.status,
     mode: session.mode,
     createdAt: session.createdAt,
     cwd: session.cwd,
+    lastSeq: session.model.lastSeq,
   };
 }
 
@@ -1594,37 +1619,56 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/terminal-sessions') {
     let payload;
     try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
-    const spec = terminalSpawnSpec(payload.agent);
-    const hasAgent = await commandExists(spec.requiresCommand);
-    if (!hasAgent) {
+    const spec = terminalSpawnSpec();
+    const hasShell = fs.existsSync(spec.requiresCommand) || await commandExists(spec.requiresCommand);
+    if (!hasShell) {
       res.writeHead(404, { ...CORS, 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: `${spec.agent} 실행 파일을 찾을 수 없습니다.` }));
+      res.end(JSON.stringify({ error: `기본 셸을 찾을 수 없습니다: ${spec.requiresCommand}` }));
       return;
     }
+    const requestedCwd = typeof payload.cwd === 'string' && payload.cwd.trim()
+      ? path.resolve(ROOT, payload.cwd)
+      : ROOT;
+    const cwd = requestedCwd === ROOT || requestedCwd.startsWith(`${ROOT}${path.sep}`) ? requestedCwd : ROOT;
     const pty = spec.usePty ? loadOptionalModule('node-pty') : null;
     const resolved = pty ? { cmd: spec.spawnArgs[0], args: spec.spawnArgs.slice(1) } : resolveSpawn(spec.spawnArgs[0], spec.spawnArgs.slice(1));
-    const proc = pty
-      ? pty.spawn(resolved.cmd, resolved.args, {
-        name: 'xterm-256color',
-        cols: Number(payload.cols || 100),
-        rows: Number(payload.rows || 30),
-        cwd: ROOT,
-        env: cliEnv(),
-      })
-      : spawn(resolved.cmd, resolved.args, {
-        cwd: ROOT,
-        env: cliEnv(),
-        stdio: ['pipe', 'pipe', 'pipe'],
-        windowsHide: true,
-      });
+    let proc;
+    try {
+      if (pty) prepareNodePtyRuntime();
+      proc = pty
+        ? pty.spawn(resolved.cmd, resolved.args, {
+          name: 'xterm-256color',
+          cols: Number(payload.cols || 100),
+          rows: Number(payload.rows || 30),
+          cwd,
+          env: cliEnv(),
+        })
+        : spawn(resolved.cmd, resolved.args, {
+          cwd,
+          env: cliEnv(),
+          stdio: ['pipe', 'pipe', 'pipe'],
+          windowsHide: true,
+        });
+    } catch (error) {
+      res.writeHead(500, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `터미널을 시작하지 못했습니다: ${error.message}` }));
+      return;
+    }
     const session = {
       id: crypto.randomUUID(),
-      agent: spec.agent,
+      title: String(payload.title || `Terminal ${terminalSessions.size + 1}`),
+      shell: spec.shell,
       status: 'running',
       mode: pty ? 'node-pty' : spec.mode,
-      cwd: ROOT,
+      cwd,
       proc,
       clients: new Set(),
+      acknowledgements: new Map(),
+      model: new TerminalSessionModel({
+        maxBytes: 2 * 1024 * 1024,
+        cols: Number(payload.cols || 100),
+        rows: Number(payload.rows || 30),
+      }),
       createdAt: new Date().toISOString(),
       isPty: Boolean(pty),
       write: data => {
@@ -1633,6 +1677,7 @@ const server = http.createServer(async (req, res) => {
       },
       resize: (cols, rows) => {
         if (pty && typeof proc.resize === 'function') proc.resize(cols, rows);
+        session.model.resize(cols, rows);
       },
       kill: () => {
         if (pty) proc.kill();
@@ -1641,18 +1686,27 @@ const server = http.createServer(async (req, res) => {
     };
     terminalSessions.set(session.id, session);
     if (pty) {
-      proc.onData(data => broadcastTerminalEvent(session, { type: 'terminal.data', id: session.id, data }));
+      proc.onData(data => {
+        const frame = session.model.append(data);
+        broadcastTerminalEvent(session, { type: 'terminal.frame', id: session.id, ...frame });
+      });
       proc.onExit(event => {
         session.status = 'closed';
         broadcastTerminalEvent(session, { type: 'terminal.exit', id: session.id, code: event.exitCode, signal: event.signal });
+        session.model.dispose();
         terminalSessions.delete(session.id);
       });
     } else {
-      proc.stdout.on('data', chunk => broadcastTerminalEvent(session, { type: 'terminal.data', id: session.id, data: chunk.toString() }));
-      proc.stderr.on('data', chunk => broadcastTerminalEvent(session, { type: 'terminal.data', id: session.id, data: chunk.toString() }));
+      const onData = chunk => {
+        const frame = session.model.append(chunk.toString());
+        broadcastTerminalEvent(session, { type: 'terminal.frame', id: session.id, ...frame });
+      };
+      proc.stdout.on('data', onData);
+      proc.stderr.on('data', onData);
       proc.on('close', code => {
         session.status = 'closed';
         broadcastTerminalEvent(session, { type: 'terminal.exit', id: session.id, code });
+        session.model.dispose();
         terminalSessions.delete(session.id);
       });
     }
@@ -1674,9 +1728,41 @@ const server = http.createServer(async (req, res) => {
     });
     session.clients.add(res);
     sendTerminalEvent(res, { type: 'terminal.ready', session: summarizeTerminalSession(session), runtime: readAgentRuntime() });
+    const fromSeq = Math.max(0, Number(url.searchParams.get('fromSeq') || 0));
+    const replay = session.model.replayAfter(fromSeq);
+    if (replay.needsSnapshot || fromSeq === 0) {
+      sendTerminalEvent(res, { type: 'terminal.snapshot', id: session.id, snapshot: await session.model.screenSnapshot() });
+    } else {
+      for (const frame of replay.frames) sendTerminalEvent(res, { type: 'terminal.frame', id: session.id, ...frame });
+    }
     req.on('close', () => {
       session.clients.delete(res);
     });
+    return;
+  }
+
+  const terminalSnapshotMatch = url.pathname.match(/^\/terminal-sessions\/([^/]+)\/snapshot$/);
+  if (req.method === 'GET' && terminalSnapshotMatch) {
+    const id = decodeURIComponent(terminalSnapshotMatch[1]);
+    const session = terminalSessions.get(id);
+    if (!session) { res.writeHead(404, CORS); res.end(JSON.stringify({ error: 'terminal session not found' })); return; }
+    res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ snapshot: await session.model.screenSnapshot(), session: summarizeTerminalSession(session) }));
+    return;
+  }
+
+  const terminalAckMatch = url.pathname.match(/^\/terminal-sessions\/([^/]+)\/ack$/);
+  if (req.method === 'POST' && terminalAckMatch) {
+    const id = decodeURIComponent(terminalAckMatch[1]);
+    const session = terminalSessions.get(id);
+    if (!session) { res.writeHead(404, CORS); res.end(JSON.stringify({ error: 'terminal session not found' })); return; }
+    let payload;
+    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    const viewId = String(payload.viewId || 'default');
+    const seq = Math.max(0, Math.min(session.model.lastSeq, Number(payload.seq || 0)));
+    session.acknowledgements.set(viewId, seq);
+    res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, seq }));
     return;
   }
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { CaretDoubleDown, CaretDoubleUp, FolderPlus, SidebarSimple } from '@phosphor-icons/react';
 import {
   attachWorkspaceRoot,
   chooseWorkspaceFolder,
@@ -570,10 +571,16 @@ export function WorkspaceSidebar({ activeFile, dirtyFileIds = [], refreshSignal,
   return (
     <aside className="workspace-sidebar">
       <div className="panel-title workspace-title">
-        <span>Workspace</span>
+        <span>Project</span>
         <div className="panel-title-actions">
-          <button type="button" disabled={busy} onClick={addRoot}>+ 폴더</button>
-          {onCollapse ? <button type="button" onClick={onCollapse}>접기</button> : null}
+          <button type="button" aria-label="Add project folder" title="Add project folder" disabled={busy} onClick={addRoot}>
+            <FolderPlus size={16} weight="regular" />
+          </button>
+          {onCollapse ? (
+            <button type="button" aria-label="Collapse project panel" title="Collapse project panel" onClick={onCollapse}>
+              <SidebarSimple size={16} weight="regular" />
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="workspace-tabs" role="tablist" aria-label="Workspace sections">
@@ -641,8 +648,12 @@ export function WorkspaceSidebar({ activeFile, dirtyFileIds = [], refreshSignal,
               value={query}
               onChange={event => setQuery(event.currentTarget.value)}
             />
-            <button type="button" disabled={!folderIds.length} onClick={expandAll}>펼침</button>
-            <button type="button" disabled={!folderIds.length} onClick={collapseAll}>접기</button>
+            <button type="button" aria-label="Expand all folders" title="Expand all folders" disabled={!folderIds.length} onClick={expandAll}>
+              <CaretDoubleDown size={15} weight="regular" />
+            </button>
+            <button type="button" aria-label="Collapse all folders" title="Collapse all folders" disabled={!folderIds.length} onClick={collapseAll}>
+              <CaretDoubleUp size={15} weight="regular" />
+            </button>
           </div>
           <div className="workspace-tree-meta">
             파일 {files.length}개{normalizedQuery ? ` · 검색 ${filteredFileCount}개` : ''}

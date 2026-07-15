@@ -42,8 +42,10 @@ async function main() {
     const editor = await waitForReactEditorWindow(app);
     await editor.waitForSelector('.workspace-sidebar');
     await editor.waitForSelector('.file-row');
+    const releaseNotice = editor.locator('.release-notice-overlay');
+    if (await releaseNotice.isVisible().catch(() => false)) await releaseNotice.click({ position: { x: 8, y: 8 } });
     await editor.locator('.file-row').filter({ hasText: 'draft.md' }).first().click();
-    await editor.locator('.editor-mode-toggle button').filter({ hasText: '편집' }).click();
+    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Source' }).click();
     await editor.waitForSelector('.cm-editor');
 
     await editor.locator('.cm-content').click();
@@ -60,7 +62,7 @@ async function main() {
     const diskContent = fs.readFileSync(filePath, 'utf8');
     assert(diskContent.includes('Saved from React CodeMirror.'), 'saved file should contain editor changes');
 
-    await editor.locator('.editor-mode-toggle button').filter({ hasText: '프리뷰' }).click();
+    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Preview' }).click();
     await editor.waitForSelector('.markdown-preview h1');
     const previewTitle = await editor.locator('.markdown-preview h1').innerText();
     assert.strictEqual(previewTitle.trim(), 'Draft Updated');

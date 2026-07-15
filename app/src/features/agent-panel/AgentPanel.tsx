@@ -563,7 +563,7 @@ export function AgentPanel({
     if (terminalSessionId) return;
     const agent = selectedSession?.agent || 'claude';
     try {
-      const data = await startTerminalSession(agent);
+      const data = await startTerminalSession({ title: 'Terminal' });
       setRuntime(data.runtime);
       setTerminalSessionId(data.session.id);
       terminalSessionIdRef.current = data.session.id;
@@ -574,7 +574,7 @@ export function AgentPanel({
       terminalStreamStopRef.current?.();
       terminalStreamStopRef.current = watchTerminalSession(data.session.id, event => {
         if (event.runtime) setRuntime(event.runtime);
-        if (event.type === 'terminal.data' && event.data) queueTerminalWrite(event.data);
+        if (event.type === 'terminal.frame' && event.data) queueTerminalWrite(event.data);
         if (event.type === 'terminal.exit') {
           flushTerminalWrites();
           terminalRef.current?.writeln('');

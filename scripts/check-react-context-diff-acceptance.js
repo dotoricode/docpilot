@@ -64,11 +64,13 @@ async function main() {
     const page = await waitForReactEditorWindow(app);
     await page.waitForSelector('.bridge-status.connected', { timeout: 15000 });
     await page.waitForSelector('.workspace-file-row', { timeout: 15000 });
+    const releaseNotice = page.locator('.release-notice-overlay');
+    if (await releaseNotice.isVisible().catch(() => false)) await releaseNotice.click({ position: { x: 8, y: 8 } });
     await page.locator('.workspace-file-row').filter({ hasText: 'review.md' }).first().click();
     await page.waitForSelector('.markdown-preview h1', { timeout: 15000 });
     assert.strictEqual(await page.locator('.changed-files-panel').count(), 0, 'changed files panel should not occupy default lower UI with zero reviews');
 
-    await page.getByRole('button', { name: '편집' }).click();
+    await page.getByRole('button', { name: 'Source' }).click();
     await page.locator('.cm-content').click();
     await page.waitForFunction(() => {
       const cursor = document.querySelector('.cm-cursor');
@@ -85,7 +87,7 @@ async function main() {
     }, null, { timeout: 5000 });
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
     await page.waitForFunction(() => document.querySelectorAll('.document-context-chip').length === 0);
-    await page.getByRole('button', { name: '프리뷰' }).click();
+    await page.getByRole('button', { name: 'Preview' }).click();
 
     await page.locator('.markdown-preview li').filter({ hasText: '계약 추가 위치:' }).first().click();
     await page.waitForFunction(() => document.querySelectorAll('.document-context-chip').length === 1);

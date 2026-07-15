@@ -210,21 +210,32 @@ export type AgentRuntime = {
 
 export type TerminalSessionSummary = {
   id: string;
-  agent: AgentName;
+  title: string;
+  shell: string;
   status: string;
   mode: string;
   createdAt: string;
   cwd: string;
+  lastSeq: number;
 };
 
 export type TerminalSessionEvent = {
-  type: 'terminal.ready' | 'terminal.data' | 'terminal.exit' | string;
+  type: 'terminal.ready' | 'terminal.frame' | 'terminal.snapshot' | 'terminal.restore-needed' | 'terminal.exit' | string;
   id?: string;
   data?: string;
+  seq?: number;
+  lastSeq?: number;
   code?: number;
   reason?: string;
   session?: TerminalSessionSummary;
   runtime?: AgentRuntime;
+  snapshot?: TerminalSnapshot;
+};
+
+export type TerminalSnapshot = {
+  data: string;
+  fromSeq: number;
+  lastSeq: number;
 };
 
 function bridgePort() {
@@ -373,10 +384,14 @@ export function getAgentRuntime() {
   return bridgeJson<{ runtime: AgentRuntime }>('/agent-runtime');
 }
 
-export function startTerminalSession(agent: AgentName) {
+export function listTerminalSessions() {
+  return bridgeJson<{ sessions: TerminalSessionSummary[] }>('/terminal-sessions');
+}
+
+export function startTerminalSession(options: { title?: string; cwd?: string; cols?: number; rows?: number } = {}) {
   return bridgeJson<{ session: TerminalSessionSummary; runtime: AgentRuntime }>('/terminal-sessions', {
     method: 'POST',
-    body: JSON.stringify({ agent }),
+    body: JSON.stringify(options),
   });
 }
 
@@ -400,8 +415,19 @@ export function stopTerminalSession(sessionId: string) {
   });
 }
 
-export function watchTerminalSession(sessionId: string, onEvent: (event: TerminalSessionEvent) => void, onError?: (error: Event) => void) {
-  const source = new EventSource(`${bridgeBaseUrl()}/terminal-sessions/${encodeURIComponent(sessionId)}/stream`);
+export function getTerminalSnapshot(sessionId: string) {
+  return bridgeJson<{ snapshot: TerminalSnapshot; session: TerminalSessionSummary }>(`/terminal-sessions/${encodeURIComponent(sessionId)}/snapshot`);
+}
+
+export function acknowledgeTerminalFrame(sessionId: string, viewId: string, seq: number) {
+  return bridgeJson<{ ok: true; seq: number }>(`/terminal-sessions/${encodeURIComponent(sessionId)}/ack`, {
+    method: 'POST',
+    body: JSON.stringify({ viewId, seq }),
+  });
+}
+
+export function watchTerminalSession(sessionId: string, onEvent: (event: TerminalSessionEvent) => void, onError?: (error: Event) => void, fromSeq = 0) {
+  const source = new EventSource(`${bridgeBaseUrl()}/terminal-sessions/${encodeURIComponent(sessionId)}/stream?fromSeq=${Math.max(0, fromSeq)}`);
   source.onmessage = message => {
     try { onEvent(JSON.parse(message.data) as TerminalSessionEvent); } catch {}
   };
