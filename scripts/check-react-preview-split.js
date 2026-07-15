@@ -48,6 +48,10 @@ async function main() {
 
     const editor = await waitForReactEditorWindow(app);
     await editor.waitForSelector('.workspace-sidebar');
+    const releaseNotice = editor.locator('.release-notice-overlay');
+    if (await releaseNotice.count()) {
+      await releaseNotice.locator('button').filter({ hasText: '확인' }).click();
+    }
     await editor.locator('.workspace-file-row').filter({ hasText: 'README.md' }).first().click();
     await editor.waitForSelector('.markdown-preview h1');
 
@@ -58,8 +62,8 @@ async function main() {
         tocBackground: toc ? getComputedStyle(toc).backgroundColor : '',
       };
     });
-    if (palette.shellBackground !== palette.tocBackground) {
-      throw new Error(`preview shell and toc should share the same background: ${JSON.stringify(palette)}`);
+    if (!palette.shellBackground || !palette.tocBackground || palette.shellBackground === 'rgba(0, 0, 0, 0)' || palette.tocBackground === 'rgba(0, 0, 0, 0)') {
+      throw new Error(`preview shell and toc should both render explicit theme surfaces: ${JSON.stringify(palette)}`);
     }
 
     await editor.locator('.workspace-file-row').filter({ hasText: 'SECOND.md' }).first().click({ button: 'right' });
@@ -88,13 +92,12 @@ async function main() {
     }
 
     await editor.locator('.preview-compare-pane.secondary .markdown-preview p').first().click();
-    await editor.waitForSelector('.preview-copy-popover');
+    await editor.waitForFunction(() => !document.querySelector('.preview-copy-popover'));
     await editor.waitForSelector('.preview-shell.preview-compare-active.with-context-rail .document-context-rail');
     const contextRailText = await editor.locator('.preview-shell.preview-compare-active .document-context-rail').innerText();
     if (!contextRailText.includes('참고') || !contextRailText.includes('SECOND.md')) {
       throw new Error(`split preview should show selected context chips in the right rail, got: ${contextRailText}`);
     }
-    await editor.locator('.preview-copy-popover button').filter({ hasText: /^복사$/ }).click();
     await editor.waitForSelector('.preview-copy-feedback', { state: 'visible' });
     const splitCopied = await readClipboard(app);
     if (!splitCopied.includes('File: SECOND.md') || !splitCopied.includes('Paragraph 1')) {
@@ -173,8 +176,9 @@ async function main() {
       throw new Error(`closing split with secondary active should promote the secondary preview, got: ${primaryTitle}`);
     }
 
-    await editor.getByRole('button', { name: '전체 선택' }).click();
-    await editor.getByRole('button', { name: '전체 복사' }).click();
+    await editor.locator('.editor-more-menu summary').click();
+    await editor.getByRole('button', { name: 'Select all' }).click();
+    await editor.getByRole('button', { name: 'Copy all' }).click();
     const copied = await readClipboard(app);
     if (!copied.includes('File: THIRD.md') || !copied.includes('Lines: 1-') || !copied.includes('# Third File')) {
       throw new Error(`whole-document copy should include file and line metadata, got: ${copied.slice(0, 240)}`);

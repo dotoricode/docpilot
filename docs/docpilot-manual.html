@@ -768,7 +768,7 @@
 
 <nav class="toc">
   <button class="brand" type="button" data-target="overview" aria-label="홈으로 이동"><span class="dot"></span><span>DocPilot</span></button>
-  <div class="version">v1.0.28 · 사용 매뉴얼</div>
+  <div class="version">v2.0.0 · 사용 매뉴얼</div>
 
   <div class="section-label">시작하기</div>
   <a data-target="overview" class="active">개요</a>
@@ -815,7 +815,7 @@
 
     <section class="home-stats" aria-label="매뉴얼 구성 요약">
       <div><span>16</span><strong>Sections</strong></div>
-      <div><span>1.0.28</span><strong>Current Version</strong></div>
+      <div><span>2.0.0</span><strong>Current Version</strong></div>
       <div><span>macOS</span><strong>Distribution</strong></div>
     </section>
 
@@ -851,15 +851,29 @@
 
   <div class="page" id="whats-new">
     <span class="kicker">What's New</span>
-    <h1>1.0.26 → 1.0.28 변경사항</h1>
-    <p class="subtitle">최근 세 버전에서 문서 검토, Diff 확인, 편집기, 지침 관리 흐름이 어떻게 바뀌었는지 정리했습니다.</p>
+    <h1>DocPilot 2.0.0 변경사항</h1>
+    <p class="subtitle">프로젝트 탐색부터 문서 검토와 터미널 작업까지 하나의 워크벤치로 다시 설계한 주요 변화를 정리했습니다.</p>
     <hr class="divider" />
 
     <div class="release-stack">
       <section class="release-card">
         <header>
-          <h2>DocPilot 1.0.28</h2>
+          <h2>DocPilot 2.0.0</h2>
           <span class="release-badge">현재 버전</span>
+        </header>
+        <ul class="release-items">
+          <li><span class="num">01</span><div><strong>문서 워크벤치를 새로 설계했습니다</strong><p>프로젝트 탐색기, 문서 캔버스, 검토 레일과 터미널을 하나의 차분한 작업 화면으로 다시 구성했습니다.</p></div></li>
+          <li><span class="num">02</span><div><strong>기본 셸을 여는 실제 터미널을 제공합니다</strong><p>특정 Agent 전용 실행 화면 대신 사용자의 기본 로그인 셸을 열고 원하는 CLI 도구를 직접 실행할 수 있습니다.</p></div></li>
+          <li><span class="num">03</span><div><strong>탭과 터미널을 드래그해 분할합니다</strong><p>열린 문서 탭과 터미널을 상하좌우 가장자리로 끌면 결과를 미리 보고 원하는 위치에 배치할 수 있습니다.</p></div></li>
+          <li><span class="num">04</span><div><strong>문서 검토 흐름을 강화했습니다</strong><p>Markdown과 AsciiDoc 프리뷰, 인라인 Diff, 변경 목록, 선택 복사와 문서 맥락 수집이 한 화면에서 이어집니다.</p></div></li>
+          <li><span class="num">05</span><div><strong>시작 화면과 제품 아이덴티티를 교체했습니다</strong><p>마지막 테마를 복원하는 시작 화면과 새 DocPilot 아이콘을 적용하고 라이트·다크 디자인을 통일했습니다.</p></div></li>
+        </ul>
+      </section>
+
+      <section class="release-card">
+        <header>
+          <h2>DocPilot 1.0.28</h2>
+          <span class="release-badge">문서 성능</span>
         </header>
         <ul class="release-items">
           <li><span class="num">01</span><div><strong>큰 AsciiDoc 문서가 바로 열립니다</strong><p>AsciiDoc 변환을 별도 worker로 옮기고 프리뷰 계산을 줄여, 큰 manual.adoc 파일도 열 때마다 오래 멈추지 않습니다.</p></div></li>
@@ -905,15 +919,15 @@
   <div class="page" id="deploy">
     <span class="kicker">Install</span>
     <h1>설치 및 다운로드</h1>
-    <p class="subtitle">현재 배포된 DocPilot 앱은 <code>v1.0.28</code>입니다. macOS에서는 DMG를 내려받아 기존 앱에 덮어 설치하면 됩니다.</p>
+    <p class="subtitle">현재 배포 대상 DocPilot 앱은 <code>v2.0.0</code>입니다. macOS에서는 DMG를 내려받아 기존 앱에 덮어 설치하면 됩니다.</p>
     <hr class="divider" />
 
     <div class="subsection">
       <h2>Download</h2>
       <h3><span class="emoji">⬇️</span>최신 macOS DMG</h3>
-      <p>현재 버전의 설치 파일명은 <code>DocPilot-1.0.28.dmg</code>입니다. 아래 버튼으로 DMG 파일을 내려받아 설치합니다.</p>
+      <p>현재 버전의 설치 파일명은 <code>DocPilot-2.0.0.dmg</code>입니다. 아래 버튼으로 DMG 파일을 내려받아 설치합니다.</p>
       <div class="deploy-actions">
-        <a href="https://github.com/dotoricode/docpilot/releases/download/v1.0.28/DocPilot-1.0.28.dmg">DocPilot 1.0.28 DMG 다운로드</a>
+        <a href="https://github.com/dotoricode/docpilot/releases/download/v2.0.0/DocPilot-2.0.0.dmg">DocPilot 2.0.0 DMG 다운로드</a>
       </div>
     </div>
 
@@ -921,10 +935,10 @@
       <h2>Install</h2>
       <h3><span class="emoji">🧩</span>설치 방법</h3>
       <ol class="steps">
-        <li><code>DocPilot-1.0.28.dmg</code>를 내려받는다</li>
+        <li><code>DocPilot-2.0.0.dmg</code>를 내려받는다</li>
         <li>다운로드한 DMG 파일을 더블클릭해 실행한다</li>
         <li>설치 창에서 <strong>DocPilot.app</strong>을 Applications 폴더로 옮긴다. 기존 앱이 있으면 대체 설치한다</li>
-        <li>앱을 다시 열면 v1.0.28 개선사항 안내가 처음 한 번 표시된다</li>
+        <li>앱을 다시 열면 v2.0.0 개선사항 안내가 처음 한 번 표시된다</li>
       </ol>
     </div>
 

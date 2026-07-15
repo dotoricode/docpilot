@@ -1,14 +1,35 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { ArrowRight, Check, ClockCounterClockwise, DotsSixVertical, FileText, FolderOpen, MagnifyingGlass, Moon, SidebarSimple, Sun, TerminalWindow, X } from '@phosphor-icons/react';
 import { EditorPane } from '../features/editor/EditorPane';
 import { InstructionsPanel } from '../features/instructions/InstructionsPanel';
+import { TerminalPane } from '../features/terminal/TerminalPane';
+import { ProjectSearchPanel } from '../features/search/ProjectSearchPanel';
 import { WorkspaceSidebar } from '../features/workspace/WorkspaceSidebar';
 import { copyText, getAppVersion, getSettings, listWorkspaceFiles, pingBridge, readWorkspaceFile, saveSettings, saveWorkspaceFile, watchProject, type AppSettings } from '../shared/bridge-client';
 import { withActiveInstructionPrompt } from '../shared/copy-with-instructions';
 import { formatContextLocation } from '../shared/context-format';
 import { applyThemePreference } from '../shared/theme';
 import { applyDiskChange, createFileBuffer, markSaved, updateEditorContent } from '../../../shared/core/file-buffer';
+import { createWorkbenchLayout, movePane, panePlacement, parseWorkbenchLayout, resizePane, serializeWorkbenchLayout } from '../../../shared/core/workbench-pane-layout';
 
 type FileBuffer = ReturnType<typeof createFileBuffer>;
+type PaneEdge = 'left' | 'right' | 'top' | 'bottom';
+type PaneId = 'document' | 'terminal';
+type WorkbenchLayout = ReturnType<typeof createWorkbenchLayout>;
+
+const WORKBENCH_LAYOUT_KEY = 'docpilot:workbench-pane-layout';
+
+function readWorkbenchLayout(): WorkbenchLayout {
+  const stored = window.localStorage.getItem(WORKBENCH_LAYOUT_KEY);
+  if (stored) return parseWorkbenchLayout(stored) as WorkbenchLayout;
+  const legacyPosition = window.localStorage.getItem('docpilot:terminal-orientation') === 'horizontal' ? 'right' : 'bottom';
+  return createWorkbenchLayout({ terminalPosition: legacyPosition }) as WorkbenchLayout;
+}
+
+function applyAppTheme(preference: AppSettings['theme']) {
+  applyThemePreference(preference);
+  void window.docpilot?.setWindowTheme?.(preference);
+}
 
 type OpenFileTab = {
   id: string;
@@ -27,6 +48,28 @@ type ReleaseNoteItem = {
 };
 
 const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
+  '2.0.0': [
+    {
+      title: 'DocPilot 작업 공간을 새로 설계했습니다',
+      body: '프로젝트 탐색기, 문서 캔버스, 검토 레일과 터미널을 하나의 차분한 워크벤치로 다시 구성했습니다.',
+    },
+    {
+      title: '기본 셸을 여는 실제 터미널을 제공합니다',
+      body: 'Codex나 Claude 전용 실행 화면 대신 사용자의 기본 로그인 셸을 열고, 필요할 때 원하는 도구를 직접 실행할 수 있습니다.',
+    },
+    {
+      title: '문서 탭과 터미널을 원하는 위치에 배치합니다',
+      body: '열린 문서 탭을 상하좌우 가장자리로 끌어 분할하고, 터미널 패널도 같은 방식으로 이동할 수 있습니다.',
+    },
+    {
+      title: 'Markdown과 AsciiDoc 검토 흐름을 강화했습니다',
+      body: '프리뷰, 인라인 Diff, 변경 목록, 선택 복사와 문서 맥락 수집이 한 화면에서 이어집니다.',
+    },
+    {
+      title: '시작 화면과 제품 아이덴티티를 교체했습니다',
+      body: '마지막 테마를 복원하는 프로젝트 시작 화면, 새 DocPilot 아이콘과 일관된 라이트·다크 디자인을 적용했습니다.',
+    },
+  ],
   '1.0.28': [
     {
       title: '큰 AsciiDoc 문서가 바로 열립니다',
@@ -168,9 +211,15 @@ export function App() {
   const [contextChips, setContextChips] = useState<ContextChip[]>([]);
   const [workspaceRefreshSignal, setWorkspaceRefreshSignal] = useState(0);
   const [reviewDiff, setReviewDiff] = useState<{ fileId: string; before: string; signal: number } | null>(null);
-  const [leftWidth, setLeftWidth] = useState(() => readStoredPanelWidth('docpilot:left-panel-width', 300, 220, 520));
+  const [leftWidth, setLeftWidth] = useState(() => readStoredPanelWidth('docpilot:left-panel-width', 274, 220, 520));
   const [leftCollapsed, setLeftCollapsed] = useState(() => readStoredBoolean('docpilot:left-panel-collapsed', false));
   const [themePreference, setThemePreference] = useState<AppSettings['theme']>('dark');
+  const [terminalOpen, setTerminalOpen] = useState(() => readStoredBoolean('docpilot:terminal-open', true));
+  const [paneLayout, setPaneLayout] = useState<WorkbenchLayout>(readWorkbenchLayout);
+  const [draggingPane, setDraggingPane] = useState<PaneId | null>(null);
+  const [paneDropPreview, setPaneDropPreview] = useState<{ paneId: PaneId; edge: PaneEdge } | null>(null);
+  const [documentTabDropPreview, setDocumentTabDropPreview] = useState<{ id: string; edge: PaneEdge } | null>(null);
+  const [terminalSize, setTerminalSize] = useState(() => readStoredPanelWidth('docpilot:terminal-size', 260, 160, 620));
   const [activePreviewPane, setActivePreviewPane] = useState<'primary' | 'secondary'>('primary');
   const [splitOrientation, setSplitOrientation] = useState<'horizontal' | 'vertical'>(() => {
     const stored = window.localStorage.getItem('docpilot:preview-split-orientation');
@@ -178,6 +227,7 @@ export function App() {
   });
   const [workspaceFiles, setWorkspaceFiles] = useState<string[]>([]);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
+  const [projectSearchOpen, setProjectSearchOpen] = useState(false);
   const [quickOpenQuery, setQuickOpenQuery] = useState('');
   const [quickOpenIndex, setQuickOpenIndex] = useState(0);
   const [quickOpenRecent, setQuickOpenRecent] = useState<string[]>(() => readStoredStringList('docpilot:quick-open-recent'));
@@ -185,6 +235,14 @@ export function App() {
   const openPathRef = useRef('');
   const secondaryOpenPathRef = useRef('');
   const activePreviewPaneRef = useRef<'primary' | 'secondary'>('primary');
+  const draggedDocumentTabRef = useRef<{ id: string; pane: 'primary' | 'secondary' } | null>(null);
+  const committedTerminalPosition = (panePlacement(paneLayout, 'terminal', 'document') || 'bottom') as PaneEdge;
+  const previewPaneLayout = useMemo(() => {
+    if (!paneDropPreview) return paneLayout;
+    const targetId = paneDropPreview.paneId === 'terminal' ? 'document' : 'terminal';
+    return movePane(paneLayout, paneDropPreview.paneId, targetId, paneDropPreview.edge) as WorkbenchLayout;
+  }, [paneDropPreview, paneLayout]);
+  const terminalPosition = (panePlacement(previewPaneLayout, 'terminal', 'document') || committedTerminalPosition) as PaneEdge;
 
   useEffect(() => {
     openPathRef.current = buffer.path;
@@ -253,6 +311,13 @@ export function App() {
   }, [splitOrientation]);
 
   useEffect(() => {
+    window.localStorage.setItem('docpilot:terminal-open', String(terminalOpen));
+    window.localStorage.setItem('docpilot:terminal-orientation', committedTerminalPosition === 'left' || committedTerminalPosition === 'right' ? 'horizontal' : 'vertical');
+    window.localStorage.setItem('docpilot:terminal-size', String(Math.round(terminalSize)));
+    window.localStorage.setItem(WORKBENCH_LAYOUT_KEY, serializeWorkbenchLayout(paneLayout));
+  }, [committedTerminalPosition, paneLayout, terminalOpen, terminalSize]);
+
+  useEffect(() => {
     let disposed = false;
     listWorkspaceFiles()
       .then(data => {
@@ -304,22 +369,22 @@ export function App() {
         .then(response => {
           currentThemePreference = response.settings.theme;
           setThemePreference(response.settings.theme);
-          applyThemePreference(currentThemePreference);
+          applyAppTheme(currentThemePreference);
         })
-        .catch(() => applyThemePreference(currentThemePreference));
+        .catch(() => applyAppTheme(currentThemePreference));
     };
     const onSettingsSaved = (event: Event) => {
       const settings = (event as CustomEvent).detail?.settings;
       if (settings?.theme) {
         currentThemePreference = settings.theme;
         setThemePreference(settings.theme);
-        applyThemePreference(currentThemePreference);
+        applyAppTheme(currentThemePreference);
       } else {
         applyFromSettings();
       }
     };
     const media = window.matchMedia?.('(prefers-color-scheme: light)');
-    const onSystemThemeChange = () => applyThemePreference(currentThemePreference);
+    const onSystemThemeChange = () => applyAppTheme(currentThemePreference);
     applyFromSettings();
     window.addEventListener('docpilot-settings-saved', onSettingsSaved);
     media?.addEventListener?.('change', onSystemThemeChange);
@@ -380,12 +445,12 @@ export function App() {
 
   async function setTopbarTheme(nextTheme: 'light' | 'dark') {
     setThemePreference(nextTheme);
-    applyThemePreference(nextTheme);
+    applyAppTheme(nextTheme);
     try {
       const response = await getSettings();
       const saved = await saveSettings({ ...response.settings, theme: nextTheme });
       setThemePreference(saved.settings.theme);
-      applyThemePreference(saved.settings.theme);
+      applyAppTheme(saved.settings.theme);
       window.dispatchEvent(new CustomEvent('docpilot-settings-saved', { detail: { settings: saved.settings } }));
     } catch {
       // Keep the immediate visual toggle even if settings persistence is unavailable.
@@ -571,6 +636,69 @@ export function App() {
     setSecondaryOpenTabs(move);
   }
 
+  async function openDocumentTabAtEdge(id: string, edge: PaneEdge) {
+    const orientation = edge === 'left' || edge === 'right' ? 'horizontal' : 'vertical';
+    const leading = edge === 'left' || edge === 'top';
+    try {
+      const known = [...openTabs, ...secondaryOpenTabs].find(tab => tab.id === id)?.buffer;
+      let loaded = known;
+      if (!loaded) {
+        const file = await readWorkspaceFile(id);
+        if (!file) throw new Error(`${id} 파일을 열 수 없습니다.`);
+        loaded = createFileBuffer({ path: file.id, content: file.content });
+      }
+      const alternatives = [...openTabs, ...secondaryOpenTabs]
+        .map(tab => tab.buffer)
+        .filter(tabBuffer => tabBuffer.path && tabBuffer.path !== id);
+      const counterpart = (buffer.path && buffer.path !== id ? buffer : null)
+        || (secondaryBuffer.path && secondaryBuffer.path !== id ? secondaryBuffer : null)
+        || alternatives[0]
+        || loaded;
+
+      setSplitOrientation(orientation);
+      if (leading) {
+        openPathRef.current = loaded.path;
+        secondaryOpenPathRef.current = counterpart.path;
+        setBuffer(loaded);
+        setSecondaryBuffer(counterpart);
+        setActivePane('primary');
+      } else {
+        if (!buffer.path || buffer.path === id) {
+          openPathRef.current = counterpart.path;
+          setBuffer(counterpart);
+        }
+        secondaryOpenPathRef.current = loaded.path;
+        setSecondaryBuffer(loaded);
+        setActivePane('secondary');
+      }
+      setOpenError('');
+      rememberQuickOpenFile(id);
+    } catch (err) {
+      setOpenError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDocumentTabDropPreview(null);
+      draggedDocumentTabRef.current = null;
+    }
+  }
+
+  function previewDocumentTabDrop(event: ReactDragEvent<HTMLDivElement>) {
+    const dragged = draggedDocumentTabRef.current;
+    if (!dragged) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const edge = paneEdgeAtPoint(bounds, event.clientX, event.clientY);
+    setDocumentTabDropPreview(edge ? { id: dragged.id, edge } : null);
+  }
+
+  function finishDocumentTabDrop(event: ReactDragEvent<HTMLDivElement>) {
+    const dragged = draggedDocumentTabRef.current;
+    const edge = documentTabDropPreview?.edge;
+    if (!dragged || !edge) return;
+    event.preventDefault();
+    void openDocumentTabAtEdge(dragged.id, edge);
+  }
+
   function closeActivePage() {
     if (secondaryBuffer.path && activePreviewPaneRef.current === 'secondary') {
       closeSecondaryOpenTab(secondaryBuffer.path);
@@ -634,6 +762,13 @@ export function App() {
     const handleAppShortcuts = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
       const mod = event.metaKey || event.ctrlKey;
+      if (mod && event.shiftKey && key === 'f') {
+        event.preventDefault();
+        event.stopPropagation();
+        setLeftCollapsed(false);
+        setProjectSearchOpen(true);
+        return;
+      }
       if (mod && !event.shiftKey && key === 'p') {
         event.preventDefault();
         event.stopPropagation();
@@ -652,7 +787,13 @@ export function App() {
         closeActivePage();
         return;
       }
-      if (!quickOpenOpen) return;
+      if (!quickOpenOpen) {
+        if (projectSearchOpen && event.key === 'Escape') {
+          event.preventDefault();
+          setProjectSearchOpen(false);
+        }
+        return;
+      }
       if (event.key === 'Escape') {
         event.preventDefault();
         closeQuickOpen();
@@ -669,7 +810,7 @@ export function App() {
     };
     window.addEventListener('keydown', handleAppShortcuts);
     return () => window.removeEventListener('keydown', handleAppShortcuts);
-  }, [activePreviewPane, buffer.path, buffer.editorContent, openTabs, quickOpenIndex, quickOpenOpen, quickOpenResults, secondaryBuffer, secondaryOpenTabs, splitOrientation]);
+  }, [activePreviewPane, buffer.path, buffer.editorContent, openTabs, projectSearchOpen, quickOpenIndex, quickOpenOpen, quickOpenResults, secondaryBuffer, secondaryOpenTabs, splitOrientation]);
 
   async function saveFile() {
     if (!buffer.path || !buffer.dirtyByUser || saving) return;
@@ -766,6 +907,99 @@ export function App() {
     window.addEventListener('mouseup', stop, { once: true });
   }
 
+  function startTerminalResize(event: ReactMouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const stack = event.currentTarget.parentElement;
+    if (!stack) return;
+    const bounds = stack.getBoundingClientRect();
+    document.body.classList.add('resizing-panels');
+    const move = (moveEvent: globalThis.MouseEvent) => {
+      const horizontal = committedTerminalPosition === 'left' || committedTerminalPosition === 'right';
+      const rawSize = committedTerminalPosition === 'left'
+        ? moveEvent.clientX - bounds.left
+        : committedTerminalPosition === 'right'
+          ? bounds.right - moveEvent.clientX
+          : committedTerminalPosition === 'top'
+            ? moveEvent.clientY - bounds.top
+            : bounds.bottom - moveEvent.clientY;
+      const next = Math.max(160, Math.min(620, rawSize));
+      const total = horizontal ? bounds.width : bounds.height;
+      setTerminalSize(next);
+      setPaneLayout(current => resizePane(current, 'terminal', next / Math.max(1, total)) as WorkbenchLayout);
+    };
+    const stop = () => {
+      document.body.classList.remove('resizing-panels');
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', stop);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', stop, { once: true });
+  }
+
+  function moveWorkbenchPane(paneId: PaneId, edge: PaneEdge) {
+    const targetId = paneId === 'terminal' ? 'document' : 'terminal';
+    setPaneLayout(current => movePane(current, paneId, targetId, edge) as WorkbenchLayout);
+    setPaneDropPreview(null);
+  }
+
+  function finishPaneDrag() {
+    setPaneDropPreview(null);
+    setDraggingPane(null);
+    document.body.classList.remove('dragging-workbench-pane');
+  }
+
+  function beginPanePointerDrag(event: ReactPointerEvent<HTMLElement>, paneId: PaneId) {
+    if (event.button !== 0 || !terminalOpen) return;
+    event.preventDefault();
+    const stack = event.currentTarget.closest('.workbench-stack');
+    if (!(stack instanceof HTMLElement)) return;
+    const bounds = stack.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const pointerId = event.pointerId;
+    const source = event.currentTarget;
+    let active = false;
+    let previewEdge: PaneEdge | null = null;
+
+    source.setPointerCapture?.(pointerId);
+
+    const move = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      if (!active && Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < 6) return;
+      if (!active) {
+        active = true;
+        document.body.classList.add('dragging-workbench-pane');
+        setDraggingPane(paneId);
+      }
+      previewEdge = paneEdgeAtPoint(bounds, moveEvent.clientX, moveEvent.clientY);
+      setPaneDropPreview(previewEdge ? { paneId, edge: previewEdge } : null);
+    };
+
+    const stop = (stopEvent: PointerEvent, commit: boolean) => {
+      if (stopEvent.pointerId !== pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerCancel);
+      try { source.releasePointerCapture?.(pointerId); } catch {}
+      if (active && commit && previewEdge) moveWorkbenchPane(paneId, previewEdge);
+      finishPaneDrag();
+    };
+    const onPointerUp = (stopEvent: PointerEvent) => stop(stopEvent, true);
+    const onPointerCancel = (stopEvent: PointerEvent) => stop(stopEvent, false);
+
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
+  }
+
+  function movePaneFromKeyboard(event: ReactKeyboardEvent<HTMLElement>, paneId: PaneId) {
+    if (!event.altKey) return;
+    const edge = ({ ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'top', ArrowDown: 'bottom' } as Record<string, PaneEdge>)[event.key];
+    if (!edge) return;
+    event.preventDefault();
+    moveWorkbenchPane(paneId, edge);
+  }
+
   function renderOpenFileTabs(
     tabs: OpenFileTab[],
     activeId: string,
@@ -791,6 +1025,13 @@ export function App() {
                 event.dataTransfer.effectAllowed = 'move';
                 event.dataTransfer.setData('application/x-docpilot-tab-pane', pane);
                 event.dataTransfer.setData('application/x-docpilot-tab-id', tab.id);
+                draggedDocumentTabRef.current = { id: tab.id, pane };
+                document.body.classList.add('dragging-document-tab');
+              }}
+              onDragEnd={() => {
+                draggedDocumentTabRef.current = null;
+                setDocumentTabDropPreview(null);
+                document.body.classList.remove('dragging-document-tab');
               }}
               onDragOver={event => {
                 const dragPane = event.dataTransfer.getData('application/x-docpilot-tab-pane');
@@ -800,6 +1041,7 @@ export function App() {
               }}
               onDrop={event => {
                 event.preventDefault();
+                event.stopPropagation();
                 const dragPane = event.dataTransfer.getData('application/x-docpilot-tab-pane');
                 const dragId = event.dataTransfer.getData('application/x-docpilot-tab-id');
                 if (dragPane !== pane || !dragId || dragId === tab.id) return;
@@ -831,6 +1073,16 @@ export function App() {
           )) : (
             <div className="file-tab-empty">파일을 선택하세요</div>
           )}
+          <span
+            className="document-tabbar-drag-surface"
+            draggable={false}
+            role="button"
+            tabIndex={terminalOpen ? 0 : -1}
+            aria-label="Drag document pane from tab bar. Use Alt plus arrow keys to move."
+            title="Drag document pane"
+            onPointerDown={event => beginPanePointerDrag(event, 'document')}
+            onKeyDown={event => movePaneFromKeyboard(event, 'document')}
+          />
         </div>
       </div>
     );
@@ -846,7 +1098,8 @@ export function App() {
       <div className="app-topbar window-drag-region">
         <div className="topbar-left">
           <button className="app-logo" type="button" onClick={goHome} aria-label="홈으로 이동">
-            <span className="logo-dot" />DocPilot
+            <span className="app-logo-mark" aria-hidden="true"><FileText size={15} weight="regular" /></span>
+            <span>DocPilot</span>
           </button>
           <span className="topbar-chip" title={workspaceRoot}>
             <span className="topbar-chip-label">Workspace</span>
@@ -861,18 +1114,27 @@ export function App() {
               type="button"
               onClick={() => setTopbarTheme('light')}
             >
-              <span aria-hidden="true">☼</span>
-              Light
+              <Sun size={14} aria-hidden="true" />
+              <span>Light</span>
             </button>
             <button
               className={themePreference !== 'light' ? 'active' : ''}
               type="button"
               onClick={() => setTopbarTheme('dark')}
             >
-              <span aria-hidden="true">☾</span>
-              Dark
+              <Moon size={14} aria-hidden="true" />
+              <span>Dark</span>
             </button>
           </div>
+          <button
+            className={`topbar-icon-button ${terminalOpen ? 'active' : ''}`}
+            type="button"
+            aria-label={terminalOpen ? 'Close terminal pane' : 'Open terminal pane'}
+            title={terminalOpen ? 'Close terminal pane' : 'Open terminal pane'}
+            onClick={() => setTerminalOpen(current => !current)}
+          >
+            <TerminalWindow size={16} />
+          </button>
           <div className={`bridge-status ${bridgeState}`} title={bridgeMessage}>
             <span className="bridge-dot" />
             <span>{bridgeState === 'connected' ? '문서 연결됨' : bridgeMessage}</span>
@@ -884,8 +1146,18 @@ export function App() {
       </div>
       {leftCollapsed ? (
         <aside className="panel-collapsed-rail left-rail">
-          <button className="panel-rail-open-button" type="button" onClick={() => setLeftCollapsed(false)}>열기</button>
+          <button className="panel-rail-open-button" type="button" aria-label="Open project panel" title="Open project panel" onClick={() => setLeftCollapsed(false)}>
+            <SidebarSimple size={18} weight="regular" />
+          </button>
         </aside>
+      ) : projectSearchOpen ? (
+        <ProjectSearchPanel
+          files={workspaceFiles}
+          onClose={() => setProjectSearchOpen(false)}
+          onOpenFile={fileId => {
+            openFile(fileId);
+          }}
+        />
       ) : (
         <WorkspaceSidebar
           activeFile={buffer.path}
@@ -952,11 +1224,11 @@ export function App() {
           <section className="release-notice-modal" onClick={event => event.stopPropagation()}>
             <header>
               <div className="release-notice-brand">
-                <span className="release-notice-dot" />
+                <span className="release-notice-mark" aria-hidden="true"><FileText size={15} weight="regular" /></span>
                 <span>DocPilot</span>
               </div>
               <span className="release-notice-version">v{releaseNotice.version}</span>
-              <button type="button" aria-label="새 버전 안내 닫기" onClick={closeReleaseNotice}>×</button>
+              <button type="button" aria-label="새 버전 안내 닫기" onClick={closeReleaseNotice}><X size={16} /></button>
             </header>
             <div className="release-notice-body">
               <span className="release-notice-kicker">Documentation</span>
@@ -975,13 +1247,38 @@ export function App() {
               </ul>
             </div>
             <footer>
-              <button type="button" onClick={closeReleaseNotice}>확인</button>
+              <button type="button" onClick={closeReleaseNotice}><Check size={15} />확인</button>
             </footer>
           </section>
         </div>
       ) : null}
-      <section className="editor-stack">
-        {showHome ? (
+      <section
+        className={`editor-stack workbench-stack terminal-${terminalPosition} ${terminalOpen && !showHome ? 'with-terminal' : ''} ${draggingPane ? 'pane-dragging' : ''} ${paneDropPreview ? 'pane-layout-preview' : ''}`}
+        style={{ '--terminal-pane-size': `${terminalSize}px` } as CSSProperties}
+      >
+        <div
+          className={`workbench-document-pane ${documentTabDropPreview ? 'document-tab-drop-active' : ''}`}
+          data-pane-id="document"
+          onDragOver={previewDocumentTabDrop}
+          onDrop={finishDocumentTabDrop}
+          onDragLeave={event => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDocumentTabDropPreview(null);
+          }}
+        >
+          {!showHome && terminalOpen ? (
+            <button
+              className="document-pane-drag-handle"
+              type="button"
+              draggable={false}
+              aria-label="Drag document pane. Use Alt plus arrow keys to move."
+              title="Drag document pane"
+              onPointerDown={event => beginPanePointerDrag(event, 'document')}
+              onKeyDown={event => movePaneFromKeyboard(event, 'document')}
+            >
+              <DotsSixVertical size={16} weight="bold" />
+            </button>
+          ) : null}
+          {showHome ? (
           <HomeScreen
             workspaceRoot={workspaceRoot}
             bridgeState={bridgeState}
@@ -992,7 +1289,7 @@ export function App() {
             onQuickOpen={openQuickOpen}
             onOpenFile={openFile}
           />
-        ) : (
+          ) : (
           <EditorPane
             buffer={buffer}
             error={openError}
@@ -1021,8 +1318,36 @@ export function App() {
             onOpenCurrentInSplit={openCurrentFileInSplit}
             onActivePreviewPaneChange={setActivePane}
             onSplitOrientationChange={setSplitOrientation}
-          />
-        )}
+            />
+          )}
+          {documentTabDropPreview ? (
+            <div
+              className={`document-tab-drop-preview edge-${documentTabDropPreview.edge}`}
+              data-edge={documentTabDropPreview.edge}
+              aria-hidden="true"
+            />
+          ) : null}
+        </div>
+        {!terminalOpen && !showHome ? (
+          <button className="terminal-reopen-button" type="button" aria-label="Open terminal pane" onClick={() => setTerminalOpen(true)}>
+            <TerminalWindow size={16} />
+            <span>Terminal</span>
+          </button>
+        ) : null}
+        {terminalOpen && !showHome ? (
+          <>
+            <div className="terminal-split-resizer" role="separator" aria-label="Terminal pane size" onMouseDown={startTerminalResize} />
+            <TerminalPane
+              position={terminalPosition}
+              theme={themePreference === 'light' ? 'light' : 'dark'}
+              onPositionChange={edge => moveWorkbenchPane('terminal', edge)}
+              onPanePointerDown={event => beginPanePointerDrag(event, 'terminal')}
+              onPaneKeyDown={event => movePaneFromKeyboard(event, 'terminal')}
+              onClose={() => setTerminalOpen(false)}
+            />
+          </>
+        ) : null}
+        {draggingPane ? <div className="pane-drop-overlay" aria-hidden="true" /> : null}
       </section>
     </main>
   );
@@ -1048,68 +1373,74 @@ function HomeScreen({
   onOpenFile: (id: string) => void;
 }) {
   const firstFile = recentFiles[0] || suggestedFiles[0] || '';
+  const projectName = folderName(workspaceRoot) || 'Workspace';
+  const visibleFiles = recentFiles.length ? recentFiles.slice(0, 6) : suggestedFiles.slice(0, 6);
+  const statusLabel = bridgeState === 'connected' ? 'Local project' : bridgeState === 'checking' ? 'Connecting' : 'Offline';
   return (
     <div className="home-screen">
-      <section className="home-hero" aria-label="DocPilot 홈">
-        <div className="home-hero-copy">
-          <div className="home-brand-lockup">
-            <span className="home-brand-dot" />
-            <span>DocPilot</span>
+      <div className="home-content">
+        <section className="home-project-header" aria-label="DocPilot 홈">
+          <div className="home-project-heading">
+            <span className="home-eyebrow">Project</span>
+            <div className="home-project-title-row">
+              <FolderOpen size={22} weight="regular" aria-hidden="true" />
+              <h1>{projectName}</h1>
+            </div>
+            <p title={workspaceRoot || undefined}>{workspaceRoot || '작업공간 연결 대기 중'}</p>
+            <div className={`home-project-status ${bridgeState}`}>
+              <span className="home-project-status-dot" />
+              <span>{statusLabel}</span>
+              <span aria-hidden="true">·</span>
+              <span>{fileCount.toLocaleString()} documents</span>
+            </div>
           </div>
-          <h1>문서 작업공간</h1>
-          <p>{workspaceRoot ? folderName(workspaceRoot) : '작업공간 연결 대기 중'}</p>
-        </div>
-        <div className="home-actions" aria-label="빠른 작업">
-          <button type="button" onClick={onQuickOpen} disabled={!fileCount}>빠른 이동</button>
-          <button type="button" onClick={() => firstFile && onOpenFile(firstFile)} disabled={!firstFile}>최근 문서 열기</button>
-        </div>
-      </section>
+          <div className="home-actions" aria-label="빠른 작업">
+            <button type="button" aria-label="Quick open" onClick={onQuickOpen} disabled={!fileCount}>
+              <MagnifyingGlass size={16} weight="regular" />
+              <span>Quick open</span>
+              <kbd>⌘P</kbd>
+            </button>
+            <button type="button" aria-label="Open recent document" onClick={() => firstFile && onOpenFile(firstFile)} disabled={!firstFile}>
+              <ClockCounterClockwise size={16} weight="regular" />
+              <span>Open recent</span>
+            </button>
+          </div>
+        </section>
 
-      {error ? <div className="home-error">{error}</div> : null}
+        {error ? <div className="home-error">{error}</div> : null}
 
-      <section className="home-stats" aria-label="작업공간 상태">
-        <div>
-          <span>{bridgeState === 'connected' ? 'Connected' : bridgeState === 'checking' ? 'Checking' : 'Offline'}</span>
-          <strong>Bridge</strong>
-        </div>
-        <div>
-          <span>{fileCount.toLocaleString()}</span>
-          <strong>Files</strong>
-        </div>
-        <div>
-          <span>{recentFiles.length.toLocaleString()}</span>
-          <strong>Recent</strong>
-        </div>
-      </section>
-
-      <div className="home-grid">
-        <section className="home-panel">
+        <section className="home-recent-section">
           <header>
-            <span>최근 문서</span>
-            <button className="home-shortcut-button" type="button" onClick={onQuickOpen} disabled={!fileCount}>⌘ + P</button>
+            <div>
+              <span className="home-section-kicker">Documents</span>
+              <h2>Recent documents</h2>
+            </div>
+            <button className="home-icon-action" type="button" aria-label="Quick open recent documents" title="Quick open" onClick={onQuickOpen} disabled={!fileCount}>
+              <MagnifyingGlass size={17} weight="regular" />
+            </button>
           </header>
           <div className="home-file-list">
-            {(recentFiles.length ? recentFiles : suggestedFiles.slice(0, 5)).map(file => (
+            {visibleFiles.map(file => (
               <button type="button" key={file} onClick={() => onOpenFile(file)}>
-                <span className={`tree-icon tree-icon-file tree-icon-${quickOpenFileIconType(file)}`} aria-hidden="true" />
-                <span>{pathFileName(file)}</span>
-                <small>{parentPath(file) || 'workspace'}</small>
+                <FileText size={17} weight="regular" aria-hidden="true" />
+                <span className="home-file-copy">
+                  <strong>{pathFileName(file)}</strong>
+                  <small>{parentPath(file) || projectName}</small>
+                </span>
+                <ArrowRight className="home-file-arrow" size={16} weight="regular" aria-hidden="true" />
               </button>
             ))}
             {!fileCount ? <div className="home-empty">열 수 있는 문서가 없습니다</div> : null}
           </div>
         </section>
 
-        <section className="home-panel home-flow-panel">
-          <header>
-            <span>작업 흐름</span>
-          </header>
-          <div className="home-flow">
-            <div><strong>01</strong><span>문서 열기</span></div>
-            <div><strong>02</strong><span>편집과 Diff</span></div>
-            <div><strong>03</strong><span>참고 복사</span></div>
-          </div>
-        </section>
+        <footer className="home-workflow" aria-label="DocPilot workflow">
+          <span>Open a document</span>
+          <ArrowRight size={13} aria-hidden="true" />
+          <span>Edit or preview</span>
+          <ArrowRight size={13} aria-hidden="true" />
+          <span>Review changes</span>
+        </footer>
       </div>
     </div>
   );
@@ -1179,6 +1510,19 @@ function folderName(folderPath: string) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function paneEdgeAtPoint(bounds: DOMRect, clientX: number, clientY: number): PaneEdge | null {
+  const x = clamp((clientX - bounds.left) / Math.max(1, bounds.width), 0, 1);
+  const y = clamp((clientY - bounds.top) / Math.max(1, bounds.height), 0, 1);
+  const distances: Array<[PaneEdge, number]> = [
+    ['left', x],
+    ['right', 1 - x],
+    ['top', y],
+    ['bottom', 1 - y],
+  ];
+  distances.sort((a, b) => a[1] - b[1]);
+  return distances[0][1] <= 0.38 ? distances[0][0] : null;
 }
 
 function readStoredPanelWidth(key: string, fallback: number, min: number, max: number) {

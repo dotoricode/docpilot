@@ -3,136 +3,59 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>docpilot</title>
+<script>
+  const launchQuery = new URLSearchParams(window.location.search);
+  document.documentElement.dataset.theme = launchQuery.get('theme') === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.themePreference = launchQuery.get('preference') || 'system';
+</script>
+<title>DocPilot</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0d0e10;--s:#141518;--s2:#1c1e22;--bd:rgba(255,255,255,.08);
-  --t:#e8e9ea;--t2:#9a9b9e;--t3:#5a5c61;--cy:#57c1ff;--ac:#a78bfa;
-  --cursor-default:url("assets/cursor-default.png?v=2") 4 2, default;
-  --cursor-click:url("assets/cursor-click.png?v=2") 12 4, pointer;
-  color-scheme:dark;
-}
-body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;
-  -webkit-font-smoothing:antialiased;height:100vh;display:flex;flex-direction:column;
-  -webkit-app-region:drag;user-select:none;cursor:var(--cursor-default)}
-.titlebar{height:28px;flex-shrink:0}
-.content{flex:1;display:flex;flex-direction:column;padding:0 32px 28px;min-height:0;-webkit-app-region:no-drag}
-.content *{-webkit-app-region:no-drag}
-.logo{display:flex;align-items:center;gap:10px;margin-bottom:24px}
-.logo-icon{width:36px;height:36px;object-fit:contain}
-.logo-name{font-size:18px;font-weight:700;letter-spacing:-.02em}
-.logo-ver{font-size:11px;color:var(--t3);font-weight:500;margin-top:1px}
-.section-label{font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
-  color:var(--t3);margin-bottom:8px}
-.recent-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:2px;min-height:0;margin-bottom:16px}
-.recent-empty{font-size:12px;color:var(--t3);padding:16px 0;text-align:center}
-.recent-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;
-  cursor:var(--cursor-click);-webkit-app-region:no-drag;transition:background .1s}
-.recent-item:hover{background:var(--s2)}
-.recent-icon{font-size:18px;flex-shrink:0}
-.recent-info{flex:1;overflow:hidden}
-.recent-name{font-size:13px;font-weight:500;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.recent-path{font-size:11px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;font-family:ui-monospace,monospace}
-.recent-del{opacity:0;font-size:15px;color:var(--t3);padding:2px 4px;border-radius:4px;
-  transition:opacity .1s;-webkit-app-region:no-drag;background:none;border:none;cursor:var(--cursor-click);color:var(--t3)}
-.recent-item:hover .recent-del{opacity:1}
-.recent-del:hover{color:var(--t);background:rgba(255,255,255,.08)}
-.open-btn{width:100%;height:38px;border-radius:8px;border:1px dashed var(--bd);
-  background:transparent;color:var(--t2);font-size:13px;font-family:inherit;
-  cursor:var(--cursor-click);-webkit-app-region:no-drag;transition:background .12s,border-color .12s,color .12s;
-  display:flex;align-items:center;justify-content:center;gap:7px}
-.open-btn:hover{background:var(--s2);border-color:rgba(255,255,255,.16);color:var(--t)}
-.open-icon{font-size:16px}
-.loading{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;
-  background:rgba(8,9,11,.72);backdrop-filter:blur(8px);-webkit-app-region:no-drag}
-.loading.show{display:flex}
-.loading-box{min-width:220px;padding:22px 24px;border:1px solid rgba(87,193,255,.24);
-  border-radius:12px;background:rgba(20,21,24,.94);display:flex;flex-direction:column;align-items:center;gap:12px}
-.spin{width:22px;height:22px;border-radius:50%;border:2px solid rgba(87,193,255,.20);
-  border-top-color:var(--cy);animation:spin .75s linear infinite}
-.loading-title{font-size:14px;font-weight:700;color:var(--t)}
-.loading-sub{font-size:11px;color:var(--t2);font-family:ui-monospace,monospace;max-width:300px;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@keyframes spin{to{transform:rotate(360deg)}}
+:root{--bg:#101114;--panel:#18191c;--panel-2:#1e2024;--border:#2c2e33;--text:#f1f1f2;--muted:#a1a4ab;--faint:#71757e;--hover:#24262a;--button:#f1f1f2;--button-text:#111215;--shadow:0 28px 70px rgba(0,0,0,.42);color-scheme:dark}
+:root[data-theme="light"]{--bg:#dededf;--panel:#f8f8f8;--panel-2:#f1f1f2;--border:#dedfe2;--text:#17181b;--muted:#696d75;--faint:#969aa2;--hover:#ececef;--button:#191a1d;--button-text:#fff;--shadow:0 28px 70px rgba(24,25,28,.2);color-scheme:light}
+body{height:100vh;overflow:hidden;background:var(--bg);color:var(--text);font:13px/1.45 -apple-system,BlinkMacSystemFont,"Inter",sans-serif;-webkit-font-smoothing:antialiased;user-select:none;-webkit-app-region:drag}
+.titlebar{height:48px}
+.launch-stage{height:calc(100vh - 48px);display:grid;place-items:center;padding:28px 40px 52px}
+.launch-shell{width:min(760px,100%);height:min(440px,100%);display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);grid-template-rows:1fr auto;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:var(--panel);box-shadow:var(--shadow);-webkit-app-region:no-drag}
+.launch-intro{padding:34px 34px 28px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-width:0}
+.brand{display:flex;align-items:center;gap:11px}.brand img{width:31px;height:31px;border-radius:8px}.brand strong{font-size:14px;letter-spacing:-.01em}
+.eyebrow{margin-top:56px;color:var(--faint);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+h1{margin-top:10px;font-size:22px;line-height:1.28;letter-spacing:-.018em;font-weight:560}
+.intro-copy{margin-top:14px;max-width:280px;color:var(--muted);font-size:12px;line-height:1.65}
+.shortcut{margin-top:auto;color:var(--faint);font-size:11px}.shortcut kbd{display:inline-grid;place-items:center;min-width:25px;height:22px;margin-right:6px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--panel-2);color:var(--muted);font:11px ui-monospace,SFMono-Regular,Menlo,monospace}
+.launch-recents{min-width:0;padding:32px 26px 22px;display:flex;flex-direction:column}.recents-head{display:flex;align-items:end;justify-content:space-between;padding:0 8px 13px}.recents-head strong{font-size:13px}.recents-head span{color:var(--faint);font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+.recent-list{flex:1;min-height:0;overflow:auto;border-top:1px solid var(--border)}.recent-empty{padding:54px 12px;text-align:center;color:var(--faint);font-size:12px}
+.recent-item{position:relative;display:flex;align-items:center;gap:10px;min-height:58px;padding:10px 34px 10px 9px;border-bottom:1px solid var(--border);cursor:pointer}.recent-item:hover{background:var(--hover)}.recent-info{min-width:0}.recent-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:620}.recent-path{margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--faint);font:10px ui-monospace,SFMono-Regular,Menlo,monospace}.recent-del{position:absolute;right:8px;top:17px;width:25px;height:25px;border:0;border-radius:5px;background:transparent;color:var(--faint);font:16px inherit;opacity:0;cursor:pointer}.recent-item:hover .recent-del,.recent-del:focus-visible{opacity:1}.recent-del:hover{background:var(--panel-2);color:var(--text)}
+.launch-action{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 22px;border-top:1px solid var(--border);background:var(--panel-2)}.launch-action p{color:var(--faint);font-size:11px}.open-btn{height:36px;padding:0 22px;border:0;border-radius:6px;background:var(--button);color:var(--button-text);font:650 12px inherit;cursor:pointer}.open-btn:hover{filter:brightness(.92)}
+.loading{position:fixed;inset:0;z-index:20;display:none;place-items:center;background:color-mix(in srgb,var(--bg) 80%,transparent);backdrop-filter:blur(8px);-webkit-app-region:no-drag}.loading.show{display:grid}.loading-box{display:flex;align-items:center;gap:12px;padding:16px 18px;border:1px solid var(--border);border-radius:8px;background:var(--panel);box-shadow:var(--shadow)}.spin{width:17px;height:17px;border:2px solid var(--border);border-top-color:var(--text);border-radius:50%;animation:spin .7s linear infinite}.loading-title{font-weight:650}.loading-sub{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--faint);font:10px ui-monospace,SFMono-Regular,Menlo,monospace}@keyframes spin{to{transform:rotate(1turn)}}
+@media(max-width:720px){.launch-stage{padding:20px}.launch-shell{grid-template-columns:1fr;height:min(500px,100%)}.launch-intro{display:none}.launch-action{grid-column:1}.launch-recents{padding-top:24px}}
 </style>
 </head>
 <body>
 <div class="titlebar"></div>
-<div class="content">
-  <div class="logo">
-    <img class="logo-icon" src="assets/icon.png" onerror="this.style.display='none'">
-    <div>
-      <div class="logo-name">docpilot</div>
+<main class="launch-stage">
+  <section class="launch-shell" aria-label="DocPilot 시작">
+    <div class="launch-intro">
+      <div class="brand"><img src="assets/icon.png" alt=""><strong>DocPilot</strong></div>
+      <span class="eyebrow">Document workbench</span>
+      <h1>프로젝트를 선택해<br>작업을 이어가세요.</h1>
+      <p class="intro-copy">프로젝트의 문서와 터미널을 한 작업 공간에서 연결합니다. 마지막 테마와 최근 프로젝트를 그대로 이어갑니다.</p>
+      <p class="shortcut"><kbd>⌘⇧O</kbd> 프로젝트 폴더 열기</p>
     </div>
-  </div>
-  <div class="section-label">최근 폴더</div>
-  <div class="recent-list" id="recent-list">
-    <div class="recent-empty">최근 열었던 폴더가 없습니다</div>
-  </div>
-  <button class="open-btn" id="open-btn">
-    <span class="open-icon">📂</span> 폴더 열기
-  </button>
-</div>
-<div class="loading" id="loading">
-  <div class="loading-box">
-    <div class="spin"></div>
-    <div class="loading-title">문서 가져오는 중</div>
-    <div class="loading-sub" id="loading-path">workspace scan</div>
-  </div>
-</div>
+    <div class="launch-recents">
+      <div class="recents-head"><strong>최근 프로젝트</strong><span>Local</span></div>
+      <div class="recent-list" id="recent-list"><div class="recent-empty">최근 열었던 프로젝트가 없습니다.</div></div>
+    </div>
+    <footer class="launch-action"><p>폴더를 선택하면 문서 인덱스를 로컬에서 준비합니다.</p><button class="open-btn" id="open-btn">프로젝트 폴더 열기</button></footer>
+  </section>
+</main>
+<div class="loading" id="loading"><div class="loading-box"><div class="spin"></div><div><div class="loading-title">문서 불러오는 중</div><div class="loading-sub" id="loading-path">workspace scan</div></div></div></div>
 <script>
-const dp = window.docpilot;
-
-async function render() {
-  const list = await dp.getRecent();
-  const el = document.getElementById('recent-list');
-  if (!list.length) {
-    el.innerHTML = '<div class="recent-empty">최근 열었던 폴더가 없습니다</div>';
-    return;
-  }
-  el.innerHTML = '';
-  list.forEach(p => {
-    const parts = p.replace(/\\/g, '/').split('/').filter(Boolean);
-    const name = parts[parts.length - 1] || p;
-    const item = document.createElement('div');
-    item.className = 'recent-item';
-    item.innerHTML = `
-      <span class="recent-icon">📁</span>
-      <div class="recent-info">
-        <div class="recent-name">${esc(name)}</div>
-        <div class="recent-path">${esc(p)}</div>
-      </div>
-      <button class="recent-del" type="button" title="목록에서 제거">×</button>`;
-    item.addEventListener('click', () => openFolderPath(p));
-    item.querySelector('.recent-del').addEventListener('click', async e => {
-      e.stopPropagation();
-      await removeFolder(p);
-    });
-    el.appendChild(item);
-  });
-}
-
-function esc(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function openFolderPath(p) {
-  document.getElementById('loading-path').textContent=p;
-  document.getElementById('loading').classList.add('show');
-  dp.openFolder(p).catch(() => {});
-}
-
-async function removeFolder(p) {
-  await dp.removeRecent(p);
-  render();
-}
-
-document.getElementById('open-btn').onclick = async () => {
-  const p = await dp.openFolderDialog();
-  if (p) openFolderPath(p);
-};
-
+const dp=window.docpilot;
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+async function render(){const list=await dp.getRecent();const el=document.getElementById('recent-list');if(!list.length){el.innerHTML='<div class="recent-empty">최근 열었던 프로젝트가 없습니다.</div>';return}el.innerHTML='';list.forEach(p=>{const parts=p.replace(/\\/g,'/').split('/').filter(Boolean);const item=document.createElement('div');item.className='recent-item';item.tabIndex=0;item.innerHTML=`<div class="recent-info"><div class="recent-name">${esc(parts.at(-1)||p)}</div><div class="recent-path">${esc(p)}</div></div><button class="recent-del" type="button" title="최근 목록에서 제거" aria-label="최근 목록에서 제거">×</button>`;item.addEventListener('click',()=>openFolderPath(p));item.addEventListener('keydown',event=>{if(event.key==='Enter')openFolderPath(p)});item.querySelector('.recent-del').addEventListener('click',async event=>{event.stopPropagation();await dp.removeRecent(p);render()});el.appendChild(item)})}
+function openFolderPath(p){document.getElementById('loading-path').textContent=p;document.getElementById('loading').classList.add('show');dp.openFolder(p).catch(()=>document.getElementById('loading').classList.remove('show'))}
+document.getElementById('open-btn').onclick=async()=>{const p=await dp.openFolderDialog();if(p)openFolderPath(p)};
 render();
 </script>
 </body>

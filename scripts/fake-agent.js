@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-const agent = process.argv[2] === 'codex' ? 'codex' : 'claude';
+const requestedRuntime = process.argv[2];
+const agent = requestedRuntime === 'codex' || requestedRuntime === 'shell' ? requestedRuntime : 'claude';
 const interactive = process.argv.includes('--interactive');
 
 if (interactive) {

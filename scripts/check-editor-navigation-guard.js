@@ -41,6 +41,8 @@ async function main() {
     const editor = await waitForEditorWindow(app);
     await editor.waitForSelector('.workspace-sidebar');
     await editor.waitForSelector('.file-row');
+    const releaseNotice = editor.locator('.release-notice-overlay');
+    if (await releaseNotice.isVisible().catch(() => false)) await releaseNotice.click({ position: { x: 8, y: 8 } });
     await editor.locator('.file-row').filter({ hasText: 'index.md' }).first().click();
     await editor.waitForSelector('.markdown-preview a');
 

@@ -53,8 +53,10 @@ async function main() {
 
     const editor = await waitForReactEditorWindow(app);
     await editor.waitForSelector('.workspace-sidebar');
+    const releaseNotice = editor.locator('.release-notice-overlay');
+    if (await releaseNotice.isVisible().catch(() => false)) await releaseNotice.click({ position: { x: 8, y: 8 } });
     await editor.locator('.file-row').filter({ hasText: 'shortcuts.md' }).first().click();
-    await editor.locator('.editor-mode-toggle button').filter({ hasText: '편집' }).click();
+    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Source' }).click();
     await editor.waitForSelector('.cm-editor');
     await editor.locator('.cm-content').click();
 
@@ -63,7 +65,7 @@ async function main() {
     await editor.keyboard.press(`${mod}+ArrowLeft`);
     await editor.keyboard.press('Tab');
     const tabbedLine = await editor.locator('.cm-line').first().evaluate(node => node.textContent || '');
-    if (!/^\s+line$/.test(tabbedLine)) {
+    if (!/^(?:\s+|·+)line$/.test(tabbedLine)) {
       throw new Error(`Tab should indent the current line, got: ${JSON.stringify(tabbedLine)}`);
     }
 
