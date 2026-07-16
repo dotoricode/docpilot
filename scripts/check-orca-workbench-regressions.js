@@ -11,7 +11,7 @@ async function waitForEditorWindow(app) {
     if (window) return window;
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-  throw new Error('DocPilot editor window did not open');
+  throw new Error(`DocPilot editor window did not open: ${app.windows().map(window => window.url()).join(', ') || 'no windows'}`);
 }
 
 function git(cwd, args) {

@@ -15,6 +15,7 @@ process.title = 'DocPilot';
 
 const store = new Store();
 const DEFAULT_BRIDGE_PORT = 7474;
+const BRIDGE_PORT_SEARCH_LIMIT = 200;
 let bridgePort = DEFAULT_BRIDGE_PORT;
 let bridgeProc = null;
 const bridgeProcesses = new Set();
@@ -96,7 +97,7 @@ function isPortAvailable(port) {
 }
 
 async function findBridgePort() {
-  for (let port = DEFAULT_BRIDGE_PORT; port < DEFAULT_BRIDGE_PORT + 30; port += 1) {
+  for (let port = DEFAULT_BRIDGE_PORT; port < DEFAULT_BRIDGE_PORT + BRIDGE_PORT_SEARCH_LIMIT; port += 1) {
     if (await isPortAvailable(port)) return port;
   }
   throw new Error('사용 가능한 docpilot bridge 포트를 찾지 못했습니다.');

@@ -4,9 +4,19 @@
 
 | Version | State | Public date / tag date | Commit / tag | Rule |
 | --- | --- | --- | --- | --- |
-| 2.0.0 | Release | Public date: 2026-07-15 | Implementation baseline `adcf9de46f9bbd2c7433da6ec9d681cb6c6cb050`; release tag `v2.0.0` | Merge through a reviewed PR, tag the squash commit, then deploy the final manual. |
+| 2.0.1 | Release candidate | Planned public date: 2026-07-16 | Fix implementation `81374c537150966e8f8bfa0da958f40b2350284f`; intended tag `v2.0.1` | Merge through a reviewed PR, tag the squash commit, publish the GitHub Release, then deploy the final manual. |
+| 2.0.0 | Released | Published and tagged 2026-07-15 | `v2.0.0` → `1482adf8099306b791f9ed25fe61632ae7d2457a` | Retained as the verified v2 feature baseline. |
 | 1.0.28 | Released | Published 2026-07-10; release record and tag 2026-07-13 | Release target `315b5be`; `v1.0.28` → `b7dca9c2f0ed8d5b111eebfb3e1723a83d1d9f61` | Public date, release-record creation, implementation target, and final tag are recorded separately. |
 | 1.0.27 | Released baseline | Published and tagged 2026-07-08 | `v1.0.27` → `461ab0aa84fbd6c811ca3eafb3b415d1ab3805cb` | No earlier repository tag exists, so unsupported feature reconstruction is omitted. |
+
+## 2.0.1 — 2026-07-16
+
+| Fix | Bounded claim | Implementation | Verification |
+| --- | --- | --- | --- |
+| Preview typography | Markdown and AsciiDoc heading scales, weights, and bundled Korean font render consistently. | `EditorPane.tsx`, `styles.css`, `workbench-final.css` | `check-react-ui-regressions.js` |
+| Preview overflow | AsciiDoc NOTE content and long line ranges do not wrap into overlapping labels or escape the document. | `styles.css`, `workbench-final.css` | `check-react-ui-regressions.js` |
+| Preview controls | Line numbers default off with a visible toolbar switch, and the width boundary remains discoverable without hover. | `EditorPane.tsx`, `workbench-final.css` | UI regression and width-drag checks |
+| Launch defaults | Fresh installs follow the system theme, start near maximum reading width, and expose terminal reopening after close. | `main.js`, `bridge.js`, `App.tsx` | UI regression and settings checks |
 
 ## 2.0.0 — 2026-07-15
 

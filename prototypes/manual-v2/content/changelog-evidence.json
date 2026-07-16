@@ -1,13 +1,39 @@
 {
-  "generatedAt": "2026-07-15",
+  "generatedAt": "2026-07-16",
   "current": {
-    "version": "2.0.0",
+    "version": "2.0.1",
     "state": "release",
-    "tag": "v2.0.0",
-    "implementationCommit": "adcf9de46f9bbd2c7433da6ec9d681cb6c6cb050",
-    "implementationDate": "2026-07-15",
-    "note": "Release source is prepared through a reviewed PR; public deployment is gated on the v2.0.0 tag and GitHub Release."
+    "tag": "v2.0.1",
+    "implementationCommit": "81374c537150966e8f8bfa0da958f40b2350284f",
+    "implementationDate": "2026-07-16",
+    "note": "Release source is prepared through a reviewed PR; public deployment is gated on the v2.0.1 tag and GitHub Release."
   },
+  "fixes": [
+    {
+      "id": "preview-typography",
+      "claim": "Markdown and AsciiDoc previews use a consistent heading scale and bundled Korean variable font.",
+      "implementation": ["app/src/features/editor/EditorPane.tsx", "app/src/styles.css", "app/src/workbench-final.css"],
+      "verification": ["scripts/check-react-ui-regressions.js"]
+    },
+    {
+      "id": "preview-overflow",
+      "claim": "AsciiDoc admonitions and long source-line ranges stay inside their intended preview layout.",
+      "implementation": ["app/src/styles.css", "app/src/workbench-final.css"],
+      "verification": ["scripts/check-react-ui-regressions.js"]
+    },
+    {
+      "id": "preview-controls",
+      "claim": "Line numbers default off with a visible toolbar control, while the reading-width boundary remains discoverable without hover.",
+      "implementation": ["app/src/features/editor/EditorPane.tsx", "app/src/workbench-final.css"],
+      "verification": ["scripts/check-react-ui-regressions.js", "scripts/check-react-preview-width-drag.js"]
+    },
+    {
+      "id": "launch-defaults",
+      "claim": "Fresh installs follow the system theme, use a near-maximum reading width, and expose a terminal reopen action after the terminal closes.",
+      "implementation": ["main.js", "bridge.js", "app/src/screens/App.tsx"],
+      "verification": ["scripts/check-react-ui-regressions.js", "scripts/check-settings-api.js"]
+    }
+  ],
   "features": [
     {
       "id": "workbench",
@@ -114,6 +140,25 @@
     }
   ],
   "history": [
+    {
+      "version": "2.0.0",
+      "tag": "v2.0.0",
+      "date": "2026-07-15",
+      "releasePublishedAt": "2026-07-15T10:13:51Z",
+      "releaseCreatedAt": "2026-07-15T10:12:44Z",
+      "releaseTarget": "1482adf8099306b791f9ed25fe61632ae7d2457a",
+      "tagDate": "2026-07-15",
+      "commit": "1482adf8099306b791f9ed25fe61632ae7d2457a",
+      "baselineOnly": false,
+      "claims": [
+        {
+          "title": "Document workbench release",
+          "claim": "Released the document workbench, format-aware modes, pane layout, login-shell terminal, rendered Diff, project search, and the first v2 public manual.",
+          "sourceCommit": "1482adf8099306b791f9ed25fe61632ae7d2457a"
+        }
+      ],
+      "note": "This is the v2 feature baseline. The bounded feature evidence remains in the features section."
+    },
     {
       "version": "1.0.28",
       "tag": "v1.0.28",

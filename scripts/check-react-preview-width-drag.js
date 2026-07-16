@@ -33,7 +33,7 @@ async function main() {
       localStorage.setItem('docpilot:left-panel-collapsed', '0');
       localStorage.setItem('docpilot:terminal-open', '0');
       localStorage.setItem('docpilot:preview-width', '760');
-      localStorage.setItem('docpilot:release-notice-seen-id', '2.0.0:r2');
+      localStorage.setItem('docpilot:release-notice-seen-id', '2.0.1:r2');
     });
     // Opening a folder intentionally closes the launch window before the IPC
     // promise settles, so do not return that promise to Playwright.

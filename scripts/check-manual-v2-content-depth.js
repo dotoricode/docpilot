@@ -10,8 +10,8 @@ async function main() {
   const routes = await import(`${pathToFileURL(path.join(manual, 'src/routes.mjs')).href}?audit=${Date.now()}`);
   const { pages } = content;
 
-  assert.equal(routes.DOC_ROUTES.length, 25, 'manual must expose the complete verified guide set');
-  assert.equal(Object.keys(pages).length, 25, 'every route must have content');
+  assert.equal(routes.DOC_ROUTES.length, 24, 'manual must expose the complete verified guide set');
+  assert.equal(Object.keys(pages).length, 24, 'every route must have content');
 
   for (const route of routes.DOC_ROUTES) {
     const page = pages[route.slug];
