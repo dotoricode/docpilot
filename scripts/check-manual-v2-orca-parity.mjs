@@ -5,6 +5,13 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manual = path.join(root, 'prototypes/manual-v2');
+const vercelConfigPath = path.join(root, 'vercel.json');
+
+assert.ok(fs.existsSync(vercelConfigPath), 'Vercel deployment config is missing');
+const vercelConfig = JSON.parse(fs.readFileSync(vercelConfigPath, 'utf8'));
+assert.equal(vercelConfig.installCommand, 'npm --prefix prototypes/manual-v2 ci');
+assert.equal(vercelConfig.buildCommand, 'npm --prefix prototypes/manual-v2 run build');
+assert.equal(vercelConfig.outputDirectory, 'prototypes/manual-v2/dist');
 
 const requiredFiles = [
   'src/App.jsx',
@@ -25,6 +32,7 @@ assert.ok(DOC_ROUTES.length >= 20, 'the v2 manual must provide a complete task-o
 assert.equal(new Set(DOC_ROUTES.map(route => route.path)).size, DOC_ROUTES.length, 'documentation routes must be unique');
 assert.equal(canonicalPath({ kind: 'docs', slug: 'editing/markdown' }), '/docs/editing/markdown');
 assert.deepEqual(matchRoute('/docs/editing/markdown/'), { kind: 'docs', slug: 'editing/markdown' });
+assert.deepEqual(matchRoute('/docpilot-manual.html'), { kind: 'docs', slug: 'overview' });
 assert.deepEqual(matchRoute('/changelog/2.0.0'), { kind: 'release', version: '2.0.0' });
 assert.ok(routePaths().includes('/changelog'));
 assert.ok(routePaths(['2.0.0']).includes('/changelog/2.0.0'), 'versioned release routes must be materialized for clean reloads');
@@ -42,6 +50,7 @@ const fixtureRelease = normalizeRelease({
 });
 assert.equal(fixtureRelease.version, '2.0.0');
 assert.equal(selectDmgAsset(fixtureRelease.assets).url, 'https://example.test/DocPilot-2.0.0.dmg');
+assert.equal(selectDmgAsset(fixtureRelease.assets).name, 'DocPilot-2.0.0.dmg');
 const mergedReleases = await fetchReleases(async () => ({
   ok: true,
   json: async () => [{ tag_name: 'v1.0.28', name: 'DocPilot 1.0.28', body: 'Stable', published_at: '2026-07-14', assets: [] }],
@@ -58,6 +67,7 @@ const visibleSource = `${app}\n${content}`;
 for (const label of ['Docs', 'Changelog', 'Download']) {
   assert.ok(app.includes(label), `header action missing: ${label}`);
 }
+assert.ok(app.includes('window.location.assign(asset.url)'), 'Download must navigate directly to the selected DMG asset');
 for (const forbidden of ['Star', 'Enterprise', 'View on GitHub', 'GitHub에서']) {
   assert.ok(!visibleSource.includes(forbidden), `public manual exposes forbidden GitHub/social UI: ${forbidden}`);
 }

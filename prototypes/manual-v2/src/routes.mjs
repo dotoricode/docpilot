@@ -41,7 +41,9 @@ export function stripBase(pathname, base = '/') {
 
 export function matchRoute(pathname, base = '/') {
   const path = stripBase(pathname, base).replace(/\/+$/, '') || '/';
-  if (path === '/' || path === '/docs') return { kind: 'docs', slug: 'overview' };
+  if (path === '/' || path === '/docs' || path === '/docpilot-manual.html') {
+    return { kind: 'docs', slug: 'overview' };
+  }
   const doc = DOC_ROUTES.find(route => route.path === path);
   if (doc) return { kind: 'docs', slug: doc.slug };
   if (path === '/changelog') return { kind: 'changelog' };

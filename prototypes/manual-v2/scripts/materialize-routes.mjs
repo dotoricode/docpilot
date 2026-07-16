@@ -17,6 +17,7 @@ for (const route of routes) {
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, html);
 }
+fs.writeFileSync(path.join(dist, 'docpilot-manual.html'), html);
 fs.writeFileSync(path.join(dist, '404.html'), html);
 fs.writeFileSync(path.join(dist, 'route-manifest.json'), JSON.stringify(routes, null, 2));
 console.log(`materialized ${routes.length} manual routes`);
