@@ -56,4 +56,4 @@ npm run build
 node scripts/check-packaged-app.js
 ```
 
-DMG는 `dist/DocPilot-<version>.dmg`에 생성됩니다.
+DMG는 `dist/package/DocPilot-<version>.dmg`에 생성됩니다.

@@ -9,8 +9,9 @@ const asar = require('@electron/asar');
 
 const root = path.resolve(__dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-const dmgPath = path.join(root, 'dist', `DocPilot-${pkg.version}.dmg`);
-const appPath = path.join(root, 'dist', 'mac', 'DocPilot.app');
+const packageOutput = path.join(root, pkg.build.directories.output);
+const dmgPath = path.join(packageOutput, `DocPilot-${pkg.version}.dmg`);
+const appPath = path.join(packageOutput, 'mac', 'DocPilot.app');
 const plistPath = path.join(appPath, 'Contents', 'Info.plist');
 const asarPath = path.join(appPath, 'Contents', 'Resources', 'app.asar');
 const ptyPath = path.join(
@@ -109,6 +110,9 @@ async function assertPackagedBridgeStarts() {
   assert(fs.existsSync(dmgPath), `DMG missing: ${dmgPath}`);
   assert(fs.statSync(dmgPath).size > 50 * 1024 * 1024, 'DMG looks too small to contain the Electron app');
   assert(fs.existsSync(appPath), `packaged app missing: ${appPath}`);
+  execFileSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath], {
+    stdio: 'inherit',
+  });
   assert(fs.existsSync(asarPath), `app.asar missing: ${asarPath}`);
   assert(fs.existsSync(ptyPath), `node-pty native module missing: ${ptyPath}`);
   assert(fs.existsSync(unpackedBridgePath), `unpacked bridge missing: ${unpackedBridgePath}`);

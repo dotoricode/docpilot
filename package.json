@@ -9,11 +9,14 @@
     "renderer:dev": "vite --config app/vite.config.ts",
     "renderer:build": "vite build --config app/vite.config.ts",
     "renderer:typecheck": "tsc --noEmit -p app/tsconfig.json",
-    "build": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg"
+    "build": "npm run renderer:build && electron-builder --mac dmg"
   },
   "build": {
     "appId": "com.docpilot.app",
     "productName": "DocPilot",
+    "directories": {
+      "output": "dist/package"
+    },
     "asar": true,
     "asarUnpack": [
       "bridge.js",
@@ -41,6 +44,8 @@
     "mac": {
       "icon": "assets/docpilot.icns",
       "category": "public.app-category.productivity",
+      "identity": "-",
+      "hardenedRuntime": false,
       "target": [
         {
           "target": "dmg",
