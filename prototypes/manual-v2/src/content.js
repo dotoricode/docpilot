@@ -1,4 +1,5 @@
 import { DOC_ROUTES } from './routes.mjs';
+import { guideMedia, mergedGuideRoutes } from './media.js';
 
 const guide = ({ description, outcome, before, steps, verify, notes, media, related = [] }) => ({
   description,
@@ -13,7 +14,7 @@ const guide = ({ description, outcome, before, steps, verify, notes, media, rela
   related,
 });
 
-export const pages = {
+const guidePages = {
   overview: guide({
     description: 'DocPilot은 로컬 프로젝트의 문서를 탐색하고 편집하고 검토하는 문서 중심 워크벤치입니다. 파일 트리, 형식별 보기, Diff와 실제 셸 터미널을 한 창에서 사용합니다.',
     outcome: '프로젝트 폴더를 기준으로 문서를 열고, 형식에 맞는 보기와 검토 도구를 선택할 수 있습니다.',
@@ -252,6 +253,14 @@ export const pages = {
     related: ['settings/reference', 'terminal/overview', 'editing/source'],
   }),
 };
+
+export const pages = Object.freeze(Object.fromEntries(
+  Object.entries(guidePages).map(([slug, page]) => [slug, {
+    ...page,
+    media: guideMedia[slug] || [],
+    ...(mergedGuideRoutes[slug] ? { redirectTo: mergedGuideRoutes[slug] } : {}),
+  }]),
+));
 
 export const navigationGroups = DOC_ROUTES.reduce((groups, route) => {
   const last = groups.at(-1);

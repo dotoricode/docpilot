@@ -5,8 +5,10 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const draftPath = path.join(root, 'prototypes/manual-v2/content/v2.0.0.md');
 const guidePath = path.join(root, 'prototypes/manual-v2/content/demo-production-guide.md');
+const mediaContractPath = path.join(root, 'prototypes/manual-v2/content/feature-media-contract.json');
 const draft = fs.readFileSync(draftPath, 'utf8');
 const guide = fs.readFileSync(guidePath, 'utf8');
+const mediaContract = JSON.parse(fs.readFileSync(mediaContractPath, 'utf8'));
 
 const workflowHeadings = draft.match(/^## \d+\. /gm) || [];
 assert.ok(workflowHeadings.length >= 5 && workflowHeadings.length <= 7, `expected 5–7 workflow groups, found ${workflowHeadings.length}`);
@@ -32,8 +34,13 @@ for (const evidence of [
   assert.ok(fs.existsSync(path.join(root, evidence)), `evidence file missing: ${evidence}`);
 }
 
-for (const scenario of ['workbench', 'split', 'terminal', 'diff', 'search']) {
-  assert.match(guide, new RegExp(`\\| ${scenario} \\|`), `demo scenario missing: ${scenario}`);
+assert.equal(mediaContract.guides.length, 25, 'every manual route needs a feature media contract');
+for (const scenario of mediaContract.requiredDemos) {
+  assert.ok(mediaContract.guides.some(item => item.asset === scenario), `required demo is not assigned to a feature guide: ${scenario}`);
+}
+
+for (const scenario of ['탭과 Pane 배치', 'Diff', '장문 AsciiDoc', 'Preview 문맥을 Claude로 전달']) {
+  assert.match(guide, new RegExp(`^### ${scenario}$`, 'm'), `multi-step demo scenario missing: ${scenario}`);
 }
 
 console.log('manual v2 content contract: passed');
