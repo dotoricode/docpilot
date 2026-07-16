@@ -338,6 +338,9 @@ function createStartWindow() {
 }
 
 function createEditorWindow(root, openFileRel = '', port = bridgePort, bridge = null) {
+  const preference = storedThemePreference();
+  const effectiveTheme = resolveEffectiveTheme(preference);
+  applyNativeTheme(preference);
   const win = new BrowserWindow({
     width: 1440,
     height: 1024,
@@ -345,7 +348,7 @@ function createEditorWindow(root, openFileRel = '', port = bridgePort, bridge = 
     minHeight: 500,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 14, y: 15 },
-    backgroundColor: '#07080a',
+    backgroundColor: windowBackground(effectiveTheme),
     show: false,
     webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
   });
@@ -393,6 +396,8 @@ function loadEditorShell(win) {
   const openFileRel = win._docpilotOpenFileRel || '';
   const port = win._docpilotBridgePort || bridgePort;
   const reactRendererPath = getReactRendererPath();
+  const preference = storedThemePreference();
+  const effectiveTheme = resolveEffectiveTheme(preference);
   if (!fs.existsSync(reactRendererPath)) {
     dialog.showErrorBox(
       'DocPilot renderer missing',
@@ -403,6 +408,8 @@ function loadEditorShell(win) {
   win.loadFile(reactRendererPath, {
     query: {
       port: String(port),
+      theme: effectiveTheme,
+      preference,
       ...(openFileRel ? { open: openFileRel } : {}),
     },
   });

@@ -41,7 +41,7 @@ async function main() {
     const start = await app.firstWindow();
     await start.waitForLoadState('domcontentloaded');
     await start.evaluate(root => {
-      window.localStorage.setItem('docpilot:preview-line-numbers', '1');
+      window.localStorage.setItem('docpilot:preview-line-numbers-v2', '1');
       window.docpilot.openFolder(root);
       return true;
     }, fixtureRoot);
@@ -88,7 +88,7 @@ async function main() {
       };
     });
     if (splitLabelShape.display === 'none' || !splitLabelShape.lineContent.includes('1')) {
-      throw new Error(`split preview line labels should be visible by default while metadata remains, got: ${JSON.stringify(splitLabelShape)}`);
+      throw new Error(`split preview line labels should be visible when enabled while metadata remains, got: ${JSON.stringify(splitLabelShape)}`);
     }
 
     await editor.locator('.preview-compare-pane.secondary .markdown-preview p').first().click();

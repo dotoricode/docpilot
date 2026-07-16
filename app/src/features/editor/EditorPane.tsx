@@ -163,16 +163,19 @@ const PREVIEW_WIDTH_MIN = 480;
 const PREVIEW_WIDTH_MAX = 2400;
 const PREVIEW_WIDTH_STEP = 20;
 const PREVIEW_WIDTH_STORAGE_KEY = 'docpilot:preview-width';
+const PREVIEW_LINE_NUMBERS_STORAGE_KEY = 'docpilot:preview-line-numbers-v2';
 
 const RenderedPreviewHtml = memo(function RenderedPreviewHtml({ html }: { html: string }) {
   return <div dangerouslySetInnerHTML={{ __html: html }} />;
 });
 
-function readPreviewWidth() {
-  const stored = Number(window.localStorage.getItem(PREVIEW_WIDTH_STORAGE_KEY));
+function readStoredPreviewWidth() {
+  const raw = window.localStorage.getItem(PREVIEW_WIDTH_STORAGE_KEY);
+  if (raw === null) return null;
+  const stored = Number(raw);
   return Number.isFinite(stored) && stored > 0
     ? clampNumber(stored, PREVIEW_WIDTH_MIN, PREVIEW_WIDTH_MAX)
-    : PREVIEW_WIDTH_MAX;
+    : null;
 }
 
 registerHighlightLanguages();
@@ -461,12 +464,17 @@ export function EditorPane({
   const [diffOn, setDiffOn] = useState(false);
   const [diffSplit, setDiffSplit] = useState(false);
   const [baseContent, setBaseContent] = useState('');
-  const [previewWidth, setPreviewWidth] = useState(readPreviewWidth);
+  const [storedPreviewWidth] = useState(readStoredPreviewWidth);
+  const [previewWidth, setPreviewWidth] = useState(() => storedPreviewWidth ?? PREVIEW_WIDTH_MAX);
+  const [previewWidthResolved, setPreviewWidthResolved] = useState(() => storedPreviewWidth !== null);
+  const needsDefaultPreviewWidthRef = useRef(storedPreviewWidth === null);
   const [previewMaxWidth, setPreviewMaxWidth] = useState(PREVIEW_WIDTH_MAX);
   const [selectedPreviewIndex, setSelectedPreviewIndex] = useState<number | null>(null);
   const [activeHeadingIndex, setActiveHeadingIndex] = useState(0);
   const [wholeDocumentSelected, setWholeDocumentSelected] = useState(false);
-  const [showPreviewLineNumbers, setShowPreviewLineNumbers] = useState(() => window.localStorage.getItem('docpilot:preview-line-numbers') !== '0');
+  const [showPreviewLineNumbers, setShowPreviewLineNumbers] = useState(
+    () => window.localStorage.getItem(PREVIEW_LINE_NUMBERS_STORAGE_KEY) === '1',
+  );
   const [previewCopyTarget, setPreviewCopyTarget] = useState<PreviewCopyTarget | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<CopyFeedback | null>(null);
   const [previewFindOpen, setPreviewFindOpen] = useState(false);
@@ -479,8 +487,8 @@ export function EditorPane({
   const [secondaryAsciidocResult, setSecondaryAsciidocResult] = useState<{ key: string; html: string } | null>(null);
 
   useEffect(() => {
-    window.localStorage.setItem(PREVIEW_WIDTH_STORAGE_KEY, String(previewWidth));
-  }, [previewWidth]);
+    if (previewWidthResolved) window.localStorage.setItem(PREVIEW_WIDTH_STORAGE_KEY, String(previewWidth));
+  }, [previewWidth, previewWidthResolved]);
 
   const visibleContent = buffer.path ? buffer.editorContent : emptyDocument;
   const secondaryVisibleContent = secondaryBuffer?.path ? secondaryBuffer.editorContent : '';
@@ -591,8 +599,13 @@ export function EditorPane({
           PREVIEW_WIDTH_MIN,
           PREVIEW_WIDTH_MAX,
         );
+        const needsDefault = needsDefaultPreviewWidthRef.current;
+        if (needsDefault) needsDefaultPreviewWidthRef.current = false;
         setPreviewMaxWidth(nextMaximum);
-        setPreviewWidth(current => Math.min(current, nextMaximum));
+        setPreviewWidth(current => needsDefault
+          ? Math.max(PREVIEW_WIDTH_MIN, nextMaximum - PREVIEW_WIDTH_STEP)
+          : Math.min(current, nextMaximum));
+        if (needsDefault) setPreviewWidthResolved(true);
       });
     };
 
@@ -656,7 +669,7 @@ export function EditorPane({
   }, [mode, markdownPreviewBody, richSafety.safe]);
 
   useEffect(() => {
-    window.localStorage.setItem('docpilot:preview-line-numbers', showPreviewLineNumbers ? '1' : '0');
+    window.localStorage.setItem(PREVIEW_LINE_NUMBERS_STORAGE_KEY, showPreviewLineNumbers ? '1' : '0');
   }, [showPreviewLineNumbers]);
 
   useEffect(() => {
@@ -1632,6 +1645,19 @@ export function EditorPane({
             <button type="button" onClick={() => onCloseSecondary(activePreviewPaneRef.current)}>문서 분할 닫기</button>
           </div>
         ) : null}
+        {canPreviewBody ? (
+          <label
+            className={`line-number-toggle diff-toggle ${showPreviewLineNumbers ? 'active' : ''}`}
+            title="Preview line numbers"
+          >
+            <span>Line numbers</span>
+            <input
+              type="checkbox"
+              checked={showPreviewLineNumbers}
+              onChange={event => setShowPreviewLineNumbers(event.currentTarget.checked)}
+            />
+          </label>
+        ) : null}
         <details className="editor-more-menu" ref={editorMoreMenuRef}>
           <summary aria-label="More editor actions" title="More editor actions"><DotsThreeVertical size={17} weight="bold" /></summary>
           <div className="editor-more-popover">
@@ -1650,14 +1676,6 @@ export function EditorPane({
                 <option value="tabs:2">Tab 2</option>
                 <option value="tabs:4">Tab 4</option>
               </select>
-            </label>
-            <label className={`diff-toggle ${showPreviewLineNumbers ? 'active' : ''}`}>
-              <span>Line numbers</span>
-              <input
-                type="checkbox"
-                checked={showPreviewLineNumbers}
-                onChange={event => setShowPreviewLineNumbers(event.currentTarget.checked)}
-              />
             </label>
             <button className="editor-action" type="button" disabled={!buffer.path} onClick={selectWholeDocument}>Select all</button>
             <button
@@ -1752,7 +1770,7 @@ export function EditorPane({
                     <span>주 파일</span>
                   </header>
                   <article
-                    className="markdown-preview split-preview-document"
+                    className={`markdown-preview split-preview-document ${primaryIsAsciidoc ? 'adoc-preview' : ''}`}
                     ref={previewRef}
                     style={{ '--preview-width': `${previewWidth}px` } as CSSProperties}
                     onClick={event => selectPreviewBlock(event, 'primary')}
@@ -1780,7 +1798,7 @@ export function EditorPane({
                     <span>읽기 전용</span>
                   </header>
                   <article
-                    className="markdown-preview split-preview-document secondary-document"
+                    className={`markdown-preview split-preview-document secondary-document ${secondaryIsAsciidoc ? 'adoc-preview' : ''}`}
                     ref={secondaryPreviewRef}
                     style={{ '--preview-width': `${previewWidth}px` } as CSSProperties}
                     onClick={event => selectPreviewBlock(event, 'secondary')}
@@ -1812,7 +1830,7 @@ export function EditorPane({
               ) : null}
               <div className="preview-document-stage" style={{ '--preview-width': `${previewWidth}px` } as CSSProperties}>
                 <article
-                  className={`markdown-preview ${diffOn ? 'diff-preview-mode' : ''}`}
+                  className={`markdown-preview ${primaryIsAsciidoc ? 'adoc-preview' : ''} ${diffOn ? 'diff-preview-mode' : ''}`}
                   ref={previewRef}
                   onClick={event => selectPreviewBlock(event, 'primary')}
                   onMouseUp={event => selectPreviewRange(event, 'primary')}

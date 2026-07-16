@@ -74,6 +74,7 @@ async function main() {
   try {
     await waitForBridge(proc);
     const initial = await requestJson(port, 'GET', '/settings');
+    assert.strictEqual(initial.settings.theme, 'system');
     assert.strictEqual(initial.settings.agentCommandMode, 'auto');
     assert.strictEqual(initial.settings.claudeCommand, 'claude');
     assert.deepStrictEqual(initial.settings.recentWorkspaces, [root]);

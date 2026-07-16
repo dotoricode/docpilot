@@ -31,6 +31,11 @@ function applyAppTheme(preference: AppSettings['theme']) {
   void window.docpilot?.setWindowTheme?.(preference);
 }
 
+function readInitialThemePreference(): AppSettings['theme'] {
+  const preference = document.documentElement.dataset.themePreference;
+  return preference === 'light' || preference === 'dark' || preference === 'system' ? preference : 'system';
+}
+
 type OpenFileTab = {
   id: string;
   buffer: FileBuffer;
@@ -213,7 +218,7 @@ export function App() {
   const [reviewDiff, setReviewDiff] = useState<{ fileId: string; before: string; signal: number } | null>(null);
   const [leftWidth, setLeftWidth] = useState(() => readStoredPanelWidth('docpilot:left-panel-width', 274, 220, 520));
   const [leftCollapsed, setLeftCollapsed] = useState(() => readStoredBoolean('docpilot:left-panel-collapsed', false));
-  const [themePreference, setThemePreference] = useState<AppSettings['theme']>('dark');
+  const [themePreference, setThemePreference] = useState<AppSettings['theme']>(readInitialThemePreference);
   const [terminalOpen, setTerminalOpen] = useState(() => readStoredBoolean('docpilot:terminal-open', true));
   const [paneLayout, setPaneLayout] = useState<WorkbenchLayout>(readWorkbenchLayout);
   const [draggingPane, setDraggingPane] = useState<PaneId | null>(null);
@@ -363,7 +368,7 @@ export function App() {
   }, [workspaceFiles]);
 
   useEffect(() => {
-    let currentThemePreference: AppSettings['theme'] = 'dark';
+    let currentThemePreference: AppSettings['theme'] = readInitialThemePreference();
     const applyFromSettings = () => {
       getSettings()
         .then(response => {
@@ -1328,7 +1333,7 @@ export function App() {
             />
           ) : null}
         </div>
-        {!terminalOpen && !showHome ? (
+        {!terminalOpen ? (
           <button className="terminal-reopen-button" type="button" aria-label="Open terminal pane" onClick={() => setTerminalOpen(true)}>
             <TerminalWindow size={16} />
             <span>Terminal</span>

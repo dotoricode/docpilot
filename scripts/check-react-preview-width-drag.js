@@ -21,8 +21,9 @@ async function main() {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-preview-width-'));
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-preview-width-user-'));
   fs.writeFileSync(path.join(fixtureRoot, 'README.md'), '# Resizable document\n\nA preview whose scrollbar-side boundary can be dragged.\n');
+  const executablePath = process.env.DOCPILOT_ELECTRON_EXECUTABLE || '';
   const app = await electron.launch({
-    args: ['.'],
+    ...(executablePath ? { executablePath } : { args: ['.'] }),
     cwd: repoRoot,
     env: { ...process.env, DOCPILOT_FAKE_AGENT: '1', DOCPILOT_USER_DATA_DIR: userData },
   });
@@ -45,6 +46,14 @@ async function main() {
     await page.waitForSelector('.markdown-preview h1');
     const handle = page.locator('.preview-width-resizer');
     await handle.waitFor({ state: 'visible', timeout: 4000 });
+    await page.waitForFunction(() => {
+      const shell = document.querySelector('.preview-shell')?.getBoundingClientRect();
+      const outline = document.querySelector('.toc-rail')?.getBoundingClientRect();
+      const resizer = document.querySelector('.preview-width-resizer');
+      if (!shell || !outline || !resizer) return false;
+      const expectedMaximum = Math.floor(outline.left - shell.left - 48);
+      return Number(resizer.getAttribute('aria-valuemax')) >= expectedMaximum - 4;
+    });
     const accessible = await handle.evaluate(node => ({
       role: node.getAttribute('role'),
       orientation: node.getAttribute('aria-orientation'),
@@ -116,7 +125,7 @@ async function main() {
       await page.evaluate(nextTheme => { document.documentElement.dataset.theme = nextTheme; }, theme);
       await page.screenshot({ path: path.join(artifactRoot, `app-preview-centered-${theme}.png`) });
     }
-    console.log('react preview width drag checks passed');
+    console.log(`${executablePath ? 'packaged ' : ''}react preview width drag checks passed`);
   } finally {
     await app.close().catch(() => {});
     try { execFileSync('pkill', ['-f', `bridge.js --root ${fixtureRoot}`]); } catch {}

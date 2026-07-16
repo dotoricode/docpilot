@@ -3,6 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      const launchQuery = new URLSearchParams(window.location.search);
+      const preference = ['light', 'dark', 'system'].includes(launchQuery.get('preference'))
+        ? launchQuery.get('preference')
+        : 'system';
+      const systemTheme = window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      document.documentElement.dataset.themePreference = preference;
+      document.documentElement.dataset.theme = launchQuery.get('theme') || (preference === 'system' ? systemTheme : preference);
+    </script>
     <title>DocPilot</title>
   </head>
   <body>

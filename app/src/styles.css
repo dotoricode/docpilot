@@ -4009,9 +4009,11 @@ select,
   left: auto;
   right: calc(100% + var(--preview-line-label-gap));
   top: 0.18em;
-  width: var(--preview-line-label-width);
+  width: max-content;
+  min-width: var(--preview-line-label-width);
   color: var(--code-line-number);
   text-align: right;
+  white-space: nowrap;
   font: 10px/1.4 var(--dp-mono);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
@@ -6854,7 +6856,7 @@ body.resizing-panels * {
 /* Orca-parity workbench foundation. This block is intentionally last while
    the legacy stylesheet is decomposed into semantic component styles. */
 :root {
-  --dp-sans: "Geist Variable", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif;
+  --dp-sans: "Geist Variable", "Noto Sans KR Variable", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif;
   --dp-mono: "Geist Mono Variable", "SFMono-Regular", Menlo, monospace;
   --workbench-bg: #0f1114;
   --workbench-sidebar: #121417;
@@ -6968,12 +6970,6 @@ textarea {
   color: var(--workbench-text) !important;
   font-size: 12px;
   font-weight: 510;
-}
-
-.topbar-chip-value::after {
-  content: "⌄";
-  margin-left: 7px;
-  color: var(--workbench-faint);
 }
 
 .topbar-crumb {
