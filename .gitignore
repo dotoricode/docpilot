@@ -4,3 +4,5 @@ node_modules/
 .tink/
 dist/
 tests/artifacts/
+.vercel
+.env*
