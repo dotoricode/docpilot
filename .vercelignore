@@ -1,8 +1,7 @@
-*
+/*
 !vercel.json
-!prototypes/
+!prototypes
 prototypes/*
-!prototypes/manual-v2/
-!prototypes/manual-v2/**
-prototypes/manual-v2/node_modules/
-prototypes/manual-v2/dist/
+!prototypes/manual-v2
+prototypes/manual-v2/node_modules
+prototypes/manual-v2/dist

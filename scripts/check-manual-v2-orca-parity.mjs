@@ -15,8 +15,8 @@ const vercelIgnore = fs.readFileSync(vercelIgnorePath, 'utf8');
 assert.equal(vercelConfig.installCommand, 'npm --prefix prototypes/manual-v2 ci');
 assert.equal(vercelConfig.buildCommand, 'npm --prefix prototypes/manual-v2 run build');
 assert.equal(vercelConfig.outputDirectory, 'prototypes/manual-v2/dist');
-assert.match(vercelIgnore, /^\*$/m, 'Vercel upload must deny files by default');
-assert.match(vercelIgnore, /^!prototypes\/manual-v2\/\*\*$/m, 'Vercel upload must include the manual source');
+assert.match(vercelIgnore, /^\/\*$/m, 'Vercel upload must deny root files by default');
+assert.match(vercelIgnore, /^!prototypes\/manual-v2$/m, 'Vercel upload must include the manual source');
 
 const requiredFiles = [
   'src/App.jsx',
