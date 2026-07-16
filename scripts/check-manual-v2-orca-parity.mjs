@@ -6,12 +6,17 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manual = path.join(root, 'prototypes/manual-v2');
 const vercelConfigPath = path.join(root, 'vercel.json');
+const vercelIgnorePath = path.join(root, '.vercelignore');
 
 assert.ok(fs.existsSync(vercelConfigPath), 'Vercel deployment config is missing');
+assert.ok(fs.existsSync(vercelIgnorePath), 'Vercel upload ignore config is missing');
 const vercelConfig = JSON.parse(fs.readFileSync(vercelConfigPath, 'utf8'));
+const vercelIgnore = fs.readFileSync(vercelIgnorePath, 'utf8');
 assert.equal(vercelConfig.installCommand, 'npm --prefix prototypes/manual-v2 ci');
 assert.equal(vercelConfig.buildCommand, 'npm --prefix prototypes/manual-v2 run build');
 assert.equal(vercelConfig.outputDirectory, 'prototypes/manual-v2/dist');
+assert.match(vercelIgnore, /^\*$/m, 'Vercel upload must deny files by default');
+assert.match(vercelIgnore, /^!prototypes\/manual-v2\/\*\*$/m, 'Vercel upload must include the manual source');
 
 const requiredFiles = [
   'src/App.jsx',
