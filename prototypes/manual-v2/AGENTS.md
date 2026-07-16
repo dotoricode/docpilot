@@ -14,7 +14,10 @@ When implementing from a selected generated mock, treat that image as the source
 - The production manual stays untouched until this prototype is reviewed and separately approved.
 - Every sidebar item must replace the article, page outline, URL, and scroll position instead of acting as selection-only chrome.
 - A demo may appear only when its input, action, and outcome match the surrounding article; embedded guide demos must not reuse a release-card asset.
-- Demo playback uses workflow-specific 5.5–11 second timelines: fast traceable setup, natural drag/transition motion, 1.2–1.8 second reading beats, and an approximately 1.5 second final hold. It autoplays once on first view and exposes pause, play, and replay controls.
+- Every feature guide must show three pieces of actual-app evidence: where the entry point is, what appears immediately after activation, and the observable result. Use an annotated still sequence for static or familiar behavior and a demo for spatial, sequential, or performance behavior.
+- Demo duration follows the complete scenario rather than a fixed upper bound. Pointer, typing, clicking, menus, dragging, and layout transitions stay human-followable and are never interaction-accelerated; selective focus must return to overview before a spatial result.
+- A visible demo autoplays from the beginning, pauses when it leaves the viewport, holds the final result for about three seconds, and repeats while visible. Route changes must replace the video source, poster, observer, and playback state; pause, play, and replay controls remain available.
+- Demo fixtures use invented public-safe content only. Long AsciiDoc evidence must show both an uncached first conversion and a cached reopen at real speed without company names, private paths, credentials, or document content.
 - Manual colors use only the captured Orca Docs light/dark tokens. The public manual remains separate from the application workbench token system.
 - Every guide must include a task outcome, prerequisites, actionable steps, visible completion cues, and recovery or limitation guidance backed by current repository behavior.
 - “새로운 기능” is a guided, demo-led release overview; “변경 사항 전체 보기” is a distinct versioned reference with added, changed, limitations, and upgrade sections. Both routes must survive reload.

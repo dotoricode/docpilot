@@ -133,51 +133,119 @@ function SearchDialog({ open, onClose }) {
 
 function MediaFrame({ media }) {
   const videoRef = useRef(null);
-  const playedRef = useRef(false);
+  const visibleRef = useRef(false);
+  const enteredRef = useRef(false);
+  const endedRef = useRef(false);
+  const manualPauseRef = useRef(false);
+  const replayTimerRef = useRef(null);
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const [state, setState] = useState('idle');
+  const type = media.type || 'demo';
+  const asset = media.asset || media.demo;
+
+  const clearReplayTimer = () => {
+    if (replayTimerRef.current) window.clearTimeout(replayTimerRef.current);
+    replayTimerRef.current = null;
+  };
+
+  const replay = video => {
+    clearReplayTimer();
+    endedRef.current = false;
+    video.currentTime = 0;
+    video.play().catch(() => {});
+  };
+
+  const holdThenReplay = video => {
+    clearReplayTimer();
+    replayTimerRef.current = window.setTimeout(() => {
+      replayTimerRef.current = null;
+      if (visibleRef.current && !manualPauseRef.current) replay(video);
+    }, 3000);
+  };
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || reducedMotion) return undefined;
+    if (!video) return undefined;
+    visibleRef.current = false;
+    enteredRef.current = false;
+    endedRef.current = false;
+    manualPauseRef.current = false;
+    clearReplayTimer();
+    setState('idle');
+    video.load();
+    if (reducedMotion) return () => clearReplayTimer();
     const observer = new IntersectionObserver(entries => {
-      if (!playedRef.current && entries.some(entry => entry.isIntersecting && entry.intersectionRatio >= 0.6)) {
-        playedRef.current = true;
-        video.play().catch(() => {});
-        observer.disconnect();
+      const visible = entries.some(entry => entry.isIntersecting && entry.intersectionRatio >= 0.6);
+      visibleRef.current = visible;
+      if (!visible) {
+        clearReplayTimer();
+        video.pause();
+        return;
       }
+      if (!enteredRef.current || endedRef.current) video.currentTime = 0;
+      enteredRef.current = true;
+      endedRef.current = false;
+      if (!manualPauseRef.current) video.play().catch(() => {});
     }, { threshold: [0.6] });
     observer.observe(video);
-    return () => observer.disconnect();
-  }, [reducedMotion]);
+    return () => {
+      visibleRef.current = false;
+      clearReplayTimer();
+      observer.disconnect();
+      video.pause();
+    };
+  }, [asset, reducedMotion]);
 
   const toggle = () => {
     const video = videoRef.current;
     if (!video) return;
-    if (!video.paused) return video.pause();
-    if (video.ended) video.currentTime = 0;
+    if (!video.paused) {
+      manualPauseRef.current = true;
+      clearReplayTimer();
+      return video.pause();
+    }
+    manualPauseRef.current = false;
+    if (endedRef.current || video.ended) replay(video);
     return video.play();
   };
+
+  if (type === 'image') {
+    return (
+      <figure className="media-frame media-frame-image">
+        <div className="media-surface">
+          <img src={assetPath(`media/images/${asset}.jpg`)} alt={media.alt} loading="lazy" />
+        </div>
+        <figcaption>{media.label}</figcaption>
+      </figure>
+    );
+  }
 
   return (
     <figure className="media-frame">
       <div className="media-surface">
         <video
           ref={videoRef}
-          poster={assetPath(`media/demos/${media.demo}.jpg`)}
+          data-media-asset={asset}
+          poster={assetPath(`media/demos/${asset}.jpg`)}
           muted
           playsInline
           aria-label={media.alt}
           onPlay={() => setState('playing')}
-          onPause={() => setState(videoRef.current?.ended ? 'ended' : 'paused')}
-          onEnded={() => setState('ended')}
+          onPause={() => setState(replayTimerRef.current ? 'holding' : 'paused')}
+          onEnded={() => {
+            const video = videoRef.current;
+            if (!video) return;
+            endedRef.current = true;
+            setState('holding');
+            if (visibleRef.current && !manualPauseRef.current) holdThenReplay(video);
+          }}
         >
-          <source src={assetPath(`media/demos/${media.demo}.webm`)} type="video/webm" />
-          <source src={assetPath(`media/demos/${media.demo}.mp4`)} type="video/mp4" />
+          <source src={assetPath(`media/demos/${asset}.webm`)} type="video/webm" />
+          <source src={assetPath(`media/demos/${asset}.mp4`)} type="video/mp4" />
         </video>
         {!reducedMotion ? (
-          <button className="media-control" type="button" onClick={toggle} aria-label={state === 'playing' ? '데모 일시 정지' : state === 'ended' ? '데모 다시 보기' : '데모 재생'}>
-            {state === 'playing' ? <Pause size={15} weight="fill" /> : state === 'ended' ? <ArrowCounterClockwise size={16} /> : <Play size={15} weight="fill" />}
+          <button className="media-control" type="button" onClick={toggle} aria-label={state === 'playing' ? '데모 일시 정지' : state === 'holding' ? '데모 처음부터 다시 보기' : '데모 재생'}>
+            {state === 'playing' ? <Pause size={15} weight="fill" /> : state === 'holding' ? <ArrowCounterClockwise size={16} /> : <Play size={15} weight="fill" />}
           </button>
         ) : null}
       </div>
@@ -210,8 +278,10 @@ function ArticleOutline({ page }) {
 }
 
 function DocsArticle({ slug }) {
-  const route = DOC_ROUTES.find(item => item.slug === slug) || DOC_ROUTES[0];
-  const page = pageForSlug(slug);
+  const requestedPage = pageForSlug(slug);
+  const resolvedSlug = requestedPage.redirectTo || slug;
+  const route = DOC_ROUTES.find(item => item.slug === resolvedSlug) || DOC_ROUTES[0];
+  const page = pageForSlug(resolvedSlug);
   const index = DOC_ROUTES.findIndex(item => item.slug === route.slug);
   const previous = DOC_ROUTES[index - 1];
   const next = DOC_ROUTES[index + 1];
@@ -227,7 +297,11 @@ function DocsArticle({ slug }) {
             <section className="article-section" id="shortcuts"><h2>기본 단축키</h2><div className="shortcut-table">{page.shortcuts.map(([keys, action]) => <div key={keys}><kbd>{keys}</kbd><span>{action}</span></div>)}</div></section>
           ) : null}
           {page.sections.map(section => <PageSection section={section} key={section.id} />)}
-          {page.media ? <MediaFrame media={page.media} /> : null}
+          {page.media?.length ? (
+            <section className="guide-media" aria-label={`${route.title} 기능 화면`}>
+              {page.media.map((item, mediaIndex) => <MediaFrame media={item} key={`${resolvedSlug}:${item.asset}:${mediaIndex}`} />)}
+            </section>
+          ) : null}
           {page.related?.length ? <RelatedPages slugs={page.related} /> : null}
           <nav className="page-pagination" aria-label="가이드 이동">
             {previous ? <button onClick={() => navigateTo({ kind: 'docs', slug: previous.slug })}><ArrowLeft size={16} /><span><small>Previous</small>{previous.title}</span></button> : <span />}
@@ -264,7 +338,7 @@ function Changelog({ selectedVersion }) {
             <button className="release-copy" onClick={() => navigateTo({ kind: 'release', version: release.version })}>
               <h2>{release.title}</h2><p>{release.summary}</p><span className="read-release">Read release notes <ArrowRight size={15} /></span>
             </button>
-            {curatedReleaseMedia[release.version]?.[0] ? <MediaFrame media={curatedReleaseMedia[release.version][0]} /> : null}
+            {curatedReleaseMedia[release.version]?.[0] ? <MediaFrame media={curatedReleaseMedia[release.version][0]} key={`${release.version}:${curatedReleaseMedia[release.version][0].asset || curatedReleaseMedia[release.version][0].demo}`} /> : null}
           </article>
         ))}
       </div>
@@ -279,7 +353,7 @@ function ReleaseDetail({ release }) {
       <button className="back-link" onClick={() => navigateTo({ kind: 'changelog' })}><ArrowLeft size={15} /> All releases</button>
       <header><p className="eyebrow">{release.unreleased ? '출시 예정' : formatDate(release.date)} · v{release.version}</p><h1>{release.title}</h1><p>{release.summary}</p></header>
       {blocks.map((block, index) => <section key={`${block.title}-${index}`}><h2>{block.title}</h2><ul>{block.items.map(item => <li key={item}>{item}</li>)}</ul></section>)}
-      {curatedReleaseMedia[release.version]?.map(media => <MediaFrame media={media} key={media.demo} />)}
+      {curatedReleaseMedia[release.version]?.map(media => <MediaFrame media={media} key={media.asset || media.demo} />)}
     </main>
   );
 }

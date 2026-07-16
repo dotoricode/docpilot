@@ -120,7 +120,9 @@ kbd { border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; bac
 
 .media-frame { margin: 56px 0; }
 .media-surface { position: relative; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--card); aspect-ratio: 16 / 9; }
-.media-surface video { width: 100%; height: 100%; display: block; object-fit: cover; }
+.media-surface video, .media-surface img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.guide-media { margin: 56px 0; }
+.guide-media .media-frame { margin: 24px 0; }
 .media-control { position: absolute; right: 12px; bottom: 12px; width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 50%; background: color-mix(in srgb, var(--popover) 88%, transparent); color: var(--popover-foreground); cursor: pointer; backdrop-filter: blur(10px); }
 .media-frame figcaption { margin-top: 9px; color: var(--muted-foreground); font-size: 12px; text-align: center; }
 .related-pages { margin: 58px 0 34px; }

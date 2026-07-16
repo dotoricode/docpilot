@@ -1,4 +1,5 @@
 import { DOC_ROUTES } from './routes.mjs';
+import { guideMedia, mergedGuideRoutes } from './media.js';
 
 const guide = ({ description, outcome, before, steps, verify, notes, media, related = [] }) => ({
   description,
@@ -13,7 +14,7 @@ const guide = ({ description, outcome, before, steps, verify, notes, media, rela
   related,
 });
 
-export const pages = {
+const guidePages = {
   overview: guide({
     description: 'DocPilot은 로컬 프로젝트의 문서를 탐색하고 편집하고 검토하는 문서 중심 워크벤치입니다. 파일 트리, 형식별 보기, Diff와 실제 셸 터미널을 한 창에서 사용합니다.',
     outcome: '프로젝트 폴더를 기준으로 문서를 열고, 형식에 맞는 보기와 검토 도구를 선택할 수 있습니다.',
@@ -166,20 +167,11 @@ export const pages = {
   'review/context-copy': guide({
     description: 'Preview의 블록을 다음 요청에 쓸 참고 칩으로 보관하거나 전체 문서를 복사합니다. 드래그한 텍스트 선택은 복사 메뉴가 열려도 유지됩니다.',
     outcome: '필요한 범위만 복사하고 성공 피드백을 바로 확인합니다.',
-    before: ['일반 선택 복사와 참고 칩 추가는 독립된 동작입니다.', '활성 지침이 있으면 지침 포함 복사 흐름에 함께 적용될 수 있습니다.'],
+    before: ['일반 선택 복사와 참고 칩 추가는 독립된 동작입니다.', '복사할 범위에 파일명, 줄 번호와 본문이 모두 포함되는지 확인하세요.'],
     steps: ['Preview에서 필요한 문장이나 여러 블록을 드래그합니다.', '선택을 유지한 채 Cmd/Ctrl+C를 누르거나 가까운 복사 메뉴를 사용합니다.', '선택 근처에 잠시 나타나는 완료 피드백을 확인합니다.', '필요한 선택은 참고 내용에 추가하고 한 번에 복사합니다.'],
     verify: ['참고 칩에 선택한 블록과 문서 위치가 표시됩니다.', '붙여 넣은 내용에 필요한 파일과 줄 맥락이 포함됩니다.'],
     notes: ['선택한 범위가 Preview 안에 있을 때만 근접 복사 메뉴와 참고 칩 동작이 활성화됩니다.', '텍스트 선택이 비어 있으면 일반 시스템 복사 흐름을 방해하지 않습니다.'],
-    related: ['review/instructions', 'editing/preview'],
-  }),
-  'review/instructions': guide({
-    description: '반복해서 전달할 규칙을 지침으로 저장하고 프로젝트 또는 전역 프리셋으로 묶습니다.',
-    outcome: '활성 지침 세트를 만들고 문서 문맥과 함께 재사용합니다.',
-    before: ['지침은 짧고 검증 가능한 문장으로 작성하세요.', '프로젝트 프리셋과 전역 프리셋의 적용 범위를 구분하세요.'],
-    steps: ['Project 패널에서 지침 탭을 엽니다.', '제목과 본문을 입력하거나 지원되는 텍스트 파일을 가져옵니다.', '필요한 지침을 활성화합니다.', '활성 목록을 프로젝트 또는 전역 프리셋으로 저장하고 적용합니다.'],
-    verify: ['활성 지침 수와 적용된 프리셋이 패널에 표시됩니다.', '문맥 복사 결과에 활성 지침의 참조가 포함됩니다.'],
-    notes: ['파일 내용이 바뀌었으면 다시 가져와 현재 값을 확인하세요.', 'DocPilot은 특정 Agent를 실행하지 않습니다. 지침을 사용할 CLI는 터미널에서 선택합니다.'],
-    related: ['review/context-copy', 'terminal/overview'],
+    related: ['editing/preview', 'terminal/overview'],
   }),
   'terminal/overview': guide({
     description: 'DocPilot Terminal은 프로젝트 기본 경로에서 사용자의 로그인 셸을 실행하는 실제 PTY 세션입니다. Codex나 Claude 같은 CLI는 사용자가 직접 실행합니다.',
@@ -204,18 +196,18 @@ export const pages = {
     description: 'Light, Dark 또는 System 테마를 선택합니다. 선택은 시작 화면, 문서 워크벤치와 다음 실행에 이어집니다.',
     outcome: '주변 환경에 맞는 테마를 설정하고 두 테마에서 문서와 터미널을 읽을 수 있습니다.',
     before: ['System은 macOS의 현재 외관 설정을 따릅니다.'],
-    steps: ['Settings에서 테마 선택을 엽니다.', 'Dark, Light 또는 System을 선택합니다.', '저장을 누릅니다.', '시작 화면과 워크벤치의 배경, 글자, 경계와 터미널을 확인합니다.'],
+    steps: ['상단 오른쪽의 테마 전환 버튼을 찾습니다.', 'Light 또는 Dark를 선택합니다.', '시작 화면과 워크벤치의 배경, 글자와 경계를 확인합니다.', '창을 다시 열어 마지막 선택이 유지되는지 확인합니다.'],
     verify: ['창을 다시 열어도 마지막 테마 선택이 유지됩니다.', '라이트와 다크 모두에서 포커스와 상태 표시를 구분할 수 있습니다.'],
     notes: ['테마 전환 직후 일부 네이티브 영역이 남으면 창을 다시 열어 확인하세요.', '공개 매뉴얼도 마지막 수동 선택 또는 시스템 테마를 따릅니다.'],
     related: ['settings/reference', 'troubleshooting'],
   }),
   'settings/reference': guide({
-    description: '테마, 파일 감시 제외 경로, 최근 작업공간과 진단 위치를 관리합니다.',
-    outcome: '설정 파일과 로그 위치를 확인하고 파일 감시 범위를 조정합니다.',
-    before: ['제외 glob을 넓게 지정하면 필요한 변경 알림도 사라질 수 있습니다.'],
-    steps: ['Settings 패널을 엽니다.', '필요한 테마와 파일 감시 제외 패턴을 수정합니다.', '저장을 누르고 상태가 저장됨으로 바뀌는지 확인합니다.', '진단 및 로그에서 메타 폴더, 세션 로그 또는 settings.json을 Finder로 엽니다.'],
-    verify: ['설정을 다시 불러와 저장한 값이 유지됩니다.', '진단 버튼이 실제 로컬 경로를 엽니다.'],
-    notes: ['문제가 반복되면 세션 로그 수와 설정 파일 위치를 함께 기록하세요.', '자동 저장 토글은 UI에 있지만 현재 공개 가이드에서는 동작을 보장하지 않습니다.'],
+    description: '현재 워크벤치에서 노출되는 테마와 문서별 Preview 표시 설정을 관리합니다.',
+    outcome: '앱 테마, 줄 번호, 들여쓰기와 Preview 읽기 폭을 현재 문서 작업에 맞게 조정합니다.',
+    before: ['표시 설정은 문서 내용 자체를 바꾸는 옵션과 구분해서 확인하세요.'],
+    steps: ['상단 오른쪽에서 앱 테마를 선택합니다.', '문서 도구막대의 더보기 버튼을 엽니다.', '들여쓰기, 줄 번호와 Preview 읽기 폭을 조정합니다.', 'Source, Rich, Preview 또는 Tree 중 파일 형식에 맞는 모드를 선택합니다.'],
+    verify: ['선택한 테마가 앱 전체에 반영됩니다.', '줄 번호와 읽기 폭 변경이 현재 Preview에서 바로 보입니다.'],
+    notes: ['현재 공개 워크벤치에는 별도 Settings 패널 진입 버튼이 노출되지 않습니다.', '파일 감시 제외 경로나 진단 파일을 직접 바꿔야 한다면 릴리스 문서의 지원 범위를 먼저 확인하세요.'],
     related: ['settings/appearance', 'troubleshooting'],
   }),
   'install/updates': guide({
@@ -253,6 +245,14 @@ export const pages = {
   }),
 };
 
+export const pages = Object.freeze(Object.fromEntries(
+  Object.entries(guidePages).map(([slug, page]) => [slug, {
+    ...page,
+    media: guideMedia[slug] || [],
+    ...(mergedGuideRoutes[slug] ? { redirectTo: mergedGuideRoutes[slug] } : {}),
+  }]),
+));
+
 export const navigationGroups = DOC_ROUTES.reduce((groups, route) => {
   const last = groups.at(-1);
   if (!last || last.label !== route.group) groups.push({ label: route.group, items: [] });
@@ -262,9 +262,9 @@ export const navigationGroups = DOC_ROUTES.reduce((groups, route) => {
 
 export const curatedReleaseMedia = {
   '2.0.0': [
-    { demo: 'workbench', label: '문서 중심 워크벤치', alt: 'DocPilot 홈에서 문서를 열어 작업공간으로 전환하는 흐름' },
-    { demo: 'split', label: 'Split everything', alt: '문서와 터미널 Pane을 상하좌우로 배치하는 흐름' },
-    { demo: 'diff', label: '렌더링 Diff', alt: '문서 문맥 안에서 변경사항을 검토하는 흐름' },
+    { type: 'demo', asset: 'workbench-overview', label: '문서 중심 워크벤치', alt: 'DocPilot 홈에서 문서를 열어 작업공간으로 전환하는 흐름' },
+    { type: 'demo', asset: 'tabs-and-panes-all-directions', label: 'Split everything', alt: '문서와 터미널 Pane을 상하좌우로 배치하는 흐름' },
+    { type: 'demo', asset: 'diff-edit-to-changes', label: '렌더링 Diff', alt: '실제 문서 편집부터 Changes 레일까지 변경사항을 검토하는 흐름' },
   ],
 };
 
