@@ -11,7 +11,7 @@ async function waitForEditorWindow(app) {
     if (window) return window;
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-  throw new Error('DocPilot editor window did not open');
+  throw new Error(`DocPilot editor window did not open: ${app.windows().map(window => window.url()).join(', ') || 'no windows'}`);
 }
 
 function git(cwd, args) {
@@ -26,6 +26,7 @@ async function dismissReleaseNotice(page) {
 async function main() {
   const root = path.resolve(__dirname, '..');
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-orca-regressions-'));
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-orca-regressions-user-'));
   const sections = Array.from({ length: 36 }, (_, index) => `## Section ${index + 1}\n\nParagraph ${index + 1}.`).join('\n\n');
   fs.writeFileSync(path.join(fixture, 'tracked.md'), `# Tracked\n\n${sections}\n`, 'utf8');
   git(fixture, ['init', '-q']);
@@ -37,7 +38,11 @@ async function main() {
 
   const failures = [];
   const check = (condition, message) => { if (!condition) failures.push(message); };
-  const app = await electron.launch({ args: ['.', fixture], cwd: root });
+  const app = await electron.launch({
+    args: ['.', fixture],
+    cwd: root,
+    env: { ...process.env, DOCPILOT_USER_DATA_DIR: userData },
+  });
 
   try {
     const page = await waitForEditorWindow(app);
@@ -146,6 +151,7 @@ async function main() {
     await app.close().catch(() => {});
     try { execFileSync('pkill', ['-f', `bridge.js --root ${fixture}`]); } catch {}
     fs.rmSync(fixture, { recursive: true, force: true });
+    fs.rmSync(userData, { recursive: true, force: true });
   }
 }
 

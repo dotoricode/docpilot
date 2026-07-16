@@ -181,16 +181,66 @@
 }
 
 .markdown-preview h1 {
-  font-size: 32px !important;
-  line-height: 1.18 !important;
-  font-weight: 650 !important;
+  font-size: 36px !important;
+  line-height: 1.16 !important;
+  font-weight: 590 !important;
   letter-spacing: -0.025em !important;
 }
 
 .markdown-preview h2 {
-  font-size: 22px !important;
-  font-weight: 620 !important;
+  font-size: 28px !important;
+  font-weight: 580 !important;
   letter-spacing: -0.015em !important;
+}
+
+.markdown-preview h3 {
+  font-size: 22px !important;
+  font-weight: 570 !important;
+}
+
+.markdown-preview h4 {
+  font-size: 18px !important;
+  font-weight: 560 !important;
+}
+
+.markdown-preview h5 {
+  font-size: 16px !important;
+  font-weight: 550 !important;
+}
+
+.markdown-preview h6 {
+  font-size: 14px !important;
+  font-weight: 550 !important;
+}
+
+/* Asciidoctor embedded output omits the document-title H1, so its first
+   visible section starts at H2. Shift the visual hierarchy by one level. */
+.markdown-preview.adoc-preview h2 {
+  font-size: 36px !important;
+  line-height: 1.16 !important;
+  font-weight: 590 !important;
+  letter-spacing: -0.025em !important;
+}
+
+.markdown-preview.adoc-preview h3 {
+  font-size: 28px !important;
+  font-weight: 580 !important;
+  letter-spacing: -0.015em !important;
+}
+
+.markdown-preview.adoc-preview h4 {
+  font-size: 22px !important;
+  font-weight: 570 !important;
+}
+
+.markdown-preview.adoc-preview h5 {
+  font-size: 18px !important;
+  font-weight: 560 !important;
+}
+
+.markdown-preview.adoc-preview h6 {
+  font-size: 16px !important;
+  font-weight: 550 !important;
 }
 
 .markdown-preview p,
@@ -553,7 +603,7 @@
   bottom: 0;
   left: 6px;
   width: 1px;
-  background: transparent;
+  background: color-mix(in srgb, var(--workbench-border-strong) 42%, transparent);
   transition: background 120ms ease, width 120ms ease;
 }
 
@@ -1406,4 +1456,34 @@ body.dragging-workbench-pane * {
   .home-actions {
     flex-wrap: wrap;
   }
+}
+
+/* Keep AsciiDoc admonitions inside the document column, including long
+   permission names and other inline code without natural break points. */
+.markdown-preview .admonitionblock,
+.markdown-preview .admonitionblock table,
+.markdown-preview .admonitionblock tbody,
+.markdown-preview .admonitionblock tr,
+.markdown-preview .admonitionblock td.content,
+.markdown-preview .admonitionblock td.content .paragraph,
+.markdown-preview .admonitionblock td.content p {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.markdown-preview .admonitionblock td.content,
+.markdown-preview .admonitionblock td.content .paragraph,
+.markdown-preview .admonitionblock td.content p,
+.markdown-preview .admonitionblock td.content code {
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+}
+
+:root[data-theme] .markdown-preview .admonitionblock td.content {
+  display: block !important;
+}
+
+:root[data-theme] .markdown-preview .admonitionblock td.content code {
+  display: inline !important;
 }

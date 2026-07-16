@@ -2,6 +2,28 @@ export const RELEASES_ENDPOINT = 'https://api.github.com/repos/dotoricode/docpil
 
 export const FALLBACK_RELEASES = Object.freeze([
   {
+    version: '2.0.1',
+    title: 'DocPilot 2.0.1',
+    date: '2026-07-16',
+    summary: '문서 프리뷰의 제목·NOTE·줄 번호 표시를 보정하고 초기 테마, 본문 폭과 터미널 재열기 동작을 개선했습니다.',
+    body: `## Fixed
+- Markdown과 AsciiDoc 제목의 크기·굵기와 한국어 글꼴 적용을 일관되게 맞췄습니다.
+- AsciiDoc NOTE 안의 긴 인라인 코드와 여러 자리 줄 범위가 겹치거나 본문 밖으로 넘치던 문제를 수정했습니다.
+- 닫힌 터미널을 홈과 문서 화면의 우측 하단 Terminal 버튼으로 다시 열 수 있습니다.
+
+## Changed
+- Line numbers 스위치를 더보기 메뉴 밖으로 옮기고 기본값을 끔으로 변경했습니다.
+- 프리뷰 폭 조절선을 평상시에도 은은하게 표시하고, 새 작업공간의 기본 폭을 최대보다 한 단계 좁게 설정했습니다.
+- 첫 실행 테마는 macOS 시스템 설정을 따르며 워크스페이스 이름 옆의 불필요한 화살표를 제거했습니다.
+- 실제 앱 동작을 따라가는 새 매뉴얼 데모와 직접 DMG 다운로드 흐름을 배포했습니다.
+
+## Upgrade notes
+- 기존 Line numbers 저장값은 새 기본값에 맞춰 한 번 초기화됩니다. 필요하면 상단 스위치에서 다시 켤 수 있습니다.
+- Intel Mac용 DMG는 코드 서명·공증되지 않은 내부 배포 빌드입니다.`,
+    assets: [],
+    fallback: true,
+  },
+  {
     version: '2.0.0',
     title: 'DocPilot 2.0.0',
     date: '2026-07-15',

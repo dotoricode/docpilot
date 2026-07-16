@@ -33,6 +33,7 @@ async function waitForClipboard(app, predicate, label) {
 async function main() {
   const repoRoot = path.resolve(__dirname, '..');
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-theme-copy-'));
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-theme-copy-user-'));
   fs.writeFileSync(
     path.join(fixtureRoot, 'README.md'),
     '# Primary File\n\nCopy target paragraph for preview popover.\n\nSecond paragraph for selection copy.\n',
@@ -52,6 +53,7 @@ async function main() {
     env: {
       ...process.env,
       DOCPILOT_FAKE_AGENT: '1',
+      DOCPILOT_USER_DATA_DIR: userData,
     },
   });
 
@@ -61,7 +63,6 @@ async function main() {
     await start.evaluate(root => {
       window.localStorage.setItem('docpilot:left-panel-collapsed', '0');
       window.localStorage.setItem('docpilot:right-panel-collapsed', '0');
-      window.localStorage.setItem('docpilot:preview-line-numbers', '1');
       window.docpilot.openFolder(root);
       return true;
     }, fixtureRoot);
@@ -190,11 +191,26 @@ async function main() {
         display: lineStyle?.display || '',
       };
     });
-    if (lineShape.display === 'none' || !lineShape.content.includes('1')) {
-      throw new Error(`preview line labels should be visible by default: ${JSON.stringify(lineShape)}`);
+    if (lineShape.display !== 'none') {
+      throw new Error(`preview line labels should be hidden by default: ${JSON.stringify(lineShape)}`);
     }
-    await editor.locator('.editor-more-menu summary').click();
-    await editor.locator('.editor-more-popover .diff-toggle').filter({ hasText: 'Line numbers' }).click();
+    const lineNumberToggle = editor.locator('.line-number-toggle');
+    if (!await lineNumberToggle.isVisible() || await lineNumberToggle.locator('xpath=ancestor::details').count()) {
+      throw new Error('preview line-number toggle should be visible outside the More menu');
+    }
+    await lineNumberToggle.click();
+    const visibleLineShape = await editor.locator('.markdown-preview').evaluate(preview => {
+      const heading = preview.querySelector('h1');
+      const lineStyle = heading ? getComputedStyle(heading, '::before') : null;
+      return {
+        content: lineStyle?.content || '',
+        display: lineStyle?.display || '',
+      };
+    });
+    if (visibleLineShape.display === 'none' || !visibleLineShape.content.includes('1')) {
+      throw new Error(`preview line labels should show when toggled on: ${JSON.stringify(visibleLineShape)}`);
+    }
+    await lineNumberToggle.click();
     const hiddenLineShape = await editor.locator('.markdown-preview').evaluate(preview => {
       const heading = preview.querySelector('h1');
       const lineStyle = heading ? getComputedStyle(heading, '::before') : null;
@@ -205,18 +221,6 @@ async function main() {
     });
     if (hiddenLineShape.display !== 'none') {
       throw new Error(`preview line labels should hide when toggled off: ${JSON.stringify(hiddenLineShape)}`);
-    }
-    await editor.locator('.editor-more-popover .diff-toggle').filter({ hasText: 'Line numbers' }).click();
-    const restoredLineShape = await editor.locator('.markdown-preview').evaluate(preview => {
-      const heading = preview.querySelector('h1');
-      const lineStyle = heading ? getComputedStyle(heading, '::before') : null;
-      return {
-        content: lineStyle?.content || '',
-        display: lineStyle?.display || '',
-      };
-    });
-    if (restoredLineShape.display === 'none' || !restoredLineShape.content.includes('1')) {
-      throw new Error(`preview line labels should show again when toggled on: ${JSON.stringify(restoredLineShape)}`);
     }
     await editor.locator('.editor-title').click();
 
@@ -345,6 +349,7 @@ async function main() {
     }
     await app.close().catch(() => {});
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    fs.rmSync(userData, { recursive: true, force: true });
   }
 }
 

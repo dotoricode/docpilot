@@ -17,7 +17,7 @@ assert.equal(evidence.current.version, packageVersion, 'Evidence version must ma
 assert.equal(evidence.current.state, 'release', 'v2 evidence must be prepared for the approved release flow');
 assert.equal(evidence.current.tag, `v${packageVersion}`, 'Release evidence must name the intended Git tag');
 assert.doesNotMatch(releaseSource, /unreleased:\s*true/, 'Final fallback content must not remain unreleased');
-assert.match(releaseSource, /title:\s*['"]DocPilot 2\.0\.0['"]/, 'Fallback v2 title must match the final release');
+assert.match(releaseSource, new RegExp(`title:\\s*['"]DocPilot ${packageVersion.replace(/\./g, '\\.')}['"]`), 'Fallback title must match the final release');
 if (gitTagExists(evidence.current.tag)) {
   const tagVersion = JSON.parse(execFileSync('git', ['show', `${evidence.current.tag}:package.json`], { cwd: root, encoding: 'utf8' })).version;
   assert.equal(tagVersion, packageVersion, 'The published v2 tag must contain the matching package version');
@@ -30,8 +30,8 @@ assert(Array.isArray(evidence.features), 'Evidence must contain feature entries'
 for (const feature of evidence.features) {
   requiredFeatures.delete(feature.id);
   assert(feature.claim?.trim(), `${feature.id}: missing bounded public claim`);
-  assert(feature.commit === evidence.current.implementationCommit, `${feature.id}: implementation commit mismatch`);
-  assert.equal(feature.date, evidence.current.implementationDate, `${feature.id}: implementation date mismatch`);
+  assert(feature.commit, `${feature.id}: implementation commit missing`);
+  assert(feature.date, `${feature.id}: implementation date missing`);
   for (const field of ['implementation', 'verification', 'documentation']) {
     assert(Array.isArray(feature[field]) && feature[field].length, `${feature.id}: missing ${field} evidence`);
   }
@@ -41,13 +41,25 @@ for (const feature of evidence.features) {
 }
 assert.equal(requiredFeatures.size, 0, `Missing v2 feature evidence: ${[...requiredFeatures].join(', ')}`);
 
+const requiredFixes = new Set(['preview-typography', 'preview-overflow', 'preview-controls', 'launch-defaults']);
+assert(Array.isArray(evidence.fixes), 'Current release evidence must contain fix entries');
+for (const fix of evidence.fixes) {
+  requiredFixes.delete(fix.id);
+  assert(fix.claim?.trim(), `${fix.id}: missing bounded public claim`);
+  for (const field of ['implementation', 'verification']) {
+    assert(Array.isArray(fix[field]) && fix[field].length, `${fix.id}: missing ${field} evidence`);
+    for (const file of fix[field]) assert(fs.existsSync(path.join(root, file)), `${fix.id}: evidence file does not exist: ${file}`);
+  }
+}
+assert.equal(requiredFixes.size, 0, `Missing current fix evidence: ${[...requiredFixes].join(', ')}`);
+
 const commit = execFileSync('git', ['rev-parse', evidence.current.implementationCommit], { cwd: root, encoding: 'utf8' }).trim();
 assert.equal(commit, evidence.current.implementationCommit, 'Implementation commit must resolve exactly');
 const commitDate = execFileSync('git', ['show', '-s', '--format=%aI', commit], { cwd: root, encoding: 'utf8' }).trim().slice(0, 10);
 assert.equal(commitDate, evidence.current.implementationDate, 'Implementation date must match Git author date');
 
 const histories = new Map((evidence.history || []).map(entry => [entry.version, entry]));
-for (const version of ['1.0.27', '1.0.28']) {
+for (const version of ['1.0.27', '1.0.28', '2.0.0']) {
   const entry = histories.get(version);
   assert(entry, `Missing historical evidence for ${version}`);
   const tag = `v${version}`;

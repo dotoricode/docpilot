@@ -86,7 +86,14 @@ assert.ok(asciidocRaw.phaseMarks.coldLoadMs > 0, 'AsciiDoc cold loading must be 
 assert.ok(asciidocRaw.phaseMarks.cachedLoadMs > 0, 'AsciiDoc cached loading must be measured');
 assert.ok(asciidocRaw.phaseMarks.cachedLoadMs < asciidocRaw.phaseMarks.coldLoadMs, 'AsciiDoc cached loading must be faster than cold loading');
 
-assert.ok(imageAssets.length >= 16, 'every static feature guide must declare an actual-app image');
+const contractedImageAssets = [...new Set(contract.guides
+  .filter(item => ['static', 'reference'].includes(item.media))
+  .map(item => item.asset))];
+for (const asset of contractedImageAssets) {
+  assert.ok(imageAssets.includes(asset), `contracted image is not declared: ${asset}`);
+}
+const mixedGuideCount = contract.guides.filter(item => item.media === 'mixed').length;
+assert.equal(imageAssets.length, contractedImageAssets.length + mixedGuideCount, 'every mixed guide must add one actual-app image beside its demo');
 assert.equal(new Set(imageAssets).size, imageAssets.length, 'static image assets must be uniquely named');
 for (const name of imageAssets) {
   const file = path.join(imageRoot, `${name}.jpg`);

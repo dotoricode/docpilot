@@ -15,6 +15,7 @@ process.title = 'DocPilot';
 
 const store = new Store();
 const DEFAULT_BRIDGE_PORT = 7474;
+const BRIDGE_PORT_SEARCH_LIMIT = 200;
 let bridgePort = DEFAULT_BRIDGE_PORT;
 let bridgeProc = null;
 const bridgeProcesses = new Set();
@@ -96,7 +97,7 @@ function isPortAvailable(port) {
 }
 
 async function findBridgePort() {
-  for (let port = DEFAULT_BRIDGE_PORT; port < DEFAULT_BRIDGE_PORT + 30; port += 1) {
+  for (let port = DEFAULT_BRIDGE_PORT; port < DEFAULT_BRIDGE_PORT + BRIDGE_PORT_SEARCH_LIMIT; port += 1) {
     if (await isPortAvailable(port)) return port;
   }
   throw new Error('사용 가능한 docpilot bridge 포트를 찾지 못했습니다.');
@@ -338,6 +339,9 @@ function createStartWindow() {
 }
 
 function createEditorWindow(root, openFileRel = '', port = bridgePort, bridge = null) {
+  const preference = storedThemePreference();
+  const effectiveTheme = resolveEffectiveTheme(preference);
+  applyNativeTheme(preference);
   const win = new BrowserWindow({
     width: 1440,
     height: 1024,
@@ -345,7 +349,7 @@ function createEditorWindow(root, openFileRel = '', port = bridgePort, bridge = 
     minHeight: 500,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 14, y: 15 },
-    backgroundColor: '#07080a',
+    backgroundColor: windowBackground(effectiveTheme),
     show: false,
     webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
   });
@@ -393,6 +397,8 @@ function loadEditorShell(win) {
   const openFileRel = win._docpilotOpenFileRel || '';
   const port = win._docpilotBridgePort || bridgePort;
   const reactRendererPath = getReactRendererPath();
+  const preference = storedThemePreference();
+  const effectiveTheme = resolveEffectiveTheme(preference);
   if (!fs.existsSync(reactRendererPath)) {
     dialog.showErrorBox(
       'DocPilot renderer missing',
@@ -403,6 +409,8 @@ function loadEditorShell(win) {
   win.loadFile(reactRendererPath, {
     query: {
       port: String(port),
+      theme: effectiveTheme,
+      preference,
       ...(openFileRel ? { open: openFileRel } : {}),
     },
   });

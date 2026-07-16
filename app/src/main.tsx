@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
+import '@fontsource-variable/noto-sans-kr';
 import { App } from './screens/App';
 import './styles.css';
 import './workbench-final.css';

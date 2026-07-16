@@ -32,7 +32,7 @@ node scripts/check-packaged-app.js
 현재 체크포인트 DMG:
 
 ```txt
-dist/package/DocPilot-2.0.0.dmg
+dist/package/DocPilot-2.0.1.dmg
 ```
 
 ## Main Workflow

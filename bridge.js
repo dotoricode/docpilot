@@ -486,7 +486,7 @@ function defaultSettingsStore() {
   return {
     version: 1,
     autosave: false,
-    theme: 'dark',
+    theme: 'system',
     agentCommandMode: 'auto',
     claudeCommand: 'claude',
     codexCommand: 'codex',
