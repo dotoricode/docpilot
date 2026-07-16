@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "purpose": "Assign complete actual-app evidence to every DocPilot feature guide.",
+  "evidenceRequired": ["entry", "opened", "result"],
+  "staticRule": "Use annotated actual-app images when motion, timing, and spatial change are not part of the claim.",
+  "demoRule": "Use an actual-app demo when the claim depends on sequence, spatial change, typing, dragging, or performance.",
+  "guides": [
+    {"slug":"overview","media":"demo","asset":"workbench-overview","entry":"Project folder and Quick open entry points","opened":"Quick open results over the workspace","result":"README Preview in the document workbench"},
+    {"slug":"install","media":"static","asset":"install-download-launch","entry":"Manual Download action","opened":"DMG and Applications installation step","result":"DocPilot project-folder start screen"},
+    {"slug":"first-workspace","media":"static","asset":"first-workspace-open","entry":"Open project folder action","opened":"System folder selection and selected root","result":"First document open in Preview"},
+    {"slug":"workspace/additional-folders","media":"static","asset":"additional-folders","entry":"Add folder button in Project panel","opened":"Folder chooser and connected-root state","result":"Additional root and document in the file tree"},
+    {"slug":"workspace/file-explorer","media":"static","asset":"file-explorer","entry":"Project file tree and name filter","opened":"File context menu","result":"Opened active file and matching document tab"},
+    {"slug":"workspace/recent","media":"static","asset":"recent-locations","entry":"Recent projects and recent documents","opened":"Selected recent project","result":"Restored workspace and active recent document"},
+    {"slug":"workspace/tabs-panes-splits","media":"demo","asset":"tabs-and-panes-all-directions","entry":"Document tab and Terminal button locations","opened":"Top, bottom, left, and right drop previews","result":"Document and Terminal Panes placed in all supported directions"},
+    {"slug":"workspace/pane-layout","media":"merge","asset":"tabs-and-panes-all-directions","target":"workspace/tabs-panes-splits","entry":"Legacy Pane layout guide","opened":"Compatibility navigation to consolidated guide","result":"Consolidated tab, document, and terminal layout workflow"},
+    {"slug":"find/quick-open","media":"demo","asset":"quick-open-human-typing","entry":"Quick open shortcut and command location","opened":"Quick open with recent and matching files","result":"Typed match opened as the active document"},
+    {"slug":"find/project-search","media":"demo","asset":"project-search-complete","entry":"Search button and shortcut","opened":"Content search, options, and path filters","result":"Selected line result opens the matching document"},
+    {"slug":"editing/source","media":"static","asset":"source-edit-save","entry":"Source mode button and more menu","opened":"Indentation and editing controls","result":"Saved content with the dirty indicator cleared"},
+    {"slug":"editing/markdown","media":"static","asset":"markdown-preview-example","entry":"Source, Rich, and Preview mode buttons","opened":"Rich safety state and Preview controls","result":"Rendered headings, lists, table, code, and relative image"},
+    {"slug":"editing/asciidoc","media":"mixed","asset":"asciidoc-long-cold-cache","entry":"AsciiDoc Source and Preview buttons","opened":"Uncached Preview loading state and outline","result":"Long rendered manual followed by cached reopen"},
+    {"slug":"editing/json","media":"static","asset":"json-tree-example","entry":"Source and Tree mode buttons","opened":"Expanded Tree and invalid JSON state","result":"Formatted valid JSON with root structure"},
+    {"slug":"editing/preview","media":"mixed","asset":"preview-navigation-width","entry":"Preview button, outline, find, and more menu","opened":"Preview find and line-display controls","result":"Outline navigation and symmetric reading-width result"},
+    {"slug":"review/diff","media":"demo","asset":"diff-edit-to-changes","entry":"Source edit and Diff control locations","opened":"Rendered Diff, Summary, and Changes rail","result":"Each changed location selected and readable in context"},
+    {"slug":"review/context-copy","media":"demo","asset":"preview-context-to-claude","entry":"Clickable Preview block and context-copy controls","opened":"Selected context chips and copied payload","result":"Filename, line, and body pasted and submitted to real Claude CLI"},
+    {"slug":"review/instructions","media":"static","asset":"instructions-presets","entry":"Instructions panel button","opened":"Imported instruction and preset controls","result":"Active instruction count and applied preset"},
+    {"slug":"terminal/overview","media":"demo","asset":"terminal-open-session","entry":"Terminal button location","opened":"Terminal Pane and New terminal action","result":"Real PTY session with a human-typed project command and output"},
+    {"slug":"terminal/layout","media":"merge","asset":"tabs-and-panes-all-directions","target":"workspace/tabs-panes-splits","entry":"Legacy Terminal layout guide","opened":"Compatibility navigation to consolidated guide","result":"Terminal placement covered by the consolidated layout workflow"},
+    {"slug":"settings/appearance","media":"static","asset":"appearance-theme","entry":"Theme control location","opened":"System, Light, and Dark options","result":"Manual and workbench in the selected theme"},
+    {"slug":"settings/reference","media":"static","asset":"settings-reference","entry":"Settings panel location","opened":"Available settings groups and controls","result":"Changed setting persisted after reopen"},
+    {"slug":"install/updates","media":"static","asset":"update-release-flow","entry":"Changelog and Download locations","opened":"Selected release details and matching DMG","result":"Updated DocPilot version visible after relaunch"},
+    {"slug":"reference/shortcuts","media":"reference","asset":"shortcut-reference","entry":"Keyboard shortcut table","opened":"Representative shortcut target","result":"Target feature opened from the keyboard"},
+    {"slug":"troubleshooting","media":"reference","asset":"troubleshooting-states","entry":"Representative error or unavailable state","opened":"Visible recovery guidance","result":"Recovered feature state or explicit limitation"}
+  ],
+  "requiredDemos": [
+    "workbench-overview",
+    "tabs-and-panes-all-directions",
+    "quick-open-human-typing",
+    "project-search-complete",
+    "asciidoc-long-cold-cache",
+    "preview-navigation-width",
+    "diff-edit-to-changes",
+    "preview-context-to-claude",
+    "terminal-open-session"
+  ],
+  "mergedRoutes": {
+    "workspace/pane-layout": "workspace/tabs-panes-splits",
+    "terminal/layout": "workspace/tabs-panes-splits"
+  }
+}
