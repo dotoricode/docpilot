@@ -1,148 +1,97 @@
 {
-  "version": 1,
-  "purpose": "A reproducible, human-followable product-demo language shared by the final manual and the approved reusable production skill.",
+  "version": 2,
+  "purpose": "Human-followable actual-app demos for the complete DocPilot feature manual.",
   "capture": {
     "source": "actual DocPilot Electron application",
     "viewport": { "width": 1440, "height": 900 },
     "fps": 30,
-    "cursor": "real Playwright pointer motion",
+    "cursor": "visible eased Playwright pointer",
     "audio": false
   },
   "rules": {
-    "camera": {
-      "states": ["overview", "focus"],
-      "maxMovesPerClip": 2,
-      "useFocusWhen": "The interaction target occupies less than roughly 40% of the frame or its label must be read.",
-      "returnToOverviewWhen": "The result spans panes, windows, or a changed spatial relationship.",
-      "jumpCutsWithVisibleCursor": false
-    },
-    "zoom": {
-      "transitionMs": { "min": 250, "max": 450 },
-      "focusScale": { "min": 1.25, "max": 1.55 },
-      "easing": "ease-in-out-cubic",
-      "decorativeZoom": false
-    },
-    "interaction": {
-      "speed": 1,
-      "cursorMoveMs": { "min": 450, "max": 900 },
-      "dragMs": { "min": 800, "max": 1400 },
-      "menuReadMs": { "min": 500, "max": 800 },
-      "accelerate": ["idle", "loading"],
-      "maximumIdleAcceleration": 2.5
-    },
-    "preActionHoldMs": { "min": 300, "max": 500 },
-    "resultHoldMs": { "min": 1000, "max": 1500 },
-    "durationSeconds": { "singleFeature": [4, 8], "multiStep": [7, 10] }
-  },
-  "referenceAnalysis": [
-    { "file": "annotate-ai-diff.mp4", "lesson": "Keep focus when a small selection is the entire task." },
-    { "file": "tab-split.mp4", "lesson": "Focus on the tab target, then return to overview to show the spatial result." },
-    { "file": "default-agent-opening.mp4", "lesson": "Use a close state for creation and an overview for the opened terminal." },
-    { "file": "session-that-survives-restart.mp4", "lesson": "A context-changing workflow may begin wide, focus on the restored state, and end readable." },
-    { "file": "agent-statuses.mp4", "lesson": "Use focus for status text and overview for relationships among multiple sessions." }
-  ],
-  "scenarios": {
-    "paneLayout": {
-      "id": "pane-layout-pilot",
-      "goal": "Move beta.md to the right of alpha.md and confirm the resulting split.",
-      "input": "Two Markdown files are open as tabs in one document pane.",
-      "action": "Grab beta.md, drag it to the broad right-edge drop region, inspect the half-pane preview, and release.",
-      "outcome": "alpha.md and beta.md remain open in a left-right split with independent tab strips.",
-      "phases": [
-        { "kind": "input", "durationMs": 450, "camera": "overview" },
-        { "kind": "focus", "durationMs": 400, "camera": "focus", "target": "beta.md tab" },
-        { "kind": "action", "durationMs": 1000, "camera": "focus-to-overview", "speed": 1 },
-        { "kind": "preview", "durationMs": 700, "camera": "overview", "target": "right half drop preview" },
-        { "kind": "drop", "durationMs": 350, "camera": "overview", "speed": 1 },
-        { "kind": "result", "durationMs": 1400, "camera": "overview" }
-      ],
-      "camera": [
-        { "atMs": 450, "durationMs": 350, "fromScale": 1, "toScale": 1.32, "target": { "x": 520, "y": 76 } },
-        { "atMs": 1150, "durationMs": 400, "fromScale": 1.32, "toScale": 1, "target": { "x": 720, "y": 450 } }
-      ],
-      "totalDurationMs": 4300
-    }
+    "typingDelayMs": { "min": 80, "max": 120 },
+    "cursorMoveMs": { "min": 650, "max": 1200 },
+    "preClickHoldMs": { "min": 500, "max": 900 },
+    "dragMs": { "min": 1000, "max": 1800 },
+    "resultHoldMs": 2000,
+    "playbackEndHoldMs": 3000,
+    "interactionAcceleration": false,
+    "loadingAccelerationForPerformanceDemos": false,
+    "focusScale": { "min": 1.25, "max": 1.55 },
+    "maxCameraMovesPerClip": 2
   },
   "productionScenarios": {
-    "workbench": {
-      "goal": "Open README.md from the workspace home with Quick open.",
-      "input": "A project is open and no document is active.",
-      "action": "Open Quick open, type README, and select the matching document.",
-      "outcome": "README.md opens in the document workbench with Preview visible.",
+    "workbench-overview": {
+      "goal": "Open a project document from the DocPilot home and confirm its Preview.",
+      "input": "A synthetic project is open on the workspace home.",
+      "action": "Open Quick open, type README at human speed, and select the result.",
+      "outcome": "README.md is active with its rendered Preview visible.",
       "focusScale": 1.28,
-      "phases": [
-        { "kind": "input", "durationMs": 400 },
-        { "kind": "focus", "durationMs": 500 },
-        { "kind": "action", "durationMs": 1200 },
-        { "kind": "result", "durationMs": 1300 }
-      ]
+      "phases": [{"kind":"input","durationMs":900},{"kind":"focus","durationMs":850},{"kind":"action","durationMs":3200},{"kind":"result","durationMs":2000}]
     },
-    "guide-split": {
-      "goal": "Move beta.md to the right of alpha.md.",
-      "input": "Two Markdown files are open as tabs in one document pane.",
-      "action": "Drag beta.md to the broad right-edge drop region and release after inspecting the preview.",
-      "outcome": "Both documents remain visible in a left-right split.",
-      "focusScale": 1.32,
-      "phases": [
-        { "kind": "input", "durationMs": 450 },
-        { "kind": "focus", "durationMs": 400 },
-        { "kind": "action", "durationMs": 1000 },
-        { "kind": "preview", "durationMs": 700 },
-        { "kind": "result", "durationMs": 1400 }
-      ]
+    "tabs-and-panes-all-directions": {
+      "goal": "Show document split targets and move the real Terminal Pane to every supported edge.",
+      "input": "Two document tabs and a real Terminal Pane are open.",
+      "action": "Inspect all document split previews, create a split, then move Terminal right, top, left, and bottom.",
+      "outcome": "Document and Terminal Pane placement is visibly supported on all four edges.",
+      "focusScale": 1.27,
+      "phases": [{"kind":"input","durationMs":1000},{"kind":"focus","durationMs":900},{"kind":"action","durationMs":26000},{"kind":"preview","durationMs":1200},{"kind":"result","durationMs":2500}]
     },
-    "split": {
-      "goal": "Move the Terminal Pane from below the document to its right.",
-      "input": "A document and Terminal Pane are visible in a top-bottom layout.",
-      "action": "Drag the terminal tab-bar surface into the broad right-side drop region.",
-      "outcome": "The document and terminal settle into a left-right layout without losing the shell session.",
+    "quick-open-human-typing": {
+      "goal": "Open a document with Quick open without instant scripted input.",
+      "input": "README.md is active in the workbench.",
+      "action": "Open Quick open, type beta.md character by character, and choose the result.",
+      "outcome": "beta.md opens as the active document tab.",
       "focusScale": 1.3,
-      "phases": [
-        { "kind": "input", "durationMs": 450 },
-        { "kind": "focus", "durationMs": 450 },
-        { "kind": "action", "durationMs": 1000 },
-        { "kind": "preview", "durationMs": 700 },
-        { "kind": "result", "durationMs": 1400 }
-      ]
+      "phases": [{"kind":"input","durationMs":800},{"kind":"focus","durationMs":800},{"kind":"action","durationMs":3600},{"kind":"result","durationMs":1800}]
     },
-    "search": {
-      "goal": "Find a phrase across the project and open its result.",
-      "input": "README.md is open in the workbench.",
-      "action": "Open project search, type a distinctive phrase, inspect the path and line, and select the result.",
-      "outcome": "docs/review.md opens from the selected body-search result.",
+    "project-search-complete": {
+      "goal": "Find body text with project search and open the exact line result.",
+      "input": "README.md is active in the workbench.",
+      "action": "Open Search, type a distinctive phrase at human speed, inspect its path and line, and select it.",
+      "outcome": "docs/review.md opens from the chosen body-search result.",
       "focusScale": 1.3,
-      "phases": [
-        { "kind": "input", "durationMs": 400 },
-        { "kind": "focus", "durationMs": 450 },
-        { "kind": "action", "durationMs": 1500 },
-        { "kind": "result", "durationMs": 1300 }
-      ]
+      "phases": [{"kind":"input","durationMs":800},{"kind":"focus","durationMs":800},{"kind":"action","durationMs":5200},{"kind":"result","durationMs":2000}]
     },
-    "diff": {
-      "goal": "Review a changed Markdown document in rendered Diff.",
-      "input": "README.md has committed content plus two working-tree changes.",
-      "action": "Enable Diff and select the first entry in the Changes rail.",
-      "outcome": "Rendered changes and their matching Changes summary are visible together.",
+    "asciidoc-long-cold-cache": {
+      "goal": "Show truthful cold and cached Preview loading for a long synthetic AsciiDoc manual.",
+      "input": "DocPilot has just opened a public-safe project containing manual.adoc.",
+      "action": "Open the long file, wait for the uncached Preview, switch away, and reopen it from cache without acceleration.",
+      "outcome": "The long outline and rendered manual appear, and cached reopen is visibly shorter.",
+      "focusScale": 1.26,
+      "phases": [{"kind":"input","durationMs":900},{"kind":"focus","durationMs":800},{"kind":"action","durationMs":9000},{"kind":"result","durationMs":2500}]
+    },
+    "preview-navigation-width": {
+      "goal": "Navigate a long Preview and adjust its symmetric reading width.",
+      "input": "A long Markdown manual is open in Preview with its outline visible.",
+      "action": "Choose an outline entry, find a phrase, then drag the reading-width boundary.",
+      "outcome": "The chosen section is visible at the adjusted centered reading width.",
       "focusScale": 1.28,
-      "phases": [
-        { "kind": "input", "durationMs": 400 },
-        { "kind": "focus", "durationMs": 450 },
-        { "kind": "action", "durationMs": 1000 },
-        { "kind": "result", "durationMs": 1800 }
-      ]
+      "phases": [{"kind":"input","durationMs":800},{"kind":"focus","durationMs":750},{"kind":"action","durationMs":7200},{"kind":"result","durationMs":2000}]
     },
-    "terminal": {
-      "goal": "Open a real shell session and run one project command.",
-      "input": "README.md is open and the Terminal Pane is closed.",
-      "action": "Reopen the Terminal Pane, create a session, and run printf.",
-      "outcome": "The shell output appears in the terminal beside the project document.",
+    "diff-edit-to-changes": {
+      "goal": "Show an actual edit followed by complete rendered Diff review.",
+      "input": "A committed Markdown document is open with no working change.",
+      "action": "Edit a sentence at human speed, open Preview Diff, and inspect multiple Changes rail entries.",
+      "outcome": "Added and removed content, Summary, and the selected changed location remain visible together.",
       "focusScale": 1.3,
-      "phases": [
-        { "kind": "input", "durationMs": 400 },
-        { "kind": "focus", "durationMs": 450 },
-        { "kind": "action", "durationMs": 2000 },
-        { "kind": "result", "durationMs": 1500 }
-      ]
+      "phases": [{"kind":"input","durationMs":900},{"kind":"focus","durationMs":850},{"kind":"action","durationMs":11000},{"kind":"result","durationMs":2500}]
+    },
+    "preview-context-to-claude": {
+      "goal": "Transfer DocPilot Preview context into a real Claude CLI session.",
+      "input": "A synthetic Markdown Preview and a closed Terminal Pane are visible.",
+      "action": "Click a Preview block to copy its real file, line, and body payload; open Terminal, run Claude, paste, and press Enter.",
+      "outcome": "The copied DocPilot context is submitted in the real Claude CLI; model response is not required.",
+      "focusScale": 1.28,
+      "phases": [{"kind":"input","durationMs":900},{"kind":"focus","durationMs":850},{"kind":"action","durationMs":18000},{"kind":"result","durationMs":2500}]
+    },
+    "terminal-open-session": {
+      "goal": "Open the real Terminal Pane and run a project command at human speed.",
+      "input": "README.md is open and Terminal is closed.",
+      "action": "Move to the Terminal button, open the Pane, create a PTY session, and type a project command.",
+      "outcome": "The real shell output is visible beside the document.",
+      "focusScale": 1.3,
+      "phases": [{"kind":"input","durationMs":900},{"kind":"focus","durationMs":950},{"kind":"action","durationMs":6500},{"kind":"result","durationMs":2000}]
     }
   }
 }

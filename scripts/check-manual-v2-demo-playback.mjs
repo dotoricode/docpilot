@@ -109,6 +109,27 @@ try {
     .filter(observer => observer.target?.dataset.mediaAsset === 'workbench-overview')
     .every(observer => observer.disconnected)), true, 'route navigation must disconnect the previous observer');
 
+  await page.evaluate(() => {
+    history.pushState({}, '', '/docs');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  const returnedOverview = page.locator('video[data-media-asset="workbench-overview"]');
+  await returnedOverview.waitFor();
+  assert.equal(await page.locator('.guide-media video').count(), 1, 'DocPilot overview must render only its own demo');
+  assert.match(await returnedOverview.locator('source[type="video/webm"]').getAttribute('src'), /workbench-overview\.webm$/, 'returning to DocPilot overview must restore its own source');
+  assert.equal(await page.evaluate(() => window.__demoObservers
+    .filter(observer => observer.target?.dataset.mediaAsset === 'diff-edit-to-changes')
+    .every(observer => observer.disconnected)), true, 'returning to overview must disconnect the Diff observer');
+
+  await page.evaluate(() => {
+    history.pushState({}, '', '/changelog');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  const changelogVideo = page.locator('video[data-media-asset="workbench-overview"]');
+  await changelogVideo.waitFor();
+  assert.equal(await page.locator('video[data-media-asset="workbench"]').count(), 0, 'Changelog must not revive a legacy fast demo');
+  assert.match(await changelogVideo.locator('source[type="video/webm"]').getAttribute('src'), /workbench-overview\.webm$/, 'Changelog must use the current overview demo');
+
   console.log('manual v2 demo playback regression: passed');
 } finally {
   await browser.close();

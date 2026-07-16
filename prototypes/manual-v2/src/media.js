@@ -58,16 +58,16 @@ export const guideMedia = Object.freeze({
     media('demo', 'preview-context-to-claude', 'Preview 문맥을 Claude로 전달', 'Preview 블록을 클릭해 복사한 파일명, 줄 번호와 본문을 실제 Claude 터미널에 붙여넣고 제출하는 흐름'),
   ],
   'review/instructions': [
-    media('image', 'instructions-presets', '지침과 프리셋', 'Instructions 버튼, 가져온 지침과 프리셋 선택 UI, 적용된 지침 수 결과'),
+    media('image', 'instructions-presets', '프로젝트 지침 문서', 'Project 파일 트리의 AGENTS.md 위치, Preview 버튼과 실제 지침 본문'),
   ],
   'terminal/overview': [
     media('demo', 'terminal-open-session', '실제 셸 터미널', 'Terminal 버튼의 위치부터 Pane과 새 PTY 세션을 열고 프로젝트 명령을 사람 속도로 실행한 결과까지 보여 주는 흐름'),
   ],
   'settings/appearance': [
-    media('image', 'appearance-theme', '테마 선택', 'Theme 설정 위치, System, Light, Dark 선택 UI와 적용된 화면'),
+    media('image', 'appearance-theme', '테마 선택', '상단 오른쪽 Light와 Dark 버튼 위치와 선택한 테마가 Project 패널과 문서에 적용된 화면'),
   ],
   'settings/reference': [
-    media('image', 'settings-reference', '설정 참고', 'Settings 버튼과 설정 그룹, 값을 변경한 뒤 다시 열어 유지된 결과'),
+    media('image', 'settings-reference', '표시 설정 참고', '상단 테마 버튼, 문서 더보기의 줄 번호와 읽기 폭, 파일 형식별 문서 모드 위치'),
   ],
   'install/updates': [
     media('image', 'update-release-flow', '업데이트 확인', 'Changelog와 Download 위치, 선택한 릴리스와 업데이트 뒤 표시된 앱 버전'),

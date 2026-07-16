@@ -338,7 +338,7 @@ function Changelog({ selectedVersion }) {
             <button className="release-copy" onClick={() => navigateTo({ kind: 'release', version: release.version })}>
               <h2>{release.title}</h2><p>{release.summary}</p><span className="read-release">Read release notes <ArrowRight size={15} /></span>
             </button>
-            {curatedReleaseMedia[release.version]?.[0] ? <MediaFrame media={curatedReleaseMedia[release.version][0]} key={`${release.version}:${curatedReleaseMedia[release.version][0].demo}`} /> : null}
+            {curatedReleaseMedia[release.version]?.[0] ? <MediaFrame media={curatedReleaseMedia[release.version][0]} key={`${release.version}:${curatedReleaseMedia[release.version][0].asset || curatedReleaseMedia[release.version][0].demo}`} /> : null}
           </article>
         ))}
       </div>
@@ -353,7 +353,7 @@ function ReleaseDetail({ release }) {
       <button className="back-link" onClick={() => navigateTo({ kind: 'changelog' })}><ArrowLeft size={15} /> All releases</button>
       <header><p className="eyebrow">{release.unreleased ? '출시 예정' : formatDate(release.date)} · v{release.version}</p><h1>{release.title}</h1><p>{release.summary}</p></header>
       {blocks.map((block, index) => <section key={`${block.title}-${index}`}><h2>{block.title}</h2><ul>{block.items.map(item => <li key={item}>{item}</li>)}</ul></section>)}
-      {curatedReleaseMedia[release.version]?.map(media => <MediaFrame media={media} key={media.demo} />)}
+      {curatedReleaseMedia[release.version]?.map(media => <MediaFrame media={media} key={media.asset || media.demo} />)}
     </main>
   );
 }
