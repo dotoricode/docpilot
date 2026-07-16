@@ -21,7 +21,6 @@ This matrix is the content boundary for the public v2 manual. A manual page may 
 | Preview reading | Current-document find, outline navigation, centered adjustable reading width, width restoration and line labels | `EditorPane.tsx`, Preview regression checks | `/docs/editing/preview` |
 | Diff review | Raw and rendered block Diff, inline additions/deletions, side-by-side comparison and Changes rail | `EditorPane.tsx`, `markdown-block-diff.js` | `/docs/review/diff` |
 | Context copy | Selected-context chips, persistent drag selection, nearby copy feedback and whole-document copy are supported | `EditorPane.tsx`, `copy-with-instructions.ts` | `/docs/review/context-copy` |
-| Instructions | Create, import, toggle and delete instructions; save and apply project or global presets | `InstructionsPanel.tsx`, instruction checks | `/docs/review/instructions` |
 | Terminal | Generic PTY login shell, multiple sessions, streaming, resize, bounded snapshot restore and delete | `TerminalPane.tsx`, `bridge.js`, `terminal-session-model.js` | `/docs/terminal/overview` |
 | Terminal placement | Dock at every edge, drag from tab-bar space, keyboard move, resize, close and reopen | `TerminalPane.tsx`, `App.tsx` | `/docs/terminal/layout` |
 | Themes | Light, dark and system settings; selected preference is persisted and applied to native windows | `theme.ts`, `SettingsPanel.tsx`, `main.js` | `/docs/settings/appearance` |

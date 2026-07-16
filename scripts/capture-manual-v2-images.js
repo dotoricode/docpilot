@@ -195,13 +195,6 @@ async function main() {
     ]);
     await page.keyboard.press('Escape');
 
-    await openFile(page, 'AGENTS.md');
-    await capture(page, 'instructions-presets', '프로젝트 지침을 문서로 확인하는 위치', [
-      [page.locator('.workspace-file-row').filter({ hasText: 'AGENTS.md' }), '프로젝트 지침 파일'],
-      [page.locator('.editor-mode-toggle').getByRole('button', { name: 'Preview' }), '지침 Preview'],
-      [page.locator('.markdown-preview'), '적용할 공개 지침 내용'],
-    ]);
-
     await page.locator('.theme-toggle button').nth(0).click();
     await wait(500);
     await capture(page, 'appearance-theme', '화면 상단에서 테마 전환', [

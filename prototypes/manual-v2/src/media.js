@@ -57,11 +57,11 @@ export const guideMedia = Object.freeze({
   'review/context-copy': [
     media('demo', 'preview-context-to-claude', 'Preview 문맥을 Claude로 전달', 'Preview 블록을 클릭해 복사한 파일명, 줄 번호와 본문을 실제 Claude 터미널에 붙여넣고 제출하는 흐름'),
   ],
-  'review/instructions': [
-    media('image', 'instructions-presets', '프로젝트 지침 문서', 'Project 파일 트리의 AGENTS.md 위치, Preview 버튼과 실제 지침 본문'),
-  ],
   'terminal/overview': [
     media('demo', 'terminal-open-session', '실제 셸 터미널', 'Terminal 버튼의 위치부터 Pane과 새 PTY 세션을 열고 프로젝트 명령을 사람 속도로 실행한 결과까지 보여 주는 흐름'),
+  ],
+  'terminal/layout': [
+    media('demo', 'tabs-and-panes-all-directions', '터미널 Pane 상하좌우 배치', '터미널 탭바와 배치 조작 위치부터 Terminal Pane을 상하좌우로 배치한 결과까지 이어지는 흐름'),
   ],
   'settings/appearance': [
     media('image', 'appearance-theme', '테마 선택', '상단 오른쪽 Light와 Dark 버튼 위치와 선택한 테마가 Project 패널과 문서에 적용된 화면'),
@@ -82,5 +82,4 @@ export const guideMedia = Object.freeze({
 
 export const mergedGuideRoutes = Object.freeze({
   'workspace/pane-layout': 'workspace/tabs-panes-splits',
-  'terminal/layout': 'workspace/tabs-panes-splits',
 });

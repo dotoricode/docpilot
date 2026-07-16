@@ -16,7 +16,6 @@ export const DOC_ROUTES = Object.freeze([
   { slug: 'editing/preview', path: '/docs/editing/preview', title: 'Preview와 목차', group: '문서 편집' },
   { slug: 'review/diff', path: '/docs/review/diff', title: 'Diff 검토', group: '검토와 전달' },
   { slug: 'review/context-copy', path: '/docs/review/context-copy', title: '문맥 선택과 복사', group: '검토와 전달' },
-  { slug: 'review/instructions', path: '/docs/review/instructions', title: '지침과 프리셋', group: '검토와 전달' },
   { slug: 'terminal/overview', path: '/docs/terminal/overview', title: '터미널', group: '터미널' },
   { slug: 'terminal/layout', path: '/docs/terminal/layout', title: '터미널 배치', group: '터미널' },
   { slug: 'settings/appearance', path: '/docs/settings/appearance', title: '테마', group: '설정' },

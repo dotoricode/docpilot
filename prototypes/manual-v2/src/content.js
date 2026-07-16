@@ -167,20 +167,11 @@ const guidePages = {
   'review/context-copy': guide({
     description: 'Preview의 블록을 다음 요청에 쓸 참고 칩으로 보관하거나 전체 문서를 복사합니다. 드래그한 텍스트 선택은 복사 메뉴가 열려도 유지됩니다.',
     outcome: '필요한 범위만 복사하고 성공 피드백을 바로 확인합니다.',
-    before: ['일반 선택 복사와 참고 칩 추가는 독립된 동작입니다.', '활성 지침이 있으면 지침 포함 복사 흐름에 함께 적용될 수 있습니다.'],
+    before: ['일반 선택 복사와 참고 칩 추가는 독립된 동작입니다.', '복사할 범위에 파일명, 줄 번호와 본문이 모두 포함되는지 확인하세요.'],
     steps: ['Preview에서 필요한 문장이나 여러 블록을 드래그합니다.', '선택을 유지한 채 Cmd/Ctrl+C를 누르거나 가까운 복사 메뉴를 사용합니다.', '선택 근처에 잠시 나타나는 완료 피드백을 확인합니다.', '필요한 선택은 참고 내용에 추가하고 한 번에 복사합니다.'],
     verify: ['참고 칩에 선택한 블록과 문서 위치가 표시됩니다.', '붙여 넣은 내용에 필요한 파일과 줄 맥락이 포함됩니다.'],
     notes: ['선택한 범위가 Preview 안에 있을 때만 근접 복사 메뉴와 참고 칩 동작이 활성화됩니다.', '텍스트 선택이 비어 있으면 일반 시스템 복사 흐름을 방해하지 않습니다.'],
-    related: ['review/instructions', 'editing/preview'],
-  }),
-  'review/instructions': guide({
-    description: '프로젝트의 AGENTS.md 같은 지침 문서를 DocPilot에서 열어 확인하고 필요한 문맥을 CLI로 전달합니다.',
-    outcome: '프로젝트 지침과 현재 문서 문맥을 함께 확인한 뒤 실제 Terminal의 CLI에서 재사용합니다.',
-    before: ['지침은 저장소에 포함할 수 있는 짧고 검증 가능한 문장으로 작성하세요.', '민감한 조직명이나 비공개 경로가 포함되지 않았는지 확인하세요.'],
-    steps: ['Project 파일 트리에서 AGENTS.md를 엽니다.', 'Preview에서 적용할 규칙과 범위를 확인합니다.', '필요한 블록을 클릭해 파일명, 줄 번호와 본문을 복사합니다.', 'Terminal에서 사용할 CLI를 직접 실행하고 문맥을 붙여넣습니다.'],
-    verify: ['AGENTS.md 파일명과 지침 본문이 Preview에 표시됩니다.', '복사한 문맥에 파일명, 줄 번호와 선택한 지침 본문이 포함됩니다.'],
-    notes: ['현재 공개 워크벤치에는 별도 Instructions 프리셋 패널 진입 버튼이 노출되지 않습니다.', 'DocPilot은 특정 Agent를 자동 실행하지 않으므로 사용할 CLI는 Terminal에서 선택합니다.'],
-    related: ['review/context-copy', 'terminal/overview'],
+    related: ['editing/preview', 'terminal/overview'],
   }),
   'terminal/overview': guide({
     description: 'DocPilot Terminal은 프로젝트 기본 경로에서 사용자의 로그인 셸을 실행하는 실제 PTY 세션입니다. Codex나 Claude 같은 CLI는 사용자가 직접 실행합니다.',

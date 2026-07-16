@@ -22,9 +22,8 @@
     {"slug":"editing/preview","media":"mixed","asset":"preview-navigation-width","entry":"Preview button, outline, find, and more menu","opened":"Preview find and line-display controls","result":"Outline navigation and symmetric reading-width result"},
     {"slug":"review/diff","media":"demo","asset":"diff-edit-to-changes","entry":"Source edit and Diff control locations","opened":"Rendered Diff, Summary, and Changes rail","result":"Each changed location selected and readable in context"},
     {"slug":"review/context-copy","media":"demo","asset":"preview-context-to-claude","entry":"Clickable Preview block and context-copy controls","opened":"Selected context chips and copied payload","result":"Filename, line, and body pasted and submitted to real Claude CLI"},
-    {"slug":"review/instructions","media":"static","asset":"instructions-presets","entry":"AGENTS.md in the Project file tree","opened":"Instruction document Preview","result":"Public project rules visible with file and line context"},
     {"slug":"terminal/overview","media":"demo","asset":"terminal-open-session","entry":"Terminal button location","opened":"Terminal Pane and New terminal action","result":"Real PTY session with a human-typed project command and output"},
-    {"slug":"terminal/layout","media":"merge","asset":"tabs-and-panes-all-directions","target":"workspace/tabs-panes-splits","entry":"Legacy Terminal layout guide","opened":"Compatibility navigation to consolidated guide","result":"Terminal placement covered by the consolidated layout workflow"},
+    {"slug":"terminal/layout","media":"demo","asset":"tabs-and-panes-all-directions","entry":"Terminal tab bar and layout controls","opened":"Top, bottom, left, and right drop previews","result":"Terminal Pane placed in every supported direction"},
     {"slug":"settings/appearance","media":"static","asset":"appearance-theme","entry":"Topbar theme control location","opened":"Light and Dark options","result":"Project panel and document in the selected theme"},
     {"slug":"settings/reference","media":"static","asset":"settings-reference","entry":"Topbar and document More menu locations","opened":"Indentation, line-number, width, and mode controls","result":"Selected document display settings visible in the workbench"},
     {"slug":"install/updates","media":"static","asset":"update-release-flow","entry":"Changelog and Download locations","opened":"Selected release details and matching DMG","result":"Updated DocPilot version visible after relaunch"},
@@ -43,7 +42,6 @@
     "terminal-open-session"
   ],
   "mergedRoutes": {
-    "workspace/pane-layout": "workspace/tabs-panes-splits",
-    "terminal/layout": "workspace/tabs-panes-splits"
+    "workspace/pane-layout": "workspace/tabs-panes-splits"
   }
 }

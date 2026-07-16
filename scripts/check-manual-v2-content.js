@@ -34,7 +34,7 @@ for (const evidence of [
   assert.ok(fs.existsSync(path.join(root, evidence)), `evidence file missing: ${evidence}`);
 }
 
-assert.equal(mediaContract.guides.length, 25, 'every manual route needs a feature media contract');
+assert.equal(mediaContract.guides.length, 24, 'every manual route needs a feature media contract');
 for (const scenario of mediaContract.requiredDemos) {
   assert.ok(mediaContract.guides.some(item => item.asset === scenario), `required demo is not assigned to a feature guide: ${scenario}`);
 }
