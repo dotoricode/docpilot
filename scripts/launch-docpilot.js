@@ -1,18 +1,27 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const http = require('http');
+const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
 const readline = require('readline');
 const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
+const { ensurePrivateDirectory, writeJsonAtomic } = require('../shared/core/atomic-file');
 
 const PORT = 7474;
 const projectDir = path.resolve(__dirname, '..');
 const bridgePath = path.join(projectDir, 'bridge.js');
 const editorPath = path.join(projectDir, 'dist', 'renderer', 'index.html');
-const statePath = path.join(os.tmpdir(), 'docpilot-bridge-7474.json');
-const logPath = path.join(os.tmpdir(), 'docpilot-bridge.log');
+const launcherStateDir = process.platform === 'darwin'
+  ? path.join(os.homedir(), 'Library', 'Application Support', 'DocPilot', 'launcher')
+  : process.platform === 'win32'
+    ? path.join(process.env.APPDATA || os.homedir(), 'DocPilot', 'launcher')
+    : path.join(process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state'), 'docpilot', 'launcher');
+const statePath = path.join(launcherStateDir, `bridge-${PORT}.json`);
+const logPath = path.join(launcherStateDir, 'bridge.log');
+
+ensurePrivateDirectory(launcherStateDir);
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.next', 'dist', 'build', 'vendor']);
 
@@ -101,9 +110,14 @@ async function chooseRoot(argPath) {
   return candidates[index - 1];
 }
 
-function ping() {
+function ping(token = '') {
   return new Promise(resolve => {
-    const req = http.get(`http://127.0.0.1:${PORT}/ping`, res => {
+    const req = http.get({
+      hostname: '127.0.0.1',
+      port: PORT,
+      path: '/ping',
+      headers: token ? { 'X-DocPilot-Token': token } : {},
+    }, res => {
       let body = '';
       res.setEncoding('utf8');
       res.on('data', chunk => body += chunk);
@@ -123,26 +137,27 @@ function ping() {
   });
 }
 
-async function waitForBridge(root) {
+async function waitForBridge(root, token) {
   for (let i = 0; i < 30; i += 1) {
-    const status = await ping();
+    const status = await ping(token);
     if (status?.ok && samePath(status.root, root)) return true;
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   return false;
 }
 
-function readManagedPid() {
+function readManagedState() {
   try {
-    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    return Number.isInteger(state.pid) ? state.pid : null;
+    const stat = fs.lstatSync(statePath);
+    if (!stat.isFile() || stat.isSymbolicLink()) return null;
+    return JSON.parse(fs.readFileSync(statePath, 'utf8'));
   } catch {
     return null;
   }
 }
 
 function killManagedBridge() {
-  const pid = readManagedPid();
+  const pid = Number(readManagedState()?.pid);
   if (!pid) return false;
   try {
     process.kill(pid);
@@ -153,49 +168,58 @@ function killManagedBridge() {
 }
 
 function startBridge(root) {
-  const log = fs.openSync(logPath, 'a');
+  const token = crypto.randomBytes(32).toString('base64url');
+  const log = fs.openSync(logPath, 'a', 0o600);
   const child = spawn(process.execPath, [bridgePath, '--root', root], {
     cwd: projectDir,
+    env: { ...process.env, DOCPILOT_BRIDGE_PORT: String(PORT), DOCPILOT_BRIDGE_TOKEN: token },
     detached: true,
     stdio: ['ignore', log, log],
     windowsHide: true,
   });
   child.unref();
-  fs.writeFileSync(statePath, JSON.stringify({
+  writeJsonAtomic(statePath, {
     pid: child.pid,
     root,
+    token,
     startedAt: new Date().toISOString(),
-  }, null, 2));
+  });
+  return token;
 }
 
-function openEditor() {
+function openEditor(token) {
   if (!fs.existsSync(editorPath)) {
     throw new Error('React renderer bundle is missing. Run npm run renderer:build first.');
   }
-  const url = pathToFileURL(editorPath).href;
+  const url = new URL(pathToFileURL(editorPath).href);
+  url.searchParams.set('port', String(PORT));
+  url.searchParams.set('token', token);
+  const editorUrl = url.toString();
   let child;
   if (process.platform === 'win32') {
-    child = spawn('rundll32.exe', ['url.dll,FileProtocolHandler', url], {
+    child = spawn('rundll32.exe', ['url.dll,FileProtocolHandler', editorUrl], {
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
     });
   } else if (process.platform === 'darwin') {
-    child = spawn('open', [url], { detached: true, stdio: 'ignore' });
+    child = spawn('open', [editorUrl], { detached: true, stdio: 'ignore' });
   } else {
-    child = spawn('xdg-open', [url], { detached: true, stdio: 'ignore' });
+    child = spawn('xdg-open', [editorUrl], { detached: true, stdio: 'ignore' });
   }
   child.on('error', () => {
-    console.log(`Open this file in your browser: ${url}`);
+    console.log('Could not open the renderer automatically. Run the Electron app instead.');
   });
   child.unref();
-  return url;
+  return pathToFileURL(editorPath).href;
 }
 
 async function ensureBridge(root) {
-  const status = await ping();
+  const managedState = readManagedState();
+  const managedToken = typeof managedState?.token === 'string' ? managedState.token : '';
+  const status = await ping(managedToken);
   if (status?.ok && samePath(status.root, root)) {
-    return 'bridge already running';
+    return { message: 'bridge already running', token: managedToken };
   }
 
   if (status?.ok && !samePath(status.root, root)) {
@@ -206,12 +230,12 @@ async function ensureBridge(root) {
     }
   }
 
-  startBridge(root);
-  const ready = await waitForBridge(root);
+  const token = startBridge(root);
+  const ready = await waitForBridge(root, token);
   if (!ready) {
     throw new Error(`bridge did not become ready. See log: ${logPath}`);
   }
-  return 'bridge started';
+  return { message: 'bridge started', token };
 }
 
 async function main() {
@@ -224,11 +248,11 @@ async function main() {
   const rootArg = args.find(arg => !arg.startsWith('-'));
   const root = await chooseRoot(rootArg);
   const bridgeState = await ensureBridge(root);
-  const editorUrl = openEditor();
+  const editorUrl = openEditor(bridgeState.token);
 
   console.log('docpilot ready');
   console.log(`  root   : ${root}`);
-  console.log(`  bridge : http://127.0.0.1:${PORT} (${bridgeState})`);
+  console.log(`  bridge : http://127.0.0.1:${PORT} (${bridgeState.message})`);
   console.log(`  editor : ${editorUrl}`);
   console.log(`  log    : ${logPath}`);
 }

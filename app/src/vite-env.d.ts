@@ -19,5 +19,7 @@ interface Window {
     openLocalPath?: (targetPath: string) => Promise<boolean>;
     copyText?: (text: string) => Promise<boolean>;
     setWindowTheme?: (theme: 'light' | 'dark' | 'system') => Promise<boolean>;
+    onMenuCommand?: (callback: (command: string) => void) => () => void;
+    onUpdateAvailable?: (callback: (data: { version: string; url: string }) => void) => () => void;
   };
 }

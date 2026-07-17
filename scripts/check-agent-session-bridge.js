@@ -31,6 +31,9 @@ assert(bridge.includes('/resize'), 'bridge must expose terminal resize endpoint'
 assert(bridge.includes("fallbackMode: 'child_process-sse'"), 'bridge must document child_process SSE fallback mode');
 assert(bridge.includes('ptyAvailable'), 'bridge runtime must report PTY availability');
 assert(bridge.includes('claudePrintArgs'), 'bridge must build explicit Claude print args');
+assert(!bridge.includes('--dangerously-bypass-approvals-and-sandbox'), 'Codex sessions must not bypass sandboxing');
+assert(bridge.includes("'--sandbox', 'workspace-write'"), 'Codex sessions must stay inside the selected workspace');
+assert(bridge.includes('stdinText: prompt'), 'agent prompts must be delivered over stdin instead of process arguments');
 assert(bridge.includes("'stream-json'"), 'Claude session turns must use stream-json output');
 assert(bridge.includes("'--include-partial-messages'"), 'Claude session turns must request partial streaming messages');
 assert(bridge.includes("streamEvent.type === 'content_block_delta'"), 'bridge must parse Claude partial content deltas');
@@ -72,7 +75,7 @@ assert(!panel.includes('context-chip-resizer'), 'AgentPanel must not keep the ol
 assert(editorPane.includes('document-context-rail'), 'EditorPane must render context chips in the document margin');
 assert(editorPane.includes('document-context-chip'), 'EditorPane must render vertical document context chips');
 assert(editorPane.includes('document-context-actions'), 'EditorPane must keep copy and cleanup actions near context chips');
-assert(editorPane.includes('onMouseUp={selectPreviewRange}'), 'EditorPane must support selecting preview text ranges as context chips');
+assert(editorPane.includes("onMouseUp={event => selectPreviewRange(event, 'primary')}"), 'EditorPane must support selecting preview text ranges as context chips');
 assert(editorPane.includes('onPreviewContextPick'), 'EditorPane preview selection must add context chips directly');
 assert(panel.includes('artifact-results'), 'AgentPanel must render artifact results');
 assert(panel.includes('onReviewArtifact'), 'AgentPanel must expose artifacts to review flow');

@@ -4,12 +4,13 @@ import { EditorPane } from '../features/editor/EditorPane';
 import { InstructionsPanel } from '../features/instructions/InstructionsPanel';
 import { TerminalPane } from '../features/terminal/TerminalPane';
 import { ProjectSearchPanel } from '../features/search/ProjectSearchPanel';
+import { SettingsPanel } from '../features/settings/SettingsPanel';
 import { WorkspaceSidebar } from '../features/workspace/WorkspaceSidebar';
 import { copyText, getAppVersion, getSettings, listWorkspaceFiles, pingBridge, readWorkspaceFile, saveSettings, saveWorkspaceFile, watchProject, type AppSettings } from '../shared/bridge-client';
 import { withActiveInstructionPrompt } from '../shared/copy-with-instructions';
 import { formatContextLocation } from '../shared/context-format';
 import { applyThemePreference } from '../shared/theme';
-import { applyDiskChange, createFileBuffer, markSaved, updateEditorContent } from '../../../shared/core/file-buffer';
+import { applyDiskChange, applyPeerSaveResult, applySaveResult, createFileBuffer, updateEditorContent } from '../../../shared/core/file-buffer';
 import { createWorkbenchLayout, movePane, panePlacement, parseWorkbenchLayout, resizePane, serializeWorkbenchLayout } from '../../../shared/core/workbench-pane-layout';
 
 type FileBuffer = ReturnType<typeof createFileBuffer>;
@@ -241,6 +242,7 @@ export function App() {
   const [leftWidth, setLeftWidth] = useState(() => readStoredPanelWidth('docpilot:left-panel-width', 274, 220, 520));
   const [leftCollapsed, setLeftCollapsed] = useState(() => readStoredBoolean('docpilot:left-panel-collapsed', false));
   const [themePreference, setThemePreference] = useState<AppSettings['theme']>(readInitialThemePreference);
+  const [autosaveEnabled, setAutosaveEnabled] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(() => readStoredBoolean('docpilot:terminal-open', true));
   const [paneLayout, setPaneLayout] = useState<WorkbenchLayout>(readWorkbenchLayout);
   const [draggingPane, setDraggingPane] = useState<PaneId | null>(null);
@@ -263,6 +265,13 @@ export function App() {
   const secondaryOpenPathRef = useRef('');
   const activePreviewPaneRef = useRef<'primary' | 'secondary'>('primary');
   const draggedDocumentTabRef = useRef<{ id: string; pane: 'primary' | 'secondary' } | null>(null);
+  const savingRef = useRef(false);
+  const menuSaveRef = useRef<() => void>(() => {});
+  const bufferRef = useRef(buffer);
+  const bufferEditGenerationRef = useRef(0);
+  const primaryOpenRequestRef = useRef(0);
+  const secondaryOpenRequestRef = useRef(0);
+  bufferRef.current = buffer;
   const committedTerminalPosition = (panePlacement(paneLayout, 'terminal', 'document') || 'bottom') as PaneEdge;
   const previewPaneLayout = useMemo(() => {
     if (!paneDropPreview) return paneLayout;
@@ -338,11 +347,29 @@ export function App() {
   }, [splitOrientation]);
 
   useEffect(() => {
-    window.localStorage.setItem('docpilot:terminal-open', String(terminalOpen));
+    window.localStorage.setItem('docpilot:terminal-open', terminalOpen ? '1' : '0');
     window.localStorage.setItem('docpilot:terminal-orientation', committedTerminalPosition === 'left' || committedTerminalPosition === 'right' ? 'horizontal' : 'vertical');
     window.localStorage.setItem('docpilot:terminal-size', String(Math.round(terminalSize)));
     window.localStorage.setItem(WORKBENCH_LAYOUT_KEY, serializeWorkbenchLayout(paneLayout));
   }, [committedTerminalPosition, paneLayout, terminalOpen, terminalSize]);
+
+  menuSaveRef.current = () => {
+    void saveFile();
+  };
+
+  useEffect(() => {
+    if (!autosaveEnabled || !buffer.path || !buffer.dirtyByUser || buffer.conflictState.includes('conflict')) return;
+    const timer = window.setTimeout(() => menuSaveRef.current(), 750);
+    return () => window.clearTimeout(timer);
+  }, [autosaveEnabled, buffer.conflictState, buffer.dirtyByUser, buffer.editorContent, buffer.lastSavedRevision, buffer.path]);
+
+  useEffect(() => {
+    const bridge = window.docpilot;
+    if (!bridge?.onMenuCommand) return;
+    return bridge.onMenuCommand(command => {
+      if (command === 'save') menuSaveRef.current();
+    });
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -396,13 +423,15 @@ export function App() {
         .then(response => {
           currentThemePreference = response.settings.theme;
           setThemePreference(response.settings.theme);
+          setAutosaveEnabled(response.settings.autosave);
           applyAppTheme(currentThemePreference);
         })
         .catch(() => applyAppTheme(currentThemePreference));
     };
     const onSettingsSaved = (event: Event) => {
       const settings = (event as CustomEvent).detail?.settings;
-      if (settings?.theme) {
+      if (settings) {
+        setAutosaveEnabled(settings.autosave === true);
         currentThemePreference = settings.theme;
         setThemePreference(settings.theme);
         applyAppTheme(currentThemePreference);
@@ -422,16 +451,23 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const refreshOpenDiskFiles = () => {
+    let disposed = false;
+    const requestSequences = new Map<string, number>();
+    const refreshOpenDiskFiles = (force = false) => {
+      if (!force && document.visibilityState === 'hidden') return;
       const openPaths = Array.from(new Set([openPathRef.current, secondaryOpenPathRef.current].filter(Boolean)));
       if (!openPaths.length) return;
       openPaths.forEach(openPath => {
+        const sequence = (requestSequences.get(openPath) || 0) + 1;
+        requestSequences.set(openPath, sequence);
         readWorkspaceFile(openPath)
           .then(file => {
-            applyExternalDiskContent(file.id, file.content);
+            if (disposed || requestSequences.get(openPath) !== sequence) return;
+            applyExternalDiskContent(file.id, file.content, file.revision);
             setOpenError('');
           })
           .catch(err => {
+            if (disposed || requestSequences.get(openPath) !== sequence) return;
             setOpenError(err instanceof Error ? err.message : String(err));
           });
       });
@@ -443,14 +479,20 @@ export function App() {
       }
       if (event.type !== 'files.changed') return;
       setWorkspaceRefreshSignal(value => value + 1);
-      refreshOpenDiskFiles();
+      refreshOpenDiskFiles(true);
     }, () => {
       setBridgeState('disconnected');
       setBridgeMessage('브리지 연결이 끊겼습니다.');
     });
-    const poll = window.setInterval(refreshOpenDiskFiles, 1500);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshOpenDiskFiles(true);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    const poll = window.setInterval(refreshOpenDiskFiles, 10000);
     return () => {
+      disposed = true;
       stop();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       window.clearInterval(poll);
     };
   }, []);
@@ -490,6 +532,7 @@ export function App() {
   }, []);
 
   async function openFile(id: string, options: { keepReview?: boolean } = {}) {
+    const requestId = ++primaryOpenRequestRef.current;
     const existingTab = openTabs.find(tab => tab.id === id);
     if (existingTab) {
       openPathRef.current = id;
@@ -504,8 +547,9 @@ export function App() {
     }
     try {
       const file = await readWorkspaceFile(id);
+      if (requestId !== primaryOpenRequestRef.current) return;
       openPathRef.current = file.id;
-      setBuffer(createFileBuffer({ path: file.id, content: file.content }));
+      setBuffer(createFileBuffer({ path: file.id, content: file.content, revision: file.revision }));
       setActivePane('primary');
       if (!options.keepReview) setReviewDiff(null);
       setSelectedContext(null);
@@ -513,22 +557,24 @@ export function App() {
       setOpenError('');
       rememberQuickOpenFile(file.id);
     } catch (err) {
+      if (requestId !== primaryOpenRequestRef.current) return;
       setOpenError(err instanceof Error ? err.message : String(err));
     }
   }
 
-  function applyExternalDiskContent(fileId: string, content: string) {
+  function applyExternalDiskContent(fileId: string, content: string, revision = '') {
     const applyToBuffer = (current: FileBuffer) => {
       if (current.path !== fileId) return current;
-      return applyDiskChange(current, content, 'external');
+      return applyDiskChange(current, content, 'external', revision);
     };
     setBuffer(applyToBuffer);
     setSecondaryBuffer(applyToBuffer);
-    setOpenTabs(current => updateOpenTabsForDiskChange(current, fileId, content));
-    setSecondaryOpenTabs(current => updateOpenTabsForDiskChange(current, fileId, content));
+    setOpenTabs(current => updateOpenTabsForDiskChange(current, fileId, content, revision));
+    setSecondaryOpenTabs(current => updateOpenTabsForDiskChange(current, fileId, content, revision));
   }
 
   async function openFileInSplit(id: string, orientation: 'horizontal' | 'vertical' = splitOrientation) {
+    const requestId = ++secondaryOpenRequestRef.current;
     const existingTab = secondaryOpenTabs.find(tab => tab.id === id);
     if (existingTab) {
       setSplitOrientation(orientation);
@@ -541,22 +587,25 @@ export function App() {
     }
     try {
       const file = await readWorkspaceFile(id);
+      if (requestId !== secondaryOpenRequestRef.current) return;
       setSplitOrientation(orientation);
       secondaryOpenPathRef.current = file.id;
-      setSecondaryBuffer(createFileBuffer({ path: file.id, content: file.content }));
+      setSecondaryBuffer(createFileBuffer({ path: file.id, content: file.content, revision: file.revision }));
       setActivePane('secondary');
       setOpenError('');
       rememberQuickOpenFile(file.id);
     } catch (err) {
+      if (requestId !== secondaryOpenRequestRef.current) return;
       setOpenError(err instanceof Error ? err.message : String(err));
     }
   }
 
   function openCurrentFileInSplit(orientation: 'horizontal' | 'vertical' = splitOrientation) {
     if (!buffer.path) return;
+    secondaryOpenRequestRef.current += 1;
     setSplitOrientation(orientation);
     secondaryOpenPathRef.current = buffer.path;
-    setSecondaryBuffer(createFileBuffer({ path: buffer.path, content: buffer.editorContent }));
+    setSecondaryBuffer({ ...buffer });
     setActivePane('secondary');
     setOpenError('');
     rememberQuickOpenFile(buffer.path);
@@ -571,6 +620,7 @@ export function App() {
   }
 
   function closeSplitPreview(activePane = activePreviewPaneRef.current) {
+    secondaryOpenRequestRef.current += 1;
     if (activePane === 'secondary' && secondaryBuffer.path) {
       openPathRef.current = secondaryBuffer.path;
       setBuffer(secondaryBuffer);
@@ -582,6 +632,7 @@ export function App() {
   }
 
   function selectOpenTab(id: string) {
+    primaryOpenRequestRef.current += 1;
     const tab = openTabs.find(item => item.id === id);
     if (!tab) return;
     openPathRef.current = id;
@@ -598,6 +649,7 @@ export function App() {
       setOpenError(`${pathFileName(tab.id)} 파일에 저장되지 않은 변경사항이 있어 닫지 않았습니다.`);
       return;
     }
+    primaryOpenRequestRef.current += 1;
     const remainingTabs = openTabs.filter(item => item.id !== id);
     setOpenTabs(remainingTabs);
     if (buffer.path !== id) return;
@@ -622,6 +674,7 @@ export function App() {
   }
 
   function selectSecondaryOpenTab(id: string) {
+    secondaryOpenRequestRef.current += 1;
     const tab = secondaryOpenTabs.find(item => item.id === id);
     if (!tab) return;
     secondaryOpenPathRef.current = id;
@@ -638,6 +691,7 @@ export function App() {
       setOpenError(`${pathFileName(tab.id)} 파일에 저장되지 않은 변경사항이 있어 닫지 않았습니다.`);
       return;
     }
+    secondaryOpenRequestRef.current += 1;
     const remainingTabs = secondaryOpenTabs.filter(item => item.id !== id);
     setSecondaryOpenTabs(remainingTabs);
     if (secondaryBuffer.path !== id) return;
@@ -672,7 +726,7 @@ export function App() {
       if (!loaded) {
         const file = await readWorkspaceFile(id);
         if (!file) throw new Error(`${id} 파일을 열 수 없습니다.`);
-        loaded = createFileBuffer({ path: file.id, content: file.content });
+        loaded = createFileBuffer({ path: file.id, content: file.content, revision: file.revision });
       }
       const alternatives = [...openTabs, ...secondaryOpenTabs]
         .map(tab => tab.buffer)
@@ -840,15 +894,87 @@ export function App() {
   }, [activePreviewPane, buffer.path, buffer.editorContent, openTabs, projectSearchOpen, quickOpenIndex, quickOpenOpen, quickOpenResults, secondaryBuffer, secondaryOpenTabs, splitOrientation]);
 
   async function saveFile() {
-    if (!buffer.path || !buffer.dirtyByUser || saving) return;
+    if (!buffer.path || !buffer.dirtyByUser || savingRef.current) return;
+    const savedPath = buffer.path;
+    const savedContent = buffer.editorContent;
+    savingRef.current = true;
     setSaving(true);
     try {
-      await saveWorkspaceFile(buffer.path, buffer.editorContent);
-      setBuffer(current => markSaved(current, current.editorContent));
+      const result = await saveWorkspaceFile(savedPath, savedContent, buffer.lastSavedRevision);
+      setBuffer(current => applySaveResult(current, savedPath, savedContent, result.revision));
+      setSecondaryBuffer(current => applyPeerSaveResult(current, savedPath, savedContent, result.revision));
+      setOpenTabs(current => updateOpenTabsForSave(current, savedPath, savedContent, result.revision));
+      setSecondaryOpenTabs(current => updateOpenTabsForSave(current, savedPath, savedContent, result.revision, true));
+      setOpenError('');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('파일이 디스크에서 변경되었습니다')) {
+        try {
+          const disk = await readWorkspaceFile(savedPath);
+          applyExternalDiskContent(disk.id, disk.content, disk.revision);
+        } catch {}
+      }
+      setOpenError(message);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }
+
+  async function reloadConflictFromDisk() {
+    const filePath = buffer.path;
+    if (!filePath) return;
+    if (buffer.dirtyByUser && !window.confirm('현재 편집 내용은 사라집니다. 디스크 버전을 불러올까요?')) return;
+    const editGeneration = bufferEditGenerationRef.current;
+    const editorContent = buffer.editorContent;
+    try {
+      const file = await readWorkspaceFile(filePath);
+      const current = bufferRef.current;
+      if (
+        current.path !== filePath
+        || current.editorContent !== editorContent
+        || bufferEditGenerationRef.current !== editGeneration
+      ) {
+        setOpenError('불러오는 동안 편집 상태가 바뀌어 디스크 버전을 적용하지 않았습니다. 다시 시도하세요.');
+        return;
+      }
+      const fresh = createFileBuffer({ path: file.id, content: file.content, revision: file.revision });
+      setBuffer(fresh);
+      setSecondaryBuffer(currentBuffer => (
+        currentBuffer.path === file.id && !currentBuffer.dirtyByUser ? fresh : currentBuffer
+      ));
       setOpenError('');
     } catch (err) {
       setOpenError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function overwriteConflictWithLocal() {
+    if (!buffer.path || savingRef.current) return;
+    if (!window.confirm('디스크에서 변경된 내용을 현재 편집 내용으로 덮어쓸까요?')) return;
+    const savedPath = buffer.path;
+    const savedContent = buffer.editorContent;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const latest = await readWorkspaceFile(savedPath);
+      const result = await saveWorkspaceFile(savedPath, savedContent, latest.revision);
+      setBuffer(current => applySaveResult(current, savedPath, savedContent, result.revision));
+      setSecondaryBuffer(current => applyPeerSaveResult(current, savedPath, savedContent, result.revision));
+      setOpenTabs(current => updateOpenTabsForSave(current, savedPath, savedContent, result.revision));
+      setSecondaryOpenTabs(current => updateOpenTabsForSave(current, savedPath, savedContent, result.revision, true));
+      setOpenError('');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('파일이 디스크에서 변경되었습니다')) {
+        try {
+          const disk = await readWorkspaceFile(savedPath);
+          applyExternalDiskContent(disk.id, disk.content, disk.revision);
+        } catch {}
+      }
+      setOpenError(message);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
@@ -900,6 +1026,8 @@ export function App() {
       return;
     }
 
+    primaryOpenRequestRef.current += 1;
+    secondaryOpenRequestRef.current += 1;
     openPathRef.current = '';
     secondaryOpenPathRef.current = '';
     setBuffer(createFileBuffer());
@@ -1191,6 +1319,7 @@ export function App() {
           dirtyFileIds={dirtyFileIds}
           refreshSignal={workspaceRefreshSignal}
           instructionsPanel={<InstructionsPanel />}
+          settingsPanel={<SettingsPanel />}
           onOpenFile={openFileFromTree}
           onOpenFileInSplit={openFileInSplit}
           onCollapse={() => setLeftCollapsed(true)}
@@ -1339,8 +1468,13 @@ export function App() {
             onRemoveContextChip={removeContextChip}
             onCopyContextChips={copyContextChips}
             onClearContextChips={clearContextChips}
-            onChange={content => setBuffer(current => updateEditorContent(current, content))}
+            onChange={content => {
+              bufferEditGenerationRef.current += 1;
+              setBuffer(current => updateEditorContent(current, content));
+            }}
             onSave={saveFile}
+            onReloadConflict={reloadConflictFromDisk}
+            onOverwriteConflict={overwriteConflictWithLocal}
             onCloseSecondary={closeSplitPreview}
             onOpenCurrentInSplit={openCurrentFileInSplit}
             onActivePreviewPaneChange={setActivePane}
@@ -1481,11 +1615,25 @@ function upsertOpenTab(tabs: OpenFileTab[], buffer: FileBuffer): OpenFileTab[] {
   return tabs.map((tab, tabIndex) => tabIndex === index ? nextTab : tab);
 }
 
-function updateOpenTabsForDiskChange(tabs: OpenFileTab[], fileId: string, content: string): OpenFileTab[] {
+function updateOpenTabsForDiskChange(tabs: OpenFileTab[], fileId: string, content: string, revision = ''): OpenFileTab[] {
   let changed = false;
   const nextTabs = tabs.map(tab => {
     if (tab.id !== fileId) return tab;
-    const nextBuffer = applyDiskChange(tab.buffer, content, 'external');
+    const nextBuffer = applyDiskChange(tab.buffer, content, 'external', revision);
+    if (nextBuffer === tab.buffer) return tab;
+    changed = true;
+    return { ...tab, buffer: nextBuffer };
+  });
+  return changed ? nextTabs : tabs;
+}
+
+function updateOpenTabsForSave(tabs: OpenFileTab[], fileId: string, content: string, revision = '', cleanPeer = false): OpenFileTab[] {
+  let changed = false;
+  const nextTabs = tabs.map(tab => {
+    if (tab.id !== fileId) return tab;
+    const nextBuffer = cleanPeer
+      ? applyPeerSaveResult(tab.buffer, fileId, content, revision)
+      : applySaveResult(tab.buffer, fileId, content, revision);
     if (nextBuffer === tab.buffer) return tab;
     changed = true;
     return { ...tab, buffer: nextBuffer };

@@ -1,11 +1,14 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, net, Menu, clipboard, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, net, Menu, clipboard, nativeTheme, powerMonitor } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const { fork } = require('child_process');
 const http = require('http');
 const nodeNet = require('net');
 const Store = require('./store');
+const { isFileUrlForPath, normalizeExternalUrl } = require('./shared/core/app-navigation');
+const { canonicalizeRoot, isPathInside } = require('./shared/core/bridge-security');
 
 if (process.env.DOCPILOT_USER_DATA_DIR) {
   app.setPath('userData', process.env.DOCPILOT_USER_DATA_DIR);
@@ -16,17 +19,21 @@ process.title = 'DocPilot';
 const store = new Store();
 const DEFAULT_BRIDGE_PORT = 7474;
 const BRIDGE_PORT_SEARCH_LIMIT = 200;
+const BRIDGE_FORCE_KILL_DELAY_MS = 1200;
 let bridgePort = DEFAULT_BRIDGE_PORT;
 let bridgeProc = null;
 const bridgeProcesses = new Set();
+const bridgeProcessesByPort = new Map();
 let startWin = null;
 let editorWin = null;
 let switchingFolder = false;
+let appQuitting = false;
 let activeRoot = '';
 let devWatchersStarted = false;
 let devReloadTimer = null;
 let devBridgeTimer = null;
 const devWatchMtimes = new Map();
+const devWatchers = new Set();
 
 // ── Bridge ──────────────────────────────────────────────
 function uniquePathEntries(entries) {
@@ -57,8 +64,18 @@ function cliPathCandidates() {
   ];
 }
 
-function buildBridgeEnv(port) {
-  const env = { ...process.env, DOCPILOT_BRIDGE_PORT: String(port) };
+function workspaceStateDir(root) {
+  const key = crypto.createHash('sha256').update(root).digest('hex');
+  return path.join(app.getPath('userData'), 'workspaces', key);
+}
+
+function buildBridgeEnv(port, token, root) {
+  const env = {
+    ...process.env,
+    DOCPILOT_BRIDGE_PORT: String(port),
+    DOCPILOT_BRIDGE_TOKEN: token,
+    DOCPILOT_STATE_DIR: workspaceStateDir(root),
+  };
   env.PATH = uniquePathEntries([
     ...(env.PATH || '').split(path.delimiter),
     ...(env.DOCPILOT_EXTRA_PATH || '').split(path.delimiter),
@@ -74,11 +91,112 @@ function getBridgePath() {
   return path.join(__dirname, 'bridge.js');
 }
 
-function stopOwnedBridge(proc = bridgeProc) {
-  if (!proc) return;
-  bridgeProcesses.delete(proc);
-  try { proc.kill(); } catch {}
+function bridgeIsRunning(proc) {
+  if (!proc || !Number.isInteger(proc.pid) || proc.pid <= 0) return false;
+  if (proc.exitCode !== null || proc.signalCode !== null) return false;
+  try {
+    process.kill(proc.pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function reusableBridgeForRoot(root) {
+  for (const proc of bridgeProcesses) {
+    if (proc?._docpilotRoot === root && !proc._docpilotStopping && bridgeIsRunning(proc)) return proc;
+  }
+  return null;
+}
+
+function signalOwnedBridge(proc, signal) {
+  if (!proc || !Number.isInteger(proc.pid) || proc.pid <= 0) return false;
+  try {
+    if (process.platform !== 'win32') process.kill(-proc.pid, signal);
+    else if (bridgeIsRunning(proc)) proc.kill(signal);
+    else return false;
+    return true;
+  } catch {
+    if (!bridgeIsRunning(proc)) return false;
+    try {
+      proc.kill(signal);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function signalOwnedTerminalGroups(proc, signal) {
+  for (const pid of Array.from(proc?._docpilotTerminalGroups?.values?.() || [])) {
+    if (!Number.isInteger(pid) || pid <= 1 || pid === proc.pid || pid === process.pid) continue;
+    try {
+      if (process.platform !== 'win32') process.kill(-pid, signal);
+      else process.kill(pid, signal);
+    } catch {}
+  }
+}
+
+function signalOwnedAgentGroups(proc, signal) {
+  for (const pid of Array.from(proc?._docpilotAgentGroups?.values?.() || [])) {
+    if (!Number.isInteger(pid) || pid <= 1 || pid === proc.pid || pid === process.pid) continue;
+    try {
+      if (process.platform !== 'win32') process.kill(-pid, signal);
+      else process.kill(pid, signal);
+    } catch {}
+  }
+}
+
+function forgetOwnedBridge(proc) {
+  const waitingForForceKill = Boolean(proc?._docpilotStopping && proc?._docpilotForceTimer);
+  if (!waitingForForceKill) bridgeProcesses.delete(proc);
+  if (bridgeProcessesByPort.get(proc?._docpilotPort) === proc) {
+    bridgeProcessesByPort.delete(proc._docpilotPort);
+  }
+  if (!waitingForForceKill && proc?._docpilotForceTimer) {
+    clearTimeout(proc._docpilotForceTimer);
+    proc._docpilotForceTimer = null;
+  }
   if (bridgeProc === proc) bridgeProc = null;
+}
+
+function stopOwnedBridge(proc = bridgeProc) {
+  if (!proc || proc._docpilotStopping) return;
+  proc._docpilotStopping = true;
+  if (bridgeProcessesByPort.get(proc._docpilotPort) === proc) {
+    bridgeProcessesByPort.delete(proc._docpilotPort);
+  }
+  if (bridgeProc === proc) bridgeProc = null;
+
+  // Keep the already-unreferenced IPC channel open during graceful shutdown.
+  // A terminal may have been created by an in-flight request just before quit;
+  // its process-group notification must still reach this backup tracker.
+  signalOwnedTerminalGroups(proc, 'SIGTERM');
+  signalOwnedAgentGroups(proc, 'SIGTERM');
+  signalOwnedBridge(proc, 'SIGTERM');
+  proc._docpilotForceTimer = setTimeout(() => {
+    proc._docpilotForceTimer = null;
+    // The bridge may already have exited while a shell or agent descendant
+    // ignored SIGTERM, so target the detached process group unconditionally.
+    signalOwnedTerminalGroups(proc, 'SIGKILL');
+    signalOwnedAgentGroups(proc, 'SIGKILL');
+    signalOwnedBridge(proc, 'SIGKILL');
+    try { if (proc.connected) proc.disconnect(); } catch {}
+    forgetOwnedBridge(proc);
+  }, BRIDGE_FORCE_KILL_DELAY_MS);
+  proc._docpilotForceTimer.unref?.();
+}
+
+function stopAllOwnedBridges() {
+  for (const proc of Array.from(bridgeProcesses)) stopOwnedBridge(proc);
+}
+
+function forceStopAllOwnedBridges() {
+  for (const proc of Array.from(bridgeProcesses)) {
+    signalOwnedBridge(proc, 'SIGKILL');
+    signalOwnedTerminalGroups(proc, 'SIGKILL');
+    signalOwnedAgentGroups(proc, 'SIGKILL');
+  }
 }
 
 function sleep(ms) {
@@ -104,18 +222,46 @@ async function findBridgePort() {
 }
 
 function startBridge(root, port) {
+  if (appQuitting) throw new Error('앱 종료 중에는 문서 브리지를 시작할 수 없습니다.');
   activeRoot = root;
+  const token = crypto.randomBytes(32).toString('base64url');
   const child = fork(getBridgePath(), ['--root', root], {
-    env: buildBridgeEnv(port),
+    env: buildBridgeEnv(port, token, root),
     stdio: 'ignore',
     detached: true,
   });
+  child._docpilotPort = port;
+  child._docpilotRoot = root;
+  child._docpilotToken = token;
+  child._docpilotTerminalGroups = new Map();
+  child._docpilotAgentGroups = new Map();
   bridgeProcesses.add(child);
+  bridgeProcessesByPort.set(port, child);
   bridgeProc = child;
-  child.on('exit', () => {
-    bridgeProcesses.delete(child);
-    if (bridgeProc === child) bridgeProc = null;
+  child.on('message', message => {
+    const id = typeof message?.id === 'string' ? message.id : '';
+    const pid = Number(message?.pid);
+    if (!id || !Number.isInteger(pid) || pid <= 1 || pid === child.pid || pid === process.pid) return;
+    if (message?.type === 'terminal-group-started') child._docpilotTerminalGroups.set(id, pid);
+    if (message?.type === 'terminal-group-stopped' && child._docpilotTerminalGroups.get(id) === pid) {
+      child._docpilotTerminalGroups.delete(id);
+    }
+    if (message?.type === 'agent-group-started') child._docpilotAgentGroups.set(id, pid);
+    if (message?.type === 'agent-group-stopped' && child._docpilotAgentGroups.get(id) === pid) {
+      child._docpilotAgentGroups.delete(id);
+    }
   });
+  child.on('exit', () => {
+    if (!child._docpilotStopping) {
+      signalOwnedBridge(child, 'SIGKILL');
+      signalOwnedTerminalGroups(child, 'SIGKILL');
+      signalOwnedAgentGroups(child, 'SIGKILL');
+    }
+    forgetOwnedBridge(child);
+  });
+  // fork() creates an IPC pipe even with stdio: 'ignore'. Unreference that pipe
+  // as well as the child process so it cannot keep Electron alive during quit.
+  child.channel?.unref?.();
   child.unref();
   return child;
 }
@@ -131,8 +277,11 @@ function reloadWindow(win) {
 }
 
 function scheduleDevReload(reason) {
+  if (appQuitting) return;
   clearTimeout(devReloadTimer);
   devReloadTimer = setTimeout(() => {
+    devReloadTimer = null;
+    if (appQuitting) return;
     console.log(`[dev] reload: ${reason}`);
     reloadWindow(startWin);
     reloadWindow(editorWin);
@@ -140,15 +289,52 @@ function scheduleDevReload(reason) {
 }
 
 function scheduleDevBridgeRestart(reason) {
+  if (appQuitting) return;
   clearTimeout(devBridgeTimer);
   devBridgeTimer = setTimeout(async () => {
-    if (!activeRoot || !editorWin || editorWin.isDestroyed()) return;
+    devBridgeTimer = null;
+    if (appQuitting || !activeRoot || !editorWin || editorWin.isDestroyed()) return;
     console.log(`[dev] restart bridge: ${reason}`);
-    startBridge(activeRoot, bridgePort);
-    const ready = await waitForBridgeRoot(activeRoot, bridgePort);
-    if (ready) reloadWindow(editorWin);
-    else console.warn('[dev] bridge restart did not become ready; keeping current window state');
+    try {
+      const targetWin = editorWin;
+      const root = activeRoot;
+      const previousProc = targetWin._docpilotBridgeProc || null;
+      const previousPort = targetWin._docpilotBridgePort || bridgePort;
+      if (previousProc) {
+        stopOwnedBridge(previousProc);
+        await waitForOwnedBridgeExit(previousProc, BRIDGE_FORCE_KILL_DELAY_MS + 250);
+      }
+      if (appQuitting || targetWin.isDestroyed()) return;
+      const nextPort = await isPortAvailable(previousPort) ? previousPort : await findBridgePort();
+      if (appQuitting || targetWin.isDestroyed()) return;
+      const nextProc = startBridge(root, nextPort);
+      bridgePort = nextPort;
+      targetWin._docpilotBridgePort = nextPort;
+      targetWin._docpilotBridgeProc = nextProc;
+      targetWin._docpilotBridgeToken = nextProc._docpilotToken;
+      const ready = await waitForBridgeRoot(root, nextPort, nextProc._docpilotToken);
+      if (ready && !targetWin.isDestroyed()) loadEditorShell(targetWin);
+      else console.warn('[dev] bridge restart did not become ready; keeping current window state');
+    } catch (error) {
+      console.warn(`[dev] bridge restart failed: ${error.message}`);
+    }
   }, 180);
+}
+
+function waitForOwnedBridgeExit(proc, timeoutMs) {
+  if (!bridgeIsRunning(proc)) return Promise.resolve();
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      proc.removeListener('exit', finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    proc.once('exit', finish);
+  });
 }
 
 function hasDevPathChanged(targetPath) {
@@ -170,6 +356,8 @@ function watchDevFile(filePath, onChange) {
     const watcher = fs.watch(filePath, () => {
       if (hasDevPathChanged(filePath)) onChange(filePath);
     });
+    devWatchers.add(watcher);
+    watcher.once('close', () => devWatchers.delete(watcher));
     watcher.on('error', err => console.warn(`[dev] watcher error: ${filePath}`, err.message));
   } catch (err) {
     console.warn(`[dev] watch failed: ${filePath}`, err.message);
@@ -184,6 +372,8 @@ function watchDevDir(targetPath, onChange, options = {}) {
       const changedPath = path.join(targetPath, filename.toString());
       if (hasDevPathChanged(changedPath)) onChange(changedPath, eventType);
     });
+    devWatchers.add(watcher);
+    watcher.once('close', () => devWatchers.delete(watcher));
     watcher.on('error', err => console.warn(`[dev] watcher error: ${targetPath}`, err.message));
   } catch (err) {
     console.warn(`[dev] watch failed: ${targetPath}`, err.message);
@@ -205,9 +395,27 @@ function startDevWatchers() {
   console.log('[dev] live reload watching start.html, preload.js, bridge.js, assets/');
 }
 
-function getBridgeStatus(port = bridgePort) {
+function stopDevWatchers() {
+  clearTimeout(devReloadTimer);
+  clearTimeout(devBridgeTimer);
+  devReloadTimer = null;
+  devBridgeTimer = null;
+  for (const watcher of Array.from(devWatchers)) {
+    try { watcher.close(); } catch {}
+  }
+  devWatchers.clear();
+  devWatchMtimes.clear();
+  devWatchersStarted = false;
+}
+
+function getBridgeStatus(port = bridgePort, token = '') {
   return new Promise(resolve => {
-    const req = http.get(`http://127.0.0.1:${port}/ping`, res => {
+    const req = http.get({
+      hostname: '127.0.0.1',
+      port,
+      path: '/ping',
+      headers: token ? { 'X-DocPilot-Token': token } : {},
+    }, res => {
       let body = '';
       res.on('data', chunk => { body += chunk; });
       res.on('end', () => {
@@ -223,26 +431,17 @@ function getBridgeStatus(port = bridgePort) {
   });
 }
 
-function waitForBridgeRoot(root, port = bridgePort, timeoutMs = 2500) {
+function waitForBridgeRoot(root, port = bridgePort, token = '', timeoutMs = 2500) {
   const deadline = Date.now() + timeoutMs;
   return new Promise(resolve => {
     const check = async () => {
-      const status = await getBridgeStatus(port);
+      const status = await getBridgeStatus(port, token);
       if (status?.root === root) { resolve(true); return; }
       if (Date.now() >= deadline) { resolve(false); return; }
       setTimeout(check, 120);
     };
     check();
   });
-}
-
-async function findRunningBridgeForRoot(root) {
-  const normalizedRoot = path.resolve(root);
-  for (let port = DEFAULT_BRIDGE_PORT; port < DEFAULT_BRIDGE_PORT + 30; port += 1) {
-    const status = await getBridgeStatus(port);
-    if (status?.root && path.resolve(status.root) === normalizedRoot) return port;
-  }
-  return null;
 }
 
 function configureAboutPanel() {
@@ -291,6 +490,17 @@ async function chooseFile(owner) {
   return filePaths[0];
 }
 
+function normalizeWorkspaceRoot(candidate) {
+  if (typeof candidate !== 'string' || !candidate.trim()) return null;
+  const root = canonicalizeRoot(candidate);
+  if (!root) return null;
+  try {
+    return fs.statSync(root).isDirectory() ? root : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Windows ──────────────────────────────────────────────
 function normalizeThemePreference(value) {
   return value === 'light' || value === 'dark' || value === 'system' ? value : 'system';
@@ -326,10 +536,16 @@ function createStartWindow() {
     titleBarStyle: 'hiddenInset',
     backgroundColor: windowBackground(effectiveTheme),
     show: false,
-    webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
   });
   win._docpilotWindowKind = 'start';
   startWin = win;
+  installStartNavigationGuard(win);
   win.loadFile('start.html', { query: { theme: effectiveTheme, preference } });
   win.once('ready-to-show', () => win.show());
   win.on('closed', () => {
@@ -351,12 +567,22 @@ function createEditorWindow(root, openFileRel = '', port = bridgePort, bridge = 
     trafficLightPosition: { x: 14, y: 15 },
     backgroundColor: windowBackground(effectiveTheme),
     show: false,
-    webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
   });
   win._docpilotWindowKind = 'editor';
   win._docpilotRoot = root;
+  // Diagnostics now live in private per-workspace app data rather than in the
+  // project. Keep that exact state directory revealable from Settings while
+  // continuing to reject arbitrary renderer-supplied local paths.
+  win._docpilotAllowedRoots = new Set([root, workspaceStateDir(root)]);
   win._docpilotBridgePort = port;
-  win._docpilotBridgeProc = bridge;
+  win._docpilotBridgeProc = bridge || bridgeProcessesByPort.get(port) || null;
+  win._docpilotBridgeToken = win._docpilotBridgeProc?._docpilotToken || '';
   win._docpilotOpenFileRel = openFileRel || '';
   editorWin = win;
   installEditorNavigationGuard(win);
@@ -365,11 +591,12 @@ function createEditorWindow(root, openFileRel = '', port = bridgePort, bridge = 
   win.on('focus', () => {
     editorWin = win;
     bridgePort = win._docpilotBridgePort || bridgePort;
-    bridgeProc = win._docpilotBridgeProc || bridgeProc;
+    bridgeProc = win._docpilotBridgeProc || null;
     activeRoot = win._docpilotRoot || activeRoot;
   });
   win.on('closed', () => {
     if (editorWin === win) editorWin = null;
+    stopBridgeWhenUnused(win._docpilotBridgeProc, win);
     if (!switchingFolder) {
       const remaining = BrowserWindow.getAllWindows().filter(item => item !== win && !item.isDestroyed());
       if (!remaining.length) app.quit();
@@ -378,14 +605,22 @@ function createEditorWindow(root, openFileRel = '', port = bridgePort, bridge = 
   return win;
 }
 
+function stopBridgeWhenUnused(proc, closedWindow = null) {
+  if (!proc || proc._docpilotStopping) return;
+  const stillUsed = BrowserWindow.getAllWindows().some(win => (
+    win !== closedWindow
+    && !win.isDestroyed()
+    && win._docpilotBridgeProc === proc
+  ));
+  if (!stillUsed) stopOwnedBridge(proc);
+}
+
 function isEditorShellUrl(rawUrl) {
-  try {
-    const url = new URL(rawUrl);
-    const basename = path.basename(decodeURIComponent(url.pathname));
-    return basename === 'index.html';
-  } catch {
-    return false;
-  }
+  return isFileUrlForPath(rawUrl, getReactRendererPath());
+}
+
+function isStartShellUrl(rawUrl) {
+  return isFileUrlForPath(rawUrl, path.join(__dirname, 'start.html'));
 }
 
 function getReactRendererPath() {
@@ -409,6 +644,7 @@ function loadEditorShell(win) {
   win.loadFile(reactRendererPath, {
     query: {
       port: String(port),
+      token: String(win._docpilotBridgeToken || ''),
       theme: effectiveTheme,
       preference,
       ...(openFileRel ? { open: openFileRel } : {}),
@@ -420,10 +656,26 @@ function installEditorNavigationGuard(win) {
   win.webContents.on('will-navigate', (event, targetUrl) => {
     if (isEditorShellUrl(targetUrl)) return;
     event.preventDefault();
-    if (/^https?:\/\//i.test(targetUrl)) shell.openExternal(targetUrl).catch(() => {});
+    const externalUrl = normalizeExternalUrl(targetUrl);
+    if (externalUrl) shell.openExternal(externalUrl).catch(() => {});
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) shell.openExternal(url).catch(() => {});
+    const externalUrl = normalizeExternalUrl(url);
+    if (externalUrl) shell.openExternal(externalUrl).catch(() => {});
+    return { action: 'deny' };
+  });
+}
+
+function installStartNavigationGuard(win) {
+  win.webContents.on('will-navigate', (event, targetUrl) => {
+    if (isStartShellUrl(targetUrl)) return;
+    event.preventDefault();
+    const externalUrl = normalizeExternalUrl(targetUrl);
+    if (externalUrl) shell.openExternal(externalUrl).catch(() => {});
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    const externalUrl = normalizeExternalUrl(url);
+    if (externalUrl) shell.openExternal(externalUrl).catch(() => {});
     return { action: 'deny' };
   });
 }
@@ -443,26 +695,49 @@ function closeEditorForSwitch(win = editorWin) {
 
 async function openFolder(folderPath, openFileRel = '', owner = BrowserWindow.getFocusedWindow()) {
   const ownerWindow = owner && !owner.isDestroyed() ? owner : null;
-  if (ownerWindow?._docpilotWindowKind === 'editor') {
-    await closeEditorForSwitch(ownerWindow);
+  const root = normalizeWorkspaceRoot(folderPath);
+  if (!root) throw new Error('유효한 문서 폴더가 아닙니다.');
+  try {
+    if (ownerWindow?._docpilotWindowKind === 'editor') {
+      await closeEditorForSwitch(ownerWindow);
+    }
+    addRecent(root);
+    await sleep(120);
+    if (appQuitting) throw new Error('앱이 종료 중입니다.');
+    let nextBridgeProc = reusableBridgeForRoot(root);
+    const nextBridgePort = nextBridgeProc?._docpilotPort || await findBridgePort();
+    if (appQuitting) throw new Error('앱이 종료 중입니다.');
+    const startedBridge = !nextBridgeProc;
+    if (!nextBridgeProc) nextBridgeProc = startBridge(root, nextBridgePort);
+    bridgePort = nextBridgePort;
+    const ready = await waitForBridgeRoot(root, nextBridgePort, nextBridgeProc._docpilotToken);
+    if (appQuitting) {
+      if (startedBridge) stopOwnedBridge(nextBridgeProc);
+      throw new Error('앱이 종료 중입니다.');
+    }
+    if (!ready) {
+      if (startedBridge) stopOwnedBridge(nextBridgeProc);
+      throw new Error('문서 브리지를 시작하지 못했습니다.');
+    }
+    const win = createEditorWindow(root, openFileRel, nextBridgePort, nextBridgeProc);
+    if (ownerWindow?._docpilotWindowKind === 'start' && !ownerWindow.isDestroyed()) {
+      ownerWindow.close();
+    }
+    checkForUpdates(win);
+  } catch (error) {
+    const hasWindow = BrowserWindow.getAllWindows().some(win => !win.isDestroyed());
+    if (!appQuitting && !hasWindow) createStartWindow();
+    throw error;
   }
-  addRecent(folderPath);
-  await sleep(120);
-  const runningBridgePort = await findRunningBridgeForRoot(folderPath);
-  const nextBridgePort = runningBridgePort || await findBridgePort();
-  const nextBridgeProc = runningBridgePort ? null : startBridge(folderPath, nextBridgePort);
-  bridgePort = nextBridgePort;
-  await waitForBridgeRoot(folderPath, nextBridgePort);
-  const win = createEditorWindow(folderPath, openFileRel, nextBridgePort, nextBridgeProc);
-  if (ownerWindow?._docpilotWindowKind === 'start' && !ownerWindow.isDestroyed()) {
-    ownerWindow.close();
-  }
-  checkForUpdates(win);
 }
 
 async function openFilePath(filePath, owner = BrowserWindow.getFocusedWindow()) {
-  const root = path.dirname(filePath);
-  const rel = path.basename(filePath);
+  let canonicalFile;
+  try { canonicalFile = fs.realpathSync.native(String(filePath || '')); }
+  catch { throw new Error('유효한 문서 파일이 아닙니다.'); }
+  if (!fs.statSync(canonicalFile).isFile()) throw new Error('유효한 문서 파일이 아닙니다.');
+  const root = path.dirname(canonicalFile);
+  const rel = path.basename(canonicalFile);
   await openFolder(root, rel, owner);
 }
 
@@ -474,9 +749,29 @@ async function closeFolder() {
 }
 
 // ── IPC ─────────────────────────────────────────────────
-ipcMain.handle('get-recent', () => getRecent());
-ipcMain.handle('get-app-version', () => app.getVersion());
-ipcMain.handle('get-launch-preferences', () => {
+function trustedIpcWindow(event) {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return null;
+  const frame = event.senderFrame;
+  if (!frame || !event.sender.mainFrame || frame !== event.sender.mainFrame) return null;
+  const senderUrl = frame.url;
+  const trusted = win._docpilotWindowKind === 'start'
+    ? isStartShellUrl(senderUrl)
+    : win._docpilotWindowKind === 'editor' && isEditorShellUrl(senderUrl);
+  return trusted ? win : null;
+}
+
+function handleTrustedIpc(channel, handler) {
+  ipcMain.handle(channel, (event, ...args) => {
+    const win = trustedIpcWindow(event);
+    if (!win) throw new Error(`Blocked untrusted IPC sender for ${channel}`);
+    return handler(event, win, ...args);
+  });
+}
+
+handleTrustedIpc('get-recent', () => getRecent());
+handleTrustedIpc('get-app-version', () => app.getVersion());
+handleTrustedIpc('get-launch-preferences', () => {
   const themePreference = storedThemePreference();
   return {
     appName: 'DocPilot',
@@ -486,35 +781,53 @@ ipcMain.handle('get-launch-preferences', () => {
   };
 });
 
-ipcMain.handle('open-folder-dialog', async () => {
-  return chooseFolder(startWin || editorWin);
+handleTrustedIpc('open-folder-dialog', async (_event, win) => {
+  return chooseFolder(win);
 });
 
-ipcMain.handle('choose-workspace-folder', async () => {
-  return chooseFolder(editorWin || BrowserWindow.getFocusedWindow());
+handleTrustedIpc('choose-workspace-folder', async (_event, win) => {
+  const selected = await chooseFolder(win);
+  const root = selected ? normalizeWorkspaceRoot(selected) : null;
+  if (root && win._docpilotWindowKind === 'editor') win._docpilotAllowedRoots?.add(root);
+  return root;
 });
 
-ipcMain.handle('choose-instruction-file', async () => {
-  const filePath = await chooseFile(startWin || editorWin);
+handleTrustedIpc('choose-instruction-file', async (_event, win) => {
+  const filePath = await chooseFile(win);
   if (!filePath) return null;
   const content = fs.readFileSync(filePath, 'utf8');
   return { path: filePath, name: path.basename(filePath), content };
 });
 
-ipcMain.handle('open-folder', async (event, folderPath) => {
-  await openFolder(folderPath, '', BrowserWindow.fromWebContents(event.sender));
+handleTrustedIpc('open-folder', async (_event, win, folderPath) => {
+  await openFolder(folderPath, '', win);
 });
 
-ipcMain.handle('remove-recent', (_, folderPath) => {
+handleTrustedIpc('remove-recent', (_event, _win, folderPath) => {
   const list = getRecent().filter(p => p !== folderPath);
   store.set('recentFolders', list);
   buildAppMenu();
 });
 
-ipcMain.handle('open-url', (_, url) => shell.openExternal(url));
-ipcMain.handle('open-local-path', async (_, targetPath) => {
-  const abs = path.resolve(String(targetPath || ''));
-  if (!abs || !fs.existsSync(abs)) return false;
+handleTrustedIpc('open-url', (_event, _win, rawUrl) => {
+  const url = normalizeExternalUrl(rawUrl);
+  if (!url) return false;
+  return shell.openExternal(url).then(() => true, () => false);
+});
+handleTrustedIpc('open-local-path', async (_event, win, targetPath) => {
+  if (win._docpilotWindowKind !== 'editor' || !win._docpilotRoot) return false;
+  let abs;
+  try {
+    abs = fs.realpathSync.native(String(targetPath || ''));
+  } catch {
+    return false;
+  }
+  const allowedRoots = Array.from(win._docpilotAllowedRoots || [])
+    .map(root => {
+      try { return fs.realpathSync.native(root); } catch { return null; }
+    })
+    .filter(Boolean);
+  if (!allowedRoots.some(root => isPathInside(root, abs, true))) return false;
   const stat = fs.statSync(abs);
   if (stat.isDirectory()) {
     const error = await shell.openPath(abs);
@@ -523,25 +836,22 @@ ipcMain.handle('open-local-path', async (_, targetPath) => {
   shell.showItemInFolder(abs);
   return true;
 });
-ipcMain.handle('copy-text', (_, text) => {
+handleTrustedIpc('copy-text', (_event, _win, text) => {
   clipboard.writeText(String(text || ''));
   return true;
 });
 
-ipcMain.handle('window-toggle-maximize', event => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win) return false;
+handleTrustedIpc('window-toggle-maximize', (_event, win) => {
   if (win.isMaximized()) win.unmaximize();
   else win.maximize();
   return win.isMaximized();
 });
 
-ipcMain.handle('set-window-theme', (event, requestedTheme) => {
+handleTrustedIpc('set-window-theme', (_event, win, requestedTheme) => {
   const preference = normalizeThemePreference(requestedTheme);
   const theme = resolveEffectiveTheme(preference);
   store.set('themePreference', preference);
   applyNativeTheme(preference);
-  const win = BrowserWindow.fromWebContents(event.sender);
   if (win && !win.isDestroyed()) {
     win.setBackgroundColor(windowBackground(theme));
   }
@@ -660,7 +970,7 @@ function buildAppMenu() {
 }
 
 // ── Version check ────────────────────────────────────────
-const GITHUB_REPO = 'youngsang-kwon/docpilot'; // TODO: 실제 repo로 변경
+const GITHUB_REPO = 'dotoricode/docpilot';
 
 function checkForUpdates(targetWin = focusedEditorWindow()) {
   const req = net.request(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
@@ -697,13 +1007,33 @@ app.whenReady().then(async () => {
   }
   buildAppMenu();
   startDevWatchers();
+  powerMonitor.on('shutdown', () => {
+    appQuitting = true;
+    stopDevWatchers();
+    stopAllOwnedBridges();
+  });
   const initialWorkspace = initialWorkspaceFromArgs();
   if (initialWorkspace) await openFolder(initialWorkspace);
   else createStartWindow();
 });
 
+app.on('before-quit', () => {
+  appQuitting = true;
+  stopDevWatchers();
+  stopAllOwnedBridges();
+});
+
+app.on('will-quit', () => {
+  stopDevWatchers();
+  stopAllOwnedBridges();
+});
+
 app.on('window-all-closed', () => {
   if (switchingFolder) return;
   activeRoot = '';
+  stopDevWatchers();
+  stopAllOwnedBridges();
   app.quit();
 });
+
+process.once('exit', forceStopAllOwnedBridges);

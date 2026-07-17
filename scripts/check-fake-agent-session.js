@@ -105,6 +105,7 @@ async function waitForPing(port, deadline = Date.now() + 5000) {
     env: {
       ...process.env,
       DOCPILOT_BRIDGE_PORT: String(port),
+      DOCPILOT_ALLOW_UNAUTHENTICATED: '1',
       DOCPILOT_FAKE_AGENT: '1',
       DOCPILOT_FAKE_AGENT_WRITE_FILE: changedFile,
       DOCPILOT_FAKE_AGENT_ARTIFACT_FILE: 'README.md',

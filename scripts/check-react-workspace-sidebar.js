@@ -17,7 +17,8 @@ assert(bridge.includes("url.pathname === '/file-create'"), 'bridge must expose f
 assert(bridge.includes("url.pathname === '/folder-create'"), 'bridge must expose folder create API');
 assert(bridge.includes("url.pathname === '/file-rename'"), 'bridge must expose file rename API');
 assert(bridge.includes("url.pathname === '/file-delete'"), 'bridge must expose recoverable file delete API');
-assert(bridge.includes("'.docpilot', 'trash'"), 'bridge delete must move files into a recoverable DocPilot trash area');
+assert(bridge.includes("path.join(STATE_DIR, 'trash'"), 'bridge delete must move files into private recoverable state');
+assert(bridge.includes('movePathToRecoverableTrash'), 'bridge delete must handle recoverable cross-volume moves');
 assert(bridge.includes("url.pathname === '/file-path'"), 'bridge must expose file path API');
 assert(bridge.includes("'.yaml'") && bridge.includes("'.yml'"), 'bridge must include YAML files in workspace document extensions');
 assert(client.includes('attachWorkspaceRoot'), 'React client must expose attachWorkspaceRoot');
@@ -36,7 +37,7 @@ assert(client.includes('pingBridge'), 'React client must expose pingBridge');
 assert(app.includes('bridge-status'), 'App must render bridge status banner');
 assert(app.includes('window-drag-region'), 'App must render a draggable titlebar region');
 assert(app.includes('app-topbar'), 'App must render the v1 workbench topbar');
-assert(app.includes('Agent 세션'), 'App topbar must keep the agent session entry point visible');
+assert(app.includes('TerminalWindow'), 'App topbar must keep the terminal entry point visible');
 assert(app.includes('checkBridge'), 'App must provide bridge retry flow');
 assert(app.includes("setBridgeState('disconnected')"), 'App must show bridge disconnected state');
 assert(viteEnv.includes('chooseWorkspaceFolder?: () => Promise<string | null>'), 'vite env must type docpilot folder picker');
@@ -68,7 +69,7 @@ assert(sidebar.includes('workspace-tree-search'), 'sidebar must render file tree
 assert(!sidebar.includes('document-icon'), 'sidebar must not render the old MD document badge');
 assert(!sidebar.includes('>MD<'), 'sidebar must not show the old MD document badge text');
 assert(sidebar.includes('tree-context-menu'), 'sidebar must render a file tree context menu');
-assert(sidebar.includes('tree-prompt-dialog'), 'sidebar must render an in-app prompt for context menu actions');
+assert(sidebar.includes('editingNode'), 'sidebar must render inline editing for context menu actions');
 assert(sidebar.includes('createFileAt'), 'sidebar must create files from the tree context menu');
 assert(sidebar.includes('createFolderAt'), 'sidebar must create folders from the tree context menu');
 assert(sidebar.includes('openBlankTreeMenu'), 'sidebar must support empty tree space context menu');
@@ -110,7 +111,7 @@ assert(editor.includes('previewWidth'), 'editor must support preview width contr
 assert(editor.includes('selectWholeDocument'), 'editor must support whole-document selection context');
 assert(editor.includes('copyWholeDocument'), 'editor must copy after whole-document selection');
 assert(editor.includes('전체 복사'), 'editor must expose whole-document copy after selection');
-assert(editor.includes('폭 {previewWidth}'), 'preview width control must label the numeric width');
+assert(editor.includes('Width {previewWidth}'), 'preview width control must label the numeric width');
 assert(editor.includes('selectPreviewBlock'), 'editor must support clicking preview blocks into context');
 assert(editor.includes('preview-picked'), 'editor must mark the selected preview block');
 assert(styles.includes('.bridge-status'), 'bridge status banner must be styled');
@@ -136,7 +137,7 @@ assert(styles.includes('.preview-diff-token.changed.new'), 'preview diff must st
 assert(styles.includes('.preview-diff-token.changed.old'), 'preview diff must style inline deletions');
 assert(styles.includes('.panel-resizer'), 'app shell must support left and right panel resizing');
 assert(app.includes('onCollapse={() => setLeftCollapsed(true)}'), 'left panel collapse control must live with the workspace panel');
-assert(app.includes('onCollapse={() => setRightCollapsed(true)}'), 'right panel collapse control must live with the agent panel');
+assert(app.includes('setTerminalOpen(current => !current)'), 'topbar must toggle the terminal pane');
 assert(!app.includes('topbar-right">\\n          <button className="panel-toggle-button"'), 'panel collapse controls must not live in the top bar');
 assert(styles.includes('.toc-item[data-active="true"]'), 'TOC active heading state must be styled');
 assert(styles.includes('.toc-h4'), 'TOC must style fourth-level headings');

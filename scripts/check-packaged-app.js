@@ -86,7 +86,7 @@ async function assertPackagedBridgeStarts() {
   const port = await freePort();
   let output = '';
   const child = spawn(process.execPath, [unpackedBridgePath, '--root', root], {
-    env: { ...process.env, DOCPILOT_BRIDGE_PORT: String(port) },
+    env: { ...process.env, DOCPILOT_BRIDGE_PORT: String(port), DOCPILOT_ALLOW_UNAUTHENTICATED: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout.on('data', chunk => { output += chunk.toString(); });

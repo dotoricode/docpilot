@@ -3,15 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <script>
-      const launchQuery = new URLSearchParams(window.location.search);
-      const preference = ['light', 'dark', 'system'].includes(launchQuery.get('preference'))
-        ? launchQuery.get('preference')
-        : 'system';
-      const systemTheme = window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-      document.documentElement.dataset.themePreference = preference;
-      document.documentElement.dataset.theme = launchQuery.get('theme') || (preference === 'system' ? systemTheme : preference);
-    </script>
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https: http://localhost:* http://127.0.0.1:*; media-src 'self' data: blob: https: http://localhost:* http://127.0.0.1:*; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
     <title>DocPilot</title>
   </head>
   <body>

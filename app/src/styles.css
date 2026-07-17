@@ -1015,7 +1015,7 @@ body.resizing-panels * {
 .workspace-tabs {
   height: 38px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   padding: 6px 8px;
   border-bottom: 1px solid #24262d;
@@ -2022,6 +2022,40 @@ body.resizing-panels * {
   background: rgba(255, 97, 97, 0.08);
   color: #ffb4b4;
   font-size: 11px;
+}
+
+.editor-conflict-bar {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(255, 166, 77, 0.35);
+  background: rgba(255, 166, 77, 0.09);
+  color: var(--workbench-text, #e6e7eb);
+  font-size: 11px;
+}
+
+.editor-conflict-bar > div {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.editor-conflict-bar button {
+  min-height: 26px;
+  border: 1px solid var(--workbench-border-strong, #4b4f59);
+  border-radius: 5px;
+  background: var(--workbench-raised, #1b1e24);
+  color: inherit;
+  padding: 0 9px;
+  cursor: pointer;
+}
+
+.editor-conflict-bar button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .cm-editor {

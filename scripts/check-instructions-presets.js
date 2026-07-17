@@ -69,6 +69,7 @@ async function main() {
     env: {
       ...process.env,
       DOCPILOT_BRIDGE_PORT: String(port),
+      DOCPILOT_ALLOW_UNAUTHENTICATED: '1',
       HOME: home,
     },
     stdio: ['ignore', 'pipe', 'pipe'],

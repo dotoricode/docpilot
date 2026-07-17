@@ -9,6 +9,9 @@
     "renderer:dev": "vite --config app/vite.config.ts",
     "renderer:build": "vite build --config app/vite.config.ts",
     "renderer:typecheck": "tsc --noEmit -p app/tsconfig.json",
+    "test": "node --test tests/*.test.js",
+    "check:shutdown": "node scripts/check-shutdown-lifecycle.js",
+    "check:renderer-security": "npm run renderer:build && node scripts/check-react-asciidoc-security.js",
     "build": "npm run renderer:build && electron-builder --mac dmg"
   },
   "build": {
@@ -75,6 +78,7 @@
     "@tiptap/starter-kit": "^3.27.4",
     "@xterm/addon-serialize": "^0.14.0",
     "@xterm/headless": "^6.0.0",
+    "dompurify": "^3.4.12",
     "highlight.js": "^11.11.1",
     "node-pty": "^1.1.0"
   },

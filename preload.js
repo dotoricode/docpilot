@@ -14,6 +14,14 @@ contextBridge.exposeInMainWorld('docpilot', {
   openLocalPath:    (p)      => ipcRenderer.invoke('open-local-path', p),
   toggleMaximize:   ()       => ipcRenderer.invoke('window-toggle-maximize'),
   setWindowTheme:   (theme)  => ipcRenderer.invoke('set-window-theme', theme),
-  onMenuCommand:    (cb)     => ipcRenderer.on('menu-command', (_, command) => cb(command)),
-  onUpdateAvailable:(cb)     => ipcRenderer.on('update-available', (_, d) => cb(d)),
+  onMenuCommand:    (cb)     => {
+    const listener = (_, command) => cb(command);
+    ipcRenderer.on('menu-command', listener);
+    return () => ipcRenderer.removeListener('menu-command', listener);
+  },
+  onUpdateAvailable:(cb)     => {
+    const listener = (_, data) => cb(data);
+    ipcRenderer.on('update-available', listener);
+    return () => ipcRenderer.removeListener('update-available', listener);
+  },
 });

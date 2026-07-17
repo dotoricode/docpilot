@@ -6,3 +6,4 @@ dist/
 tests/artifacts/
 .vercel
 .env*
+.docpilot/

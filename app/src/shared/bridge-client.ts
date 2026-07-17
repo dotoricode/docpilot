@@ -13,6 +13,7 @@ export type WorkspaceFilesResponse = {
 export type FileReadResponse = {
   id: string;
   content: string;
+  revision: string;
 };
 
 export type FilePathResponse = {
@@ -240,11 +241,40 @@ export type TerminalSnapshot = {
 
 function bridgePort() {
   const params = new URLSearchParams(window.location.search);
-  return params.get('port') || '7474';
+  const requested = Number(params.get('port') || 7474);
+  return Number.isInteger(requested) && requested > 0 && requested <= 65535 ? String(requested) : '7474';
+}
+
+function bridgeToken() {
+  return new URLSearchParams(window.location.search).get('token') || '';
 }
 
 export function bridgeBaseUrl() {
-  return `http://localhost:${bridgePort()}`;
+  return `http://127.0.0.1:${bridgePort()}`;
+}
+
+function bridgeHeaders(headers?: HeadersInit) {
+  const token = bridgeToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'X-DocPilot-Token': token } : {}),
+    ...(headers || {}),
+  };
+}
+
+function bridgeEventUrl(path: string) {
+  const url = new URL(`${bridgeBaseUrl()}${path}`);
+  const token = bridgeToken();
+  if (token) url.searchParams.set('token', token);
+  return url.toString();
+}
+
+export function workspaceAssetUrl(id: string) {
+  const url = new URL(`${bridgeBaseUrl()}/workspace-asset`);
+  url.searchParams.set('id', id);
+  const token = bridgeToken();
+  if (token) url.searchParams.set('token', token);
+  return url.toString();
 }
 
 export async function bridgeJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -252,10 +282,7 @@ export async function bridgeJson<T>(path: string, init?: RequestInit): Promise<T
   try {
     response = await fetch(`${bridgeBaseUrl()}${path}`, {
       ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(init?.headers || {}),
-      },
+      headers: bridgeHeaders(init?.headers),
     });
   } catch (err) {
     throw new Error(bridgeConnectionError(err));
@@ -280,10 +307,10 @@ export function readWorkspaceFile(id: string) {
   return bridgeJson<FileReadResponse>(`/file?id=${encodeURIComponent(id)}`);
 }
 
-export function saveWorkspaceFile(id: string, content: string) {
-  return bridgeJson<{ ok: true }>('/save', {
+export function saveWorkspaceFile(id: string, content: string, expectedRevision = '') {
+  return bridgeJson<{ ok: true; revision: string }>('/save', {
     method: 'POST',
-    body: JSON.stringify({ id, content }),
+    body: JSON.stringify({ id, content, expectedRevision }),
   });
 }
 
@@ -427,7 +454,7 @@ export function acknowledgeTerminalFrame(sessionId: string, viewId: string, seq:
 }
 
 export function watchTerminalSession(sessionId: string, onEvent: (event: TerminalSessionEvent) => void, onError?: (error: Event) => void, fromSeq = 0) {
-  const source = new EventSource(`${bridgeBaseUrl()}/terminal-sessions/${encodeURIComponent(sessionId)}/stream?fromSeq=${Math.max(0, fromSeq)}`);
+  const source = new EventSource(bridgeEventUrl(`/terminal-sessions/${encodeURIComponent(sessionId)}/stream?fromSeq=${Math.max(0, fromSeq)}`));
   source.onmessage = message => {
     try { onEvent(JSON.parse(message.data) as TerminalSessionEvent); } catch {}
   };
@@ -524,7 +551,7 @@ export async function sendSessionTurn(
   try {
     response = await fetch(`${bridgeBaseUrl()}/sessions/${encodeURIComponent(sessionId)}/turn`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: bridgeHeaders(),
       body: JSON.stringify(payload),
       signal,
     });
@@ -564,6 +591,9 @@ async function bridgeHttpError(response: Response) {
   } catch {
     try { detail = await response.clone().text(); } catch {}
   }
+  if (response.status === 409 && /file changed on disk/i.test(detail)) {
+    return '파일이 디스크에서 변경되었습니다. 최신 내용을 확인한 뒤 다시 저장하세요.';
+  }
   return `브리지 요청 실패 HTTP ${response.status}${detail ? `: ${detail}` : ''}`;
 }
 
@@ -584,7 +614,7 @@ export function stopSessionTurn(sessionId: string) {
 }
 
 export function watchProject(onEvent: (event: WatchEvent) => void, onError?: (error: Event) => void) {
-  const source = new EventSource(`${bridgeBaseUrl()}/watch`);
+  const source = new EventSource(bridgeEventUrl('/watch'));
   source.onmessage = event => {
     try {
       onEvent(JSON.parse(event.data) as WatchEvent);

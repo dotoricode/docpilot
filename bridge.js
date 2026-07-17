@@ -15,22 +15,70 @@ const { buildSessionPromptPackage } = require('./prompt-package');
 const { chooseContextMode } = require('./shared/core/context-policy');
 const { AgentProcessManager } = require('./shared/core/agent-process-manager');
 const { TerminalSessionModel } = require('./shared/core/terminal-session-model');
+const {
+  canonicalizeRoot,
+  isAllowedLoopbackHost,
+  isAllowedRendererOrigin,
+  isAuthorizedBridgeRequest,
+  resolveInsideRoot,
+} = require('./shared/core/bridge-security');
+const { ensurePrivateDirectory, writeJsonAtomic } = require('./shared/core/atomic-file');
+const { movePathToRecoverableTrashAsync } = require('./shared/core/recoverable-trash');
+const { fileRevision, writeExistingWorkspaceFileAtomic } = require('./shared/core/workspace-file');
+const { renamePathNoClobber } = require('./shared/core/no-clobber-rename');
 
-const PORT = Number(process.env.DOCPILOT_BRIDGE_PORT || 7474);
+const requestedPort = Number(process.env.DOCPILOT_BRIDGE_PORT || 7474);
+const PORT = Number.isInteger(requestedPort) && requestedPort > 0 && requestedPort <= 65535 ? requestedPort : 7474;
+const BRIDGE_TOKEN = String(process.env.DOCPILOT_BRIDGE_TOKEN || '');
+const ALLOW_UNAUTHENTICATED = process.env.DOCPILOT_ALLOW_UNAUTHENTICATED === '1';
+const MAX_REQUEST_BODY_BYTES = 8 * 1024 * 1024;
+const MAX_ACTIVE_AGENT_TURNS = 4;
+const BRIDGE_SHUTDOWN_TIMEOUT_MS = 900;
+const AGENT_FORCE_KILL_DELAY_MS = 400;
+const TERMINAL_FORCE_KILL_DELAY_MS = 400;
+const TEST_TERMINAL_SEPARATE_GROUP = process.env.DOCPILOT_TEST_TERMINAL_SEPARATE_GROUP === '1';
+let parentDisconnectRequested = false;
+let handleParentDisconnect = null;
+let bridgeShuttingDown = false;
+
+// Register before synchronous startup work so a parent crash during module load
+// cannot leave a detached bridge behind. The actual teardown function is wired
+// after the HTTP server has been constructed.
+process.once('disconnect', () => {
+  if (handleParentDisconnect) handleParentDisconnect();
+  else parentDisconnectRequested = true;
+});
 
 // --root 인자 파싱
 const rootIdx = process.argv.indexOf('--root');
-const ROOT = rootIdx !== -1 ? path.resolve(process.argv[rootIdx + 1]) : process.cwd();
-const DOCPILOT_DIR = path.join(ROOT, '.docpilot');
-const INSTRUCTIONS_FILE = path.join(DOCPILOT_DIR, 'instructions.json');
-const SESSIONS_FILE = path.join(DOCPILOT_DIR, 'sessions.json');
-const SETTINGS_FILE = path.join(DOCPILOT_DIR, 'settings.json');
-const SESSION_LOGS_DIR = path.join(DOCPILOT_DIR, 'session-logs');
-const GLOBAL_DOCPILOT_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'docpilot');
+const ROOT = canonicalizeRoot(rootIdx !== -1 ? process.argv[rootIdx + 1] : process.cwd());
+if (!ROOT || !fs.statSync(ROOT).isDirectory()) {
+  console.error('docpilot bridge requires an existing workspace directory');
+  process.exit(1);
+}
+if (!BRIDGE_TOKEN && !ALLOW_UNAUTHENTICATED) {
+  console.error('docpilot bridge requires DOCPILOT_BRIDGE_TOKEN');
+  process.exit(1);
+}
+const defaultStateBase = process.platform === 'darwin'
+  ? path.join(os.homedir(), 'Library', 'Application Support', 'DocPilot')
+  : process.platform === 'win32'
+    ? path.join(process.env.APPDATA || os.homedir(), 'DocPilot')
+    : path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'docpilot');
+const workspaceStateKey = crypto.createHash('sha256').update(ROOT).digest('hex');
+const implicitStateBase = ALLOW_UNAUTHENTICATED ? path.join(os.tmpdir(), 'docpilot-test-state') : defaultStateBase;
+const STATE_DIR = path.resolve(process.env.DOCPILOT_STATE_DIR || path.join(implicitStateBase, 'workspaces', workspaceStateKey));
+const INSTRUCTIONS_FILE = path.join(STATE_DIR, 'instructions.json');
+const SESSIONS_FILE = path.join(STATE_DIR, 'sessions.json');
+const SETTINGS_FILE = path.join(STATE_DIR, 'settings.json');
+const SESSION_LOGS_DIR = path.join(STATE_DIR, 'session-logs');
+const GLOBAL_DOCPILOT_DIR = defaultStateBase;
 const GLOBAL_INSTRUCTION_SETS_FILE = path.join(GLOBAL_DOCPILOT_DIR, 'instruction-sets.json');
 const HIDDEN_DIRS = new Set(['.git', '.docpilot', 'node_modules', '.next', 'dist', 'build', 'coverage']);
 const DOC_EXTENSIONS = new Set(['.md', '.markdown', '.mdown', '.adoc', '.asciidoc', '.asc', '.txt', '.text', '.yaml', '.yml', '.json', '.js', '.mjs', '.cjs']);
 const FOLDER_STARTER_DOC_NAME = 'edit-me.md';
+
+ensurePrivateDirectory(STATE_DIR);
 
 // AsciiDoc conversion runs on a separate worker_threads thread (adoc-worker.js),
 // lazily started on first request. asciidoctor.convert() is synchronous CPU work
@@ -94,12 +142,15 @@ function rewriteAdocImageSrc(html, docId) {
   return html.replace(/(<img[^>]*\ssrc=")([^"]+)(")/g, (match, pre, src, post) => {
     if (/^(https?:|data:|\/\/)/i.test(src)) return match;
     const resolved = path.posix.normalize(docDir === '.' ? src : `${docDir}/${src}`);
-    return `${pre}http://localhost:${PORT}/workspace-asset?id=${encodeURIComponent(resolved)}${post}`;
+    const token = BRIDGE_TOKEN ? `&token=${encodeURIComponent(BRIDGE_TOKEN)}` : '';
+    return `${pre}http://127.0.0.1:${PORT}/workspace-asset?id=${encodeURIComponent(resolved)}${token}${post}`;
   });
 }
 const ASSETS_DIR = path.join(__dirname, 'assets');
 const agentProcesses = new AgentProcessManager();
+const stoppingAgentProcesses = new Set();
 const terminalSessions = new Map();
+const stoppingTerminalSessions = new Set();
 const workspaceRoots = [];
 const ASSET_TYPES = new Map([
   ['.png', 'image/png'],
@@ -112,15 +163,14 @@ const ASSET_TYPES = new Map([
 // file:// 로 열린 HTML → origin이 'null'
 const CORS = {
   'Access-Control-Allow-Origin':  'null',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, X-DocPilot-Token',
   'Access-Control-Allow-Methods': 'POST, GET, DELETE, OPTIONS',
+  'Vary': 'Origin',
 };
 
-// path traversal 방지: ROOT 바깥 경로 차단
+// Resolve only existing, non-symlink paths below the canonical workspace root.
 function safeResolve(relPath) {
-  const abs = path.resolve(ROOT, relPath);
-  if (!abs.startsWith(ROOT + path.sep) && abs !== ROOT) return null;
-  return abs;
+  return resolveInsideRoot(ROOT, relPath, { allowRoot: true });
 }
 
 function workspaceRootId(absPath) {
@@ -130,7 +180,7 @@ function workspaceRootId(absPath) {
 }
 
 function normalizeWorkspaceRootInput(inputPath) {
-  const abs = path.resolve(String(inputPath || ''));
+  const abs = canonicalizeRoot(inputPath);
   if (!abs || abs === ROOT) return null;
   try {
     const stat = fs.statSync(abs);
@@ -170,13 +220,15 @@ function resolveWorkspaceFileId(fileId) {
     if (!id.startsWith(prefix)) continue;
     const rel = normalizeProjectRelPath(id.slice(prefix.length));
     if (!rel) return null;
-    const abs = path.resolve(root.path, rel);
-    if (!abs.startsWith(root.path + path.sep) && abs !== root.path) return null;
+    const abs = resolveInsideRoot(root.path, rel, { allowRoot: true });
+    if (!abs) return null;
     return { id, abs, rel, root, isWorkspaceRoot: true };
   }
-  const abs = safeResolve(id);
+  const rel = normalizeProjectRelPath(id);
+  if (!rel) return null;
+  const abs = safeResolve(rel);
   if (!abs) return null;
-  return { id, abs, rel: id, root: { id: '', name: path.basename(ROOT) || ROOT, path: ROOT }, isWorkspaceRoot: false };
+  return { id: rel, abs, rel, root: { id: '', name: path.basename(ROOT) || ROOT, path: ROOT }, isWorkspaceRoot: false };
 }
 
 function fileIdForResolvedAbs(abs, root) {
@@ -195,8 +247,8 @@ function resolveWorkspaceDirectoryId(dirId) {
     if (!id.startsWith(prefix)) continue;
     const rel = normalizeProjectRelPath(id.slice(prefix.length));
     if (!rel) return null;
-    const abs = path.resolve(root.path, rel);
-    if (!abs.startsWith(root.path + path.sep) && abs !== root.path) return null;
+    const abs = resolveInsideRoot(root.path, rel, { allowRoot: true });
+    if (!abs) return null;
     return { id, abs, rel, root, isWorkspaceRoot: true };
   }
   const rel = normalizeProjectRelPath(id);
@@ -209,12 +261,8 @@ function resolveWorkspaceDirectoryId(dirId) {
 function recoverableTrashPath(resolved) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const baseName = path.basename(resolved.abs);
-  for (let index = 0; index < 1000; index += 1) {
-    const trashRoot = path.join(resolved.root.path, '.docpilot', 'trash', index === 0 ? stamp : `${stamp}-${index}`);
-    const target = path.join(trashRoot, baseName);
-    if (!fs.existsSync(target)) return target;
-  }
-  return path.join(resolved.root.path, '.docpilot', 'trash', `${stamp}-${crypto.randomUUID()}`, baseName);
+  const workspaceKey = resolved.root.id || 'primary';
+  return path.join(STATE_DIR, 'trash', workspaceKey, `${stamp}-${crypto.randomUUID()}`, baseName);
 }
 
 function isWorkspaceRootResolved(resolved) {
@@ -223,11 +271,63 @@ function isWorkspaceRootResolved(resolved) {
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
+    if (bridgeShuttingDown) {
+      const error = new Error('bridge is shutting down');
+      error.code = 'BRIDGE_SHUTTING_DOWN';
+      reject(error);
+      req.resume();
+      return;
+    }
     let body = '';
-    req.on('data', c => body += c);
-    req.on('end', () => resolve(body));
+    let bytes = 0;
+    let tooLarge = false;
+    const declaredLength = Number(req.headers['content-length'] || 0);
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BODY_BYTES) {
+      const error = new Error('request body too large');
+      error.code = 'BODY_TOO_LARGE';
+      reject(error);
+      req.resume();
+      return;
+    }
+    req.on('data', chunk => {
+      if (tooLarge) return;
+      bytes += chunk.length;
+      if (bytes > MAX_REQUEST_BODY_BYTES) {
+        tooLarge = true;
+        body = '';
+        const error = new Error('request body too large');
+        error.code = 'BODY_TOO_LARGE';
+        reject(error);
+        return;
+      }
+      body += chunk;
+    });
+    req.on('end', () => {
+      if (tooLarge) return;
+      if (bridgeShuttingDown) {
+        const error = new Error('bridge is shutting down');
+        error.code = 'BRIDGE_SHUTTING_DOWN';
+        reject(error);
+        return;
+      }
+      resolve(body);
+    });
     req.on('error', reject);
   });
+}
+
+function respondInvalidRequestBody(res, error) {
+  const shuttingDown = error?.code === 'BRIDGE_SHUTTING_DOWN';
+  const tooLarge = error?.code === 'BODY_TOO_LARGE';
+  if (tooLarge) res.shouldKeepAlive = false;
+  res.writeHead(shuttingDown ? 503 : tooLarge ? 413 : 400, {
+    ...CORS,
+    'Content-Type': 'application/json; charset=utf-8',
+    ...(tooLarge ? { Connection: 'close' } : {}),
+  });
+  res.end(shuttingDown
+    ? JSON.stringify({ error: 'bridge is shutting down' })
+    : tooLarge ? JSON.stringify({ error: 'request body too large' }) : '');
 }
 
 function uniquePathEntries(entries) {
@@ -267,10 +367,14 @@ function cliPathEntries() {
 }
 
 function cliEnv() {
-  return {
+  const env = {
     ...process.env,
     PATH: cliPathEntries().join(path.delimiter),
   };
+  delete env.DOCPILOT_BRIDGE_TOKEN;
+  delete env.DOCPILOT_STATE_DIR;
+  delete env.DOCPILOT_ALLOW_UNAUTHENTICATED;
+  return env;
 }
 
 function commandCandidates(cmd) {
@@ -315,12 +419,13 @@ function codexExecArgs(command = 'codex') {
     '--json',
     '--ephemeral',
     '--cd', ROOT,
-    '--dangerously-bypass-approvals-and-sandbox',
+    '--sandbox', 'workspace-write',
+    '--ask-for-approval', 'never',
     '-',
   ];
 }
 
-function claudePrintArgs(command = 'claude', prompt = '') {
+function claudePrintArgs(command = 'claude') {
   return [
     command,
     '-p',
@@ -328,7 +433,6 @@ function claudePrintArgs(command = 'claude', prompt = '') {
     'stream-json',
     '--include-partial-messages',
     '--verbose',
-    prompt,
   ];
 }
 
@@ -353,8 +457,8 @@ function sessionSpawnSpec(session, prompt) {
   const claudeCommand = useCustomCommands ? settings.claudeCommand : 'claude';
   const codexCommand = useCustomCommands ? settings.codexCommand : 'codex';
   return {
-    spawnArgs: session.agent === 'codex' ? codexExecArgs(codexCommand) : claudePrintArgs(claudeCommand, prompt),
-    stdinText: session.agent === 'codex' ? prompt : '',
+    spawnArgs: session.agent === 'codex' ? codexExecArgs(codexCommand) : claudePrintArgs(claudeCommand),
+    stdinText: prompt,
     requiresCommand: session.agent === 'codex' ? codexCommand : claudeCommand,
   };
 }
@@ -366,21 +470,19 @@ function textFromClaudeContent(content) {
     .join('');
 }
 
-function detectOptionalModule(name) {
+const optionalModuleCache = new Map();
+function loadOptionalModule(name) {
+  if (optionalModuleCache.has(name)) return optionalModuleCache.get(name);
+  let loaded = null;
   try {
-    require.resolve(name);
-    return true;
-  } catch {
-    return false;
-  }
+    loaded = require(name);
+  } catch {}
+  optionalModuleCache.set(name, loaded);
+  return loaded;
 }
 
-function loadOptionalModule(name) {
-  try {
-    return require(name);
-  } catch {
-    return null;
-  }
+function detectOptionalModule(name) {
+  return Boolean(loadOptionalModule(name));
 }
 
 function prepareNodePtyRuntime() {
@@ -422,7 +524,13 @@ function terminalSpawnSpec() {
   if (shouldUseFakeAgent()) {
     return {
       shell: process.execPath,
-      spawnArgs: [process.execPath, fakeAgentPath(), 'shell', '--interactive'],
+      spawnArgs: [
+        process.execPath,
+        fakeAgentPath(),
+        'shell',
+        '--interactive',
+        ...(TEST_TERMINAL_SEPARATE_GROUP ? ['--ignore-sigterm'] : []),
+      ],
       requiresCommand: process.execPath,
       mode: 'fake-interactive',
     };
@@ -469,6 +577,117 @@ function summarizeTerminalSession(session) {
   };
 }
 
+function boundedInteger(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(parsed)));
+}
+
+function signalAgentProcess(proc, signal) {
+  const pid = Number(proc?.pid);
+  if (proc?._docpilotOwnsProcessGroup && process.platform !== 'win32' && Number.isInteger(pid) && pid > 1) {
+    try {
+      process.kill(-pid, signal);
+      return true;
+    } catch {}
+  }
+  try {
+    proc?.kill(signal);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function notifyAgentGroup(proc, type) {
+  const id = String(proc?._docpilotGroupId || '');
+  const pid = Number(proc?.pid);
+  if (!proc?._docpilotOwnsProcessGroup || !id || !Number.isInteger(pid) || pid <= 1 || typeof process.send !== 'function') return;
+  try { process.send({ type, id, pid }); } catch {}
+}
+
+function forceAgentProcess(proc) {
+  if (!proc) return;
+  if (proc._docpilotForceKillTimer) {
+    clearTimeout(proc._docpilotForceKillTimer);
+    proc._docpilotForceKillTimer = null;
+  }
+  // Always address the group once the leader exits: agent CLIs may have
+  // started MCP/tool descendants that outlive the direct child process.
+  signalAgentProcess(proc, 'SIGKILL');
+  if (!proc._docpilotGroupStopped) {
+    proc._docpilotGroupStopped = true;
+    notifyAgentGroup(proc, 'agent-group-stopped');
+  }
+  stoppingAgentProcesses.delete(proc);
+}
+
+function scheduleAgentForceKill(proc) {
+  if (!proc || proc._docpilotForceKillTimer) return;
+  stoppingAgentProcesses.add(proc);
+  proc._docpilotForceKillTimer = setTimeout(() => forceAgentProcess(proc), AGENT_FORCE_KILL_DELAY_MS);
+  proc._docpilotForceKillTimer.unref?.();
+}
+
+function stopAgentProcess(proc) {
+  if (!proc || proc._docpilotStopping) return;
+  proc._docpilotStopping = true;
+  signalAgentProcess(proc, 'SIGTERM');
+  scheduleAgentForceKill(proc);
+}
+
+function finishAgentProcess(proc) {
+  if (!proc) return;
+  // The group leader can finish while a background tool keeps running.
+  // A final group signal prevents that descendant from becoming an orphan.
+  if (proc._docpilotOwnsProcessGroup) forceAgentProcess(proc);
+  else {
+    if (proc._docpilotForceKillTimer) clearTimeout(proc._docpilotForceKillTimer);
+    proc._docpilotForceKillTimer = null;
+    stoppingAgentProcesses.delete(proc);
+  }
+}
+
+function signalTerminalSession(session, signal) {
+  const pid = Number(session?.proc?.pid);
+  if (session?.ownsProcessGroup && process.platform !== 'win32' && Number.isInteger(pid) && pid > 0) {
+    try {
+      process.kill(-pid, signal);
+      return true;
+    } catch {}
+  }
+  try {
+    session?.proc?.kill(signal);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function notifyTerminalGroup(session, type) {
+  const pid = Number(session?.proc?.pid);
+  if (!session?.ownsProcessGroup || !Number.isInteger(pid) || pid <= 1 || typeof process.send !== 'function') return;
+  try { process.send({ type, id: session.id, pid }); } catch {}
+}
+
+function forceTerminalSession(session) {
+  if (!session) return;
+  if (session.forceKillTimer) {
+    clearTimeout(session.forceKillTimer);
+    session.forceKillTimer = null;
+  }
+  signalTerminalSession(session, 'SIGKILL');
+  notifyTerminalGroup(session, 'terminal-group-stopped');
+  stoppingTerminalSessions.delete(session);
+}
+
+function scheduleTerminalForceKill(session) {
+  if (!session || session.forceKillTimer) return;
+  stoppingTerminalSessions.add(session);
+  session.forceKillTimer = setTimeout(() => forceTerminalSession(session), TERMINAL_FORCE_KILL_DELAY_MS);
+  session.forceKillTimer.unref?.();
+}
+
 function stopTerminalSession(id, reason = 'stopped') {
   const session = terminalSessions.get(id);
   if (!session) return null;
@@ -477,7 +696,11 @@ function stopTerminalSession(id, reason = 'stopped') {
   for (const client of session.clients) {
     try { client.end(); } catch {}
   }
-  try { session.kill ? session.kill() : session.proc.kill(); } catch {}
+  session.clients.clear();
+  session.model.dispose();
+  session.stopping = true;
+  signalTerminalSession(session, 'SIGTERM');
+  scheduleTerminalForceKill(session);
   terminalSessions.delete(id);
   return session;
 }
@@ -530,9 +753,8 @@ function readSettingsStore() {
 }
 
 function writeSettingsStore(store) {
-  fs.mkdirSync(DOCPILOT_DIR, { recursive: true });
   const next = normalizeSettingsInput(store);
-  fs.writeFileSync(SETTINGS_FILE, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+  writeJsonAtomic(SETTINGS_FILE, next);
   return next;
 }
 
@@ -550,12 +772,12 @@ function rememberWorkspaceInSettings(folderPath = ROOT) {
 function readDiagnostics() {
   let sessionLogCount = 0;
   try {
-    fs.mkdirSync(SESSION_LOGS_DIR, { recursive: true });
+    ensurePrivateDirectory(SESSION_LOGS_DIR);
     sessionLogCount = fs.readdirSync(SESSION_LOGS_DIR).filter(name => name.endsWith('.jsonl')).length;
   } catch {}
   return {
     root: ROOT,
-    docpilotDir: DOCPILOT_DIR,
+    docpilotDir: STATE_DIR,
     settingsFile: SETTINGS_FILE,
     sessionsFile: SESSIONS_FILE,
     sessionLogsDir: SESSION_LOGS_DIR,
@@ -580,8 +802,7 @@ function readInstructionsStore() {
 }
 
 function writeInstructionsStore(store) {
-  fs.mkdirSync(DOCPILOT_DIR, { recursive: true });
-  fs.writeFileSync(INSTRUCTIONS_FILE, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
+  writeJsonAtomic(INSTRUCTIONS_FILE, store);
 }
 
 function parseInstructionSource(value) {
@@ -610,13 +831,16 @@ function parseInstructionSource(value) {
 
 function readInstructionSourceBody(source) {
   if (!source?.file) return '';
-  const absolute = path.isAbsolute(source.file)
-    ? path.resolve(source.file)
-    : path.resolve(ROOT, source.file);
-  if (!absolute.startsWith(ROOT + path.sep) && absolute !== ROOT) return '';
-  if (!fs.existsSync(absolute) || !fs.statSync(absolute).isFile()) return '';
-
-  const content = fs.readFileSync(absolute, 'utf8');
+  const relative = path.isAbsolute(source.file) ? path.relative(ROOT, source.file) : source.file;
+  const absolute = resolveInsideRoot(ROOT, relative, { allowRoot: false });
+  if (!absolute) return '';
+  let content;
+  try {
+    if (!fs.statSync(absolute).isFile()) return '';
+    content = fs.readFileSync(absolute, 'utf8');
+  } catch {
+    return '';
+  }
   if (!source.lineStart || !source.lineEnd) return content.trim();
 
   const lines = content.split(/\r?\n/);
@@ -663,8 +887,7 @@ function readGlobalInstructionSetsStore() {
 }
 
 function writeGlobalInstructionSetsStore(store) {
-  fs.mkdirSync(GLOBAL_DOCPILOT_DIR, { recursive: true });
-  fs.writeFileSync(GLOBAL_INSTRUCTION_SETS_FILE, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
+  writeJsonAtomic(GLOBAL_INSTRUCTION_SETS_FILE, store);
 }
 
 function instructionStatePayload(project = readInstructionsStore(), global = readGlobalInstructionSetsStore()) {
@@ -810,8 +1033,7 @@ function refreshSessionSummary(session, messages, retainRecent = 6) {
 }
 
 function writeSessionsStore(store) {
-  fs.mkdirSync(DOCPILOT_DIR, { recursive: true });
-  fs.writeFileSync(SESSIONS_FILE, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
+  writeJsonAtomic(SESSIONS_FILE, store);
 }
 
 function sessionLogFile(sessionId) {
@@ -828,8 +1050,9 @@ function appendSessionLog(sessionId, event) {
     ...event,
   };
   try {
-    fs.mkdirSync(SESSION_LOGS_DIR, { recursive: true });
-    fs.appendFileSync(file, `${JSON.stringify(entry)}\n`, 'utf8');
+    ensurePrivateDirectory(SESSION_LOGS_DIR);
+    fs.appendFileSync(file, `${JSON.stringify(entry)}\n`, { encoding: 'utf8', mode: 0o600 });
+    try { fs.chmodSync(file, 0o600); } catch {}
   } catch {}
 }
 
@@ -1045,9 +1268,9 @@ function extractFileOpsArtifacts(text) {
   return extractDocpilotArtifacts(text).filter(item => item.kind === 'file-ops').map(parseFileOpsArtifact).filter(Boolean);
 }
 
-function applyFileOperations(operations) {
+async function applyFileOperations(operations) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const trashRoot = path.join(DOCPILOT_DIR, 'trash', stamp);
+  const trashRoot = path.join(STATE_DIR, 'trash', 'primary', `${stamp}-${crypto.randomUUID()}`);
   const applied = [];
   const skipped = [];
   for (const raw of Array.isArray(operations) ? operations : []) {
@@ -1063,14 +1286,13 @@ function applyFileOperations(operations) {
     const abs = safeResolve(inspected.path);
     const trashPath = path.join(trashRoot, inspected.path);
     try {
-      fs.mkdirSync(path.dirname(trashPath), { recursive: true });
-      fs.renameSync(abs, trashPath);
-      applied.push({ ...inspected, trashPath: path.relative(ROOT, trashPath).replace(/\\/g, '/') });
+      await movePathToRecoverableTrashAsync(abs, trashPath);
+      applied.push({ ...inspected, trashPath: path.relative(STATE_DIR, trashPath).replace(/\\/g, '/') });
     } catch (err) {
       skipped.push({ ...inspected, reason: err.message });
     }
   }
-  return { applied, skipped, trashRoot: path.relative(ROOT, trashRoot).replace(/\\/g, '/') };
+  return { applied, skipped, trashRoot: path.relative(STATE_DIR, trashRoot).replace(/\\/g, '/') };
 }
 
 function settingsIgnorePatterns() {
@@ -1122,18 +1344,13 @@ async function collectProjectFiles() {
         const childHasVisibleDoc = await walk(abs, relPath, prefix);
         if (childHasVisibleDoc) {
           folders.push(id);
-          signatureParts.push(`${id}/:${stat.mtimeMs}:dir`);
+          signatureParts.push(`${id}/:${stat.mtimeMs}:${stat.ctimeMs}:dir`);
           hasVisibleDoc = true;
         }
       } else if (DOC_EXTENSIONS.has(path.extname(name).toLowerCase())) {
         const id = prefix ? `${prefix}/${relPath}` : relPath;
         files.push(id);
-        let contentHash = '';
-        try {
-          const content = await fs.promises.readFile(abs);
-          contentHash = crypto.createHash('sha1').update(content).digest('hex');
-        } catch {}
-        signatureParts.push(`${id}:${stat.mtimeMs}:${stat.size}:${contentHash}`);
+        signatureParts.push(`${id}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`);
         hasVisibleDoc = true;
       }
     }
@@ -1165,10 +1382,11 @@ async function collectWorkspaceSnapshot() {
 }
 
 const watchClients = new Set();
-let projectWatcher = null;
+const projectWatchers = new Map();
 let projectWatchPoller = null;
 let projectWatchTimer = null;
 let projectWatchSignature = null;
+let projectWatchScanRunning = false;
 
 function sendWatchEvent(client, data) {
   try { client.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
@@ -1186,8 +1404,12 @@ function scheduleProjectChange(reason = 'change') {
 }
 
 async function updateProjectWatchSignature(reason = 'poll') {
+  if (projectWatchScanRunning) return;
+  projectWatchScanRunning = true;
   let snapshot;
-  try { snapshot = await collectProjectFiles(); } catch { return; }
+  try { snapshot = await collectProjectFiles(); }
+  catch { return; }
+  finally { projectWatchScanRunning = false; }
   if (projectWatchSignature === null) {
     projectWatchSignature = snapshot.signature;
     return;
@@ -1198,38 +1420,89 @@ async function updateProjectWatchSignature(reason = 'poll') {
   }
 }
 
-function startProjectWatch() {
-  if (projectWatcher || projectWatchPoller) return;
-  collectProjectFiles().then(r => { projectWatchSignature = r.signature; }).catch(() => { projectWatchSignature = null; });
-  try {
-    projectWatcher = fs.watch(ROOT, { recursive: true }, (eventType, filename) => {
-      const rel = filename ? filename.toString() : '';
-      if (rel && shouldSkipProjectPath(rel, settingsIgnorePatterns())) return;
-      scheduleProjectChange(eventType || 'change');
-    });
-    projectWatcher.on('error', () => {
-      try { projectWatcher.close(); } catch {}
-      projectWatcher = null;
-    });
-  } catch {
-    projectWatcher = null;
-  }
+function startProjectWatchPoller() {
+  if (projectWatchPoller) return;
   projectWatchPoller = setInterval(() => updateProjectWatchSignature('poll'), 2000);
+  projectWatchPoller.unref?.();
+}
+
+function watchedProjectRoots() {
+  return new Map([
+    ['primary', ROOT],
+    ...workspaceRoots.map(root => [root.id, root.path]),
+  ]);
+}
+
+function syncProjectWatchers() {
+  const wanted = watchedProjectRoots();
+  for (const [id, watcher] of projectWatchers) {
+    if (wanted.get(id)) continue;
+    try { watcher.close(); } catch {}
+    projectWatchers.delete(id);
+  }
+
+  let needsPoller = false;
+  for (const [id, rootPath] of wanted) {
+    if (projectWatchers.has(id)) continue;
+    let watcher;
+    try {
+      watcher = fs.watch(rootPath, { recursive: true }, (eventType, filename) => {
+        const rel = filename ? filename.toString() : '';
+        if (rel && shouldSkipProjectPath(rel, settingsIgnorePatterns())) return;
+        scheduleProjectChange(eventType || 'change');
+      });
+      projectWatchers.set(id, watcher);
+      watcher.on('error', () => {
+        try { watcher.close(); } catch {}
+        if (projectWatchers.get(id) === watcher) projectWatchers.delete(id);
+        startProjectWatchPoller();
+      });
+    } catch {
+      needsPoller = true;
+    }
+  }
+  if (needsPoller) {
+    startProjectWatchPoller();
+  } else if (projectWatchPoller && projectWatchers.size === wanted.size) {
+    clearInterval(projectWatchPoller);
+    projectWatchPoller = null;
+  }
+}
+
+function startProjectWatch() {
+  if (projectWatchers.size || projectWatchPoller) {
+    syncProjectWatchers();
+    return;
+  }
+  collectProjectFiles().then(r => { projectWatchSignature = r.signature; }).catch(() => { projectWatchSignature = null; });
+  syncProjectWatchers();
+  if (!projectWatchers.size) startProjectWatchPoller();
+}
+
+function refreshProjectWatchRoots() {
+  if (!watchClients.size) return;
+  syncProjectWatchers();
+  void updateProjectWatchSignature('workspace-roots');
 }
 
 function stopProjectWatchIfIdle() {
   if (watchClients.size) return;
+  stopProjectWatch();
+}
+
+function stopProjectWatch() {
   clearTimeout(projectWatchTimer);
   projectWatchTimer = null;
-  if (projectWatcher) {
-    try { projectWatcher.close(); } catch {}
-    projectWatcher = null;
+  for (const watcher of projectWatchers.values()) {
+    try { watcher.close(); } catch {}
   }
+  projectWatchers.clear();
   if (projectWatchPoller) {
     clearInterval(projectWatchPoller);
     projectWatchPoller = null;
   }
   projectWatchSignature = null;
+  projectWatchScanRunning = false;
 }
 
 function runTextCommand(command, args, timeoutMs = 45000) {
@@ -1442,10 +1715,44 @@ function fallbackInstruction(text) {
 
 rememberWorkspaceInSettings(ROOT);
 
-const server = http.createServer(async (req, res) => {
-  if (req.method === 'OPTIONS') { res.writeHead(204, CORS); res.end(); return; }
-
-  const url = new URL(req.url, `http://localhost:${PORT}`);
+const serverConnections = new Set();
+async function handleBridgeRequest(req, res) {
+  let url;
+  try { url = new URL(req.url, `http://localhost:${PORT}`); }
+  catch {
+    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'invalid request URL' }));
+    return;
+  }
+  const trustedTransport = isAllowedLoopbackHost(req.headers.host, PORT)
+    && isAllowedRendererOrigin(req.headers.origin);
+  if (!trustedTransport) {
+    res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'untrusted bridge request' }));
+    return;
+  }
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, CORS);
+    res.end();
+    return;
+  }
+  if (!isAuthorizedBridgeRequest(req, url, {
+    port: PORT,
+    token: BRIDGE_TOKEN,
+    allowUnauthenticated: ALLOW_UNAUTHENTICATED,
+  })) {
+    res.writeHead(403, { ...CORS, 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'bridge authorization required' }));
+    return;
+  }
+  const declaredLength = Number(req.headers['content-length'] || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BODY_BYTES) {
+    req.resume();
+    res.shouldKeepAlive = false;
+    res.writeHead(413, { ...CORS, 'Content-Type': 'application/json; charset=utf-8', Connection: 'close' });
+    res.end(JSON.stringify({ error: 'request body too large' }));
+    return;
+  }
 
   // GET /ping
   if (req.method === 'GET' && url.pathname === '/ping') {
@@ -1499,6 +1806,11 @@ const server = http.createServer(async (req, res) => {
 
   // GET /watch — project file change event stream
   if (req.method === 'GET' && url.pathname === '/watch') {
+    if (watchClients.size >= 8) {
+      res.writeHead(429, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'too many watch clients' }));
+      return;
+    }
     res.writeHead(200, {
       ...CORS,
       'Content-Type': 'text/event-stream',
@@ -1532,9 +1844,10 @@ const server = http.createServer(async (req, res) => {
   // POST /workspace-roots — attach another folder to the current workspace session
   if (req.method === 'POST' && url.pathname === '/workspace-roots') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const root = addWorkspaceRoot(payload.path || payload.folderPath);
     if (!root) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'invalid folder path' })); return; }
+    refreshProjectWatchRoots();
     const { files, folders, roots } = await collectProjectFiles();
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, root, roots, files, folders }));
@@ -1545,9 +1858,10 @@ const server = http.createServer(async (req, res) => {
   // DELETE /workspace-roots — detach a folder from the current workspace session
   if (req.method === 'DELETE' && url.pathname === '/workspace-roots') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const id = String(payload.id || '').trim();
     if (!id || !removeWorkspaceRoot(id)) { res.writeHead(404, CORS); res.end(JSON.stringify({ error: 'workspace root not found' })); return; }
+    refreshProjectWatchRoots();
     const { files, folders, roots } = await collectProjectFiles();
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, roots, files, folders }));
@@ -1617,20 +1931,31 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && url.pathname === '/terminal-sessions') {
+    if (terminalSessions.size >= 8) {
+      res.writeHead(429, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'too many terminal sessions' }));
+      return;
+    }
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const spec = terminalSpawnSpec();
     const hasShell = fs.existsSync(spec.requiresCommand) || await commandExists(spec.requiresCommand);
+    if (bridgeShuttingDown) {
+      respondInvalidRequestBody(res, { code: 'BRIDGE_SHUTTING_DOWN' });
+      return;
+    }
     if (!hasShell) {
       res.writeHead(404, { ...CORS, 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: `기본 셸을 찾을 수 없습니다: ${spec.requiresCommand}` }));
       return;
     }
-    const requestedCwd = typeof payload.cwd === 'string' && payload.cwd.trim()
-      ? path.resolve(ROOT, payload.cwd)
+    const cwd = typeof payload.cwd === 'string' && payload.cwd.trim()
+      ? resolveInsideRoot(ROOT, payload.cwd, { allowRoot: true }) || ROOT
       : ROOT;
-    const cwd = requestedCwd === ROOT || requestedCwd.startsWith(`${ROOT}${path.sep}`) ? requestedCwd : ROOT;
+    const cols = boundedInteger(payload.cols, 100, 20, 240);
+    const rows = boundedInteger(payload.rows, 30, 5, 80);
     const pty = spec.usePty ? loadOptionalModule('node-pty') : null;
+    const fallbackOwnsProcessGroup = !pty && (process.platform !== 'win32' || TEST_TERMINAL_SEPARATE_GROUP);
     const resolved = pty ? { cmd: spec.spawnArgs[0], args: spec.spawnArgs.slice(1) } : resolveSpawn(spec.spawnArgs[0], spec.spawnArgs.slice(1));
     let proc;
     try {
@@ -1638,8 +1963,8 @@ const server = http.createServer(async (req, res) => {
       proc = pty
         ? pty.spawn(resolved.cmd, resolved.args, {
           name: 'xterm-256color',
-          cols: Number(payload.cols || 100),
-          rows: Number(payload.rows || 30),
+          cols,
+          rows,
           cwd,
           env: cliEnv(),
         })
@@ -1648,6 +1973,9 @@ const server = http.createServer(async (req, res) => {
           env: cliEnv(),
           stdio: ['pipe', 'pipe', 'pipe'],
           windowsHide: true,
+          // POSIX detached children become process-group leaders, allowing a
+          // terminal close to terminate the shell and every command it spawned.
+          detached: fallbackOwnsProcessGroup,
         });
     } catch (error) {
       res.writeHead(500, { ...CORS, 'Content-Type': 'application/json' });
@@ -1656,7 +1984,7 @@ const server = http.createServer(async (req, res) => {
     }
     const session = {
       id: crypto.randomUUID(),
-      title: String(payload.title || `Terminal ${terminalSessions.size + 1}`),
+      title: String(payload.title || `Terminal ${terminalSessions.size + 1}`).slice(0, 120),
       shell: spec.shell,
       status: 'running',
       mode: pty ? 'node-pty' : spec.mode,
@@ -1666,11 +1994,12 @@ const server = http.createServer(async (req, res) => {
       acknowledgements: new Map(),
       model: new TerminalSessionModel({
         maxBytes: 2 * 1024 * 1024,
-        cols: Number(payload.cols || 100),
-        rows: Number(payload.rows || 30),
+        cols,
+        rows,
       }),
       createdAt: new Date().toISOString(),
       isPty: Boolean(pty),
+      ownsProcessGroup: Boolean(pty || fallbackOwnsProcessGroup),
       write: data => {
         if (pty) proc.write(data);
         else proc.stdin.write(data);
@@ -1685,6 +2014,7 @@ const server = http.createServer(async (req, res) => {
       },
     };
     terminalSessions.set(session.id, session);
+    notifyTerminalGroup(session, 'terminal-group-started');
     if (pty) {
       proc.onData(data => {
         const frame = session.model.append(data);
@@ -1695,6 +2025,7 @@ const server = http.createServer(async (req, res) => {
         broadcastTerminalEvent(session, { type: 'terminal.exit', id: session.id, code: event.exitCode, signal: event.signal });
         session.model.dispose();
         terminalSessions.delete(session.id);
+        if (!session.stopping && session.ownsProcessGroup) forceTerminalSession(session);
       });
     } else {
       const onData = chunk => {
@@ -1708,6 +2039,7 @@ const server = http.createServer(async (req, res) => {
         broadcastTerminalEvent(session, { type: 'terminal.exit', id: session.id, code });
         session.model.dispose();
         terminalSessions.delete(session.id);
+        if (!session.stopping && session.ownsProcessGroup) forceTerminalSession(session);
       });
     }
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
@@ -1720,6 +2052,11 @@ const server = http.createServer(async (req, res) => {
     const id = decodeURIComponent(terminalStreamMatch[1]);
     const session = terminalSessions.get(id);
     if (!session) { res.writeHead(404, CORS); res.end(JSON.stringify({ error: 'terminal session not found' })); return; }
+    if (session.clients.size >= 4) {
+      res.writeHead(429, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'too many terminal clients' }));
+      return;
+    }
     res.writeHead(200, {
       ...CORS,
       'Content-Type': 'text/event-stream',
@@ -1757,7 +2094,7 @@ const server = http.createServer(async (req, res) => {
     const session = terminalSessions.get(id);
     if (!session) { res.writeHead(404, CORS); res.end(JSON.stringify({ error: 'terminal session not found' })); return; }
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const viewId = String(payload.viewId || 'default');
     const seq = Math.max(0, Math.min(session.model.lastSeq, Number(payload.seq || 0)));
     session.acknowledgements.set(viewId, seq);
@@ -1772,7 +2109,7 @@ const server = http.createServer(async (req, res) => {
     const session = terminalSessions.get(id);
     if (!session) { res.writeHead(404, CORS); res.end(JSON.stringify({ error: 'terminal session not found' })); return; }
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const data = String(payload.data || '');
     if (data) session.write(data);
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
@@ -1786,9 +2123,9 @@ const server = http.createServer(async (req, res) => {
     const session = terminalSessions.get(id);
     if (!session) { res.writeHead(404, CORS); res.end(JSON.stringify({ error: 'terminal session not found' })); return; }
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
-    const cols = Math.max(20, Math.min(240, Number(payload.cols || 100)));
-    const rows = Math.max(5, Math.min(80, Number(payload.rows || 30)));
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
+    const cols = boundedInteger(payload.cols, 100, 20, 240);
+    const rows = boundedInteger(payload.rows, 30, 5, 80);
     session.resize(cols, rows);
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, cols, rows }));
@@ -1807,9 +2144,19 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && url.pathname === '/adoc-convert') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const source = typeof payload.source === 'string' ? payload.source : '';
     const id = typeof payload.id === 'string' ? payload.id : '';
+    if (Buffer.byteLength(source, 'utf8') > 2 * 1024 * 1024) {
+      res.writeHead(413, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'AsciiDoc source is too large to preview' }));
+      return;
+    }
+    if (asciidocWorkerPending.size >= 4) {
+      res.writeHead(429, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'too many AsciiDoc conversions are pending' }));
+      return;
+    }
     const cacheKey = `${id}:${crypto.createHash('sha1').update(source).digest('hex')}`;
     let html = adocConvertCache.get(cacheKey);
     if (html === undefined) {
@@ -1849,7 +2196,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && url.pathname === '/settings') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const settings = writeSettingsStore(payload.settings && typeof payload.settings === 'object' ? payload.settings : payload);
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, settings }));
@@ -1873,7 +2220,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && url.pathname === '/sessions') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const session = createSessionRecord({
       agent: payload.agent,
       title: payload.title,
@@ -1975,7 +2322,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && sessionTurnMatch) {
     const sessionId = decodeURIComponent(sessionTurnMatch[1]);
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const message = String(payload.message || '').trim();
     if (!message) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'message required' })); return; }
     const store = readSessionsStore();
@@ -1987,6 +2334,24 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { ...CORS, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no' });
       res.write(`data: ${JSON.stringify({ type: 'turn.error', error: `${session.agent} 실행 파일을 찾을 수 없습니다.` })}\n\n`);
       res.end();
+      return;
+    }
+    // Re-check after the async command probe. Another request may have started
+    // a turn while this handler was waiting; registering it would otherwise
+    // overwrite the first process and make that process impossible to stop.
+    if (bridgeShuttingDown) {
+      res.writeHead(503, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'bridge is shutting down' }));
+      return;
+    }
+    if (agentProcesses.has(sessionId)) {
+      res.writeHead(409, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'turn already running' }));
+      return;
+    }
+    if (agentProcesses.list().length >= MAX_ACTIVE_AGENT_TURNS) {
+      res.writeHead(429, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'too many active agent turns' }));
       return;
     }
 
@@ -2059,7 +2424,13 @@ const server = http.createServer(async (req, res) => {
       env: cliEnv(),
       stdio: [stdinText ? 'pipe' : 'ignore', 'pipe', 'pipe'],
       windowsHide: true,
+      // Give each agent turn its own POSIX process group. This lets both the
+      // bridge and Electron terminate MCP/tool descendants, not just the CLI.
+      detached: process.platform !== 'win32',
     });
+    proc._docpilotOwnsProcessGroup = process.platform !== 'win32';
+    proc._docpilotGroupId = turnId;
+    notifyAgentGroup(proc, 'agent-group-started');
     if (stdinText) proc.stdin.end(stdinText);
 
     let killed = false;
@@ -2082,7 +2453,7 @@ const server = http.createServer(async (req, res) => {
       killed = true;
       clearInterval(progressTimer);
       agentProcesses.clear(sessionId);
-      try { proc.kill(); } catch {}
+      stopAgentProcess(proc);
       markSessionIdle();
       appendSessionLog(sessionId, { type: 'turn.stopped', turnId, reason });
       send({ type: 'turn.stopped', sessionId, turnId, error: reason });
@@ -2147,6 +2518,7 @@ const server = http.createServer(async (req, res) => {
     });
     proc.stderr.on('data', chunk => process.stderr.write(chunk));
     proc.on('close', code => {
+      finishAgentProcess(proc);
       if (killed) return;
       clearInterval(progressTimer);
       agentProcesses.clear(sessionId);
@@ -2217,6 +2589,7 @@ const server = http.createServer(async (req, res) => {
       try { res.end(); } catch {}
     });
     proc.on('error', err => {
+      finishAgentProcess(proc);
       clearInterval(progressTimer);
       agentProcesses.clear(sessionId);
       send({ type: 'turn.error', sessionId, turnId, error: err.message });
@@ -2228,7 +2601,7 @@ const server = http.createServer(async (req, res) => {
         killed = true;
         clearInterval(progressTimer);
         agentProcesses.clear(sessionId);
-        try { proc.kill(); } catch {}
+        stopAgentProcess(proc);
         markSessionIdle();
       }
     });
@@ -2245,7 +2618,7 @@ const server = http.createServer(async (req, res) => {
   // POST /instructions — create or update an instruction
   if (req.method === 'POST' && url.pathname === '/instructions') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const next = normalizeInstructionInput(payload);
     if (!next) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'instruction body required' })); return; }
 
@@ -2270,7 +2643,7 @@ const server = http.createServer(async (req, res) => {
   // POST /instructions/delete — delete an instruction
   if (req.method === 'POST' && url.pathname === '/instructions/delete') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const store = readInstructionsStore();
     const global = readGlobalInstructionSetsStore();
     if ((store.instructions || []).some(item => item.id === payload.id && item.active)) {
@@ -2292,7 +2665,7 @@ const server = http.createServer(async (req, res) => {
   // POST /instruction-sets/save — save current active instruction combination
   if (req.method === 'POST' && url.pathname === '/instruction-sets/save') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const project = readInstructionsStore();
     const requestedIds = Array.isArray(payload.instructionIds) ? new Set(payload.instructionIds) : null;
     const active = project.instructions.filter(i => (requestedIds ? requestedIds.has(i.id) : i.active) && i.active);
@@ -2324,7 +2697,7 @@ const server = http.createServer(async (req, res) => {
   // POST /instruction-sets/apply — activate a saved instruction set
   if (req.method === 'POST' && url.pathname === '/instruction-sets/apply') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const scope = payload.scope === 'global' ? 'global' : 'project';
     const id = String(payload.id || '');
     const project = readInstructionsStore();
@@ -2381,7 +2754,7 @@ const server = http.createServer(async (req, res) => {
   // POST /instruction-sets/delete — delete a saved instruction set
   if (req.method === 'POST' && url.pathname === '/instruction-sets/delete') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const scope = payload.scope === 'global' ? 'global' : 'project';
     const id = String(payload.id || '');
     const project = readInstructionsStore();
@@ -2405,7 +2778,7 @@ const server = http.createServer(async (req, res) => {
   // POST /instructions/normalize — turn natural language into a concise rule
   if (req.method === 'POST' && url.pathname === '/instructions/normalize') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const raw = String(payload.text || '').trim();
     if (!raw) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'text required' })); return; }
 
@@ -2428,7 +2801,7 @@ User input:
 ${raw}
 \`\`\``;
       try {
-        const out = await runTextCommand('claude', ['-p', prompt]);
+        const out = await runCommandWithInput('claude', ['-p'], prompt, 45000);
         const parsed = JSON.parse(out.replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
         normalized = {
           title: String(parsed.title || normalized.title).trim().slice(0, 120),
@@ -2451,7 +2824,7 @@ ${raw}
     try {
       const content = fs.readFileSync(resolved.abs, 'utf8');
       res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ id, content }));
+      res.end(JSON.stringify({ id, content, revision: fileRevision(content) }));
     } catch {
       res.writeHead(404, CORS); res.end();
     }
@@ -2466,16 +2839,16 @@ ${raw}
     if (!resolved) { res.writeHead(403, CORS); res.end(); return; }
     if (resolved.isWorkspaceRoot) {
       res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ id, content: '', source: 'workspace-root' }));
+      res.end(JSON.stringify({ id, content: '', revision: fileRevision(''), source: 'workspace-root' }));
       return;
     }
     try {
       const content = await runGitShowFile(id);
       res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ id, content, source: 'git-head' }));
+      res.end(JSON.stringify({ id, content, revision: fileRevision(content), source: 'git-head' }));
     } catch {
       res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ id, content: '', source: 'empty' }));
+      res.end(JSON.stringify({ id, content: '', revision: fileRevision(''), source: 'empty' }));
     }
     return;
   }
@@ -2483,19 +2856,33 @@ ${raw}
   // POST /save — 파일 저장 { id, content }
   if (req.method === 'POST' && url.pathname === '/save') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const { id, content } = payload;
+    const expectedRevision = typeof payload.expectedRevision === 'string' ? payload.expectedRevision : '';
     if (!id || content == null) { res.writeHead(400, CORS); res.end(); return; }
     const resolved = resolveWorkspaceFileId(id);
     if (!resolved) { res.writeHead(403, CORS); res.end(); return; }
     try {
-      fs.mkdirSync(path.dirname(resolved.abs), { recursive: true });
-      fs.writeFileSync(resolved.abs, content, 'utf8');
+      const currentContent = fs.readFileSync(resolved.abs, 'utf8');
+      const currentRevision = fileRevision(currentContent);
+      if (expectedRevision && expectedRevision !== currentRevision) {
+        res.writeHead(409, { ...CORS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'file changed on disk; reload or review the conflict before saving', revision: currentRevision }));
+        return;
+      }
+      writeExistingWorkspaceFileAtomic(resolved.abs, content, currentRevision);
+      const revision = fileRevision(content);
       res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true }));
+      res.end(JSON.stringify({ ok: true, revision }));
       console.log(`[${new Date().toLocaleTimeString()}] saved ${id}`);
     } catch (err) {
-      res.writeHead(500, CORS); res.end(JSON.stringify({ error: err.message }));
+      if (err?.code === 'SAVE_CONFLICT') {
+        res.writeHead(409, { ...CORS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message, revision: err.revision }));
+        return;
+      }
+      res.writeHead(500, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
     }
     return;
   }
@@ -2514,27 +2901,27 @@ ${raw}
   // POST /file-create — create a markdown file in a workspace directory
   if (req.method === 'POST' && url.pathname === '/file-create') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const dir = resolveWorkspaceDirectoryId(payload.dir || '');
     const rawName = String(payload.name || '').trim().replace(/\\/g, '/');
-    if (!dir || !rawName || rawName.includes('/')) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'invalid file name' })); return; }
+    if (!dir || !rawName || rawName.includes('/') || rawName.startsWith('.')) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'invalid file name' })); return; }
     const parsed = path.parse(rawName);
     const ext = parsed.ext || '.md';
     if (!DOC_EXTENSIONS.has(ext.toLowerCase())) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'unsupported file extension' })); return; }
     const fileName = parsed.ext ? rawName : `${rawName}.md`;
     const abs = path.resolve(dir.abs, fileName);
     if (!abs.startsWith(dir.root.path + path.sep) && abs !== dir.root.path) { res.writeHead(403, CORS); res.end(); return; }
-    if (fs.existsSync(abs)) { res.writeHead(409, CORS); res.end(JSON.stringify({ error: 'file already exists' })); return; }
     try {
-      fs.mkdirSync(path.dirname(abs), { recursive: true });
-      fs.writeFileSync(abs, String(payload.content || ''), 'utf8');
+      fs.writeFileSync(abs, String(payload.content || ''), { encoding: 'utf8', flag: 'wx' });
       const id = fileIdForResolvedAbs(abs, dir.root);
       const { files, folders, roots } = await collectProjectFiles();
       scheduleProjectChange('file-created');
       res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, id, files, folders, roots }));
     } catch (err) {
-      res.writeHead(500, CORS); res.end(JSON.stringify({ error: err.message }));
+      const status = err?.code === 'EEXIST' ? 409 : 500;
+      res.writeHead(status, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: status === 409 ? 'file already exists' : err.message }));
     }
     return;
   }
@@ -2542,7 +2929,7 @@ ${raw}
   // POST /folder-create — create a folder in a workspace directory
   if (req.method === 'POST' && url.pathname === '/folder-create') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const dir = resolveWorkspaceDirectoryId(payload.dir || '');
     const rawName = String(payload.name || '').trim().replace(/\\/g, '/');
     if (!dir || !rawName || rawName.includes('/') || rawName.startsWith('.') || HIDDEN_DIRS.has(rawName)) {
@@ -2553,16 +2940,27 @@ ${raw}
     const abs = path.resolve(dir.abs, rawName);
     if (!abs.startsWith(dir.root.path + path.sep) && abs !== dir.root.path) { res.writeHead(403, CORS); res.end(); return; }
     if (fs.existsSync(abs)) { res.writeHead(409, CORS); res.end(JSON.stringify({ error: 'folder already exists' })); return; }
+    let created = false;
     try {
       fs.mkdirSync(abs, { recursive: false });
-      fs.writeFileSync(path.join(abs, FOLDER_STARTER_DOC_NAME), `# ${rawName}\n\n수정이 필요한 예시 문서입니다.\n`, 'utf8');
+      created = true;
+      fs.writeFileSync(
+        path.join(abs, FOLDER_STARTER_DOC_NAME),
+        `# ${rawName}\n\n수정이 필요한 예시 문서입니다.\n`,
+        { encoding: 'utf8', flag: 'wx' },
+      );
       const id = fileIdForResolvedAbs(abs, dir.root);
       const { files, folders, roots } = await collectProjectFiles();
       scheduleProjectChange('folder-created');
       res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, id, files, folders, roots }));
     } catch (err) {
-      res.writeHead(500, CORS); res.end(JSON.stringify({ error: err.message }));
+      if (created) {
+        try { fs.rmdirSync(abs); } catch {}
+      }
+      const status = err?.code === 'EEXIST' ? 409 : 500;
+      res.writeHead(status, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: status === 409 ? 'folder already exists' : err.message }));
     }
     return;
   }
@@ -2570,10 +2968,10 @@ ${raw}
   // POST /file-rename — rename one visible workspace file or folder in-place
   if (req.method === 'POST' && url.pathname === '/file-rename') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const resolved = resolveWorkspaceFileId(payload.id) || resolveWorkspaceDirectoryId(payload.id);
     const rawName = String(payload.name || '').trim().replace(/\\/g, '/');
-    if (!resolved || !rawName || rawName.includes('/')) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'invalid rename request' })); return; }
+    if (!resolved || !rawName || rawName.includes('/') || rawName.startsWith('.')) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'invalid rename request' })); return; }
     if (isWorkspaceRootResolved(resolved)) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'cannot rename workspace root' })); return; }
     const stat = fs.existsSync(resolved.abs) ? fs.lstatSync(resolved.abs) : null;
     if (!stat) { res.writeHead(404, CORS); res.end(JSON.stringify({ error: 'not found' })); return; }
@@ -2594,14 +2992,16 @@ ${raw}
     if (!nextAbs.startsWith(resolved.root.path + path.sep) && nextAbs !== resolved.root.path) { res.writeHead(403, CORS); res.end(); return; }
     if (fs.existsSync(nextAbs)) { res.writeHead(409, CORS); res.end(JSON.stringify({ error: 'target already exists' })); return; }
     try {
-      fs.renameSync(resolved.abs, nextAbs);
+      renamePathNoClobber(resolved.abs, nextAbs, stat);
       const id = fileIdForResolvedAbs(nextAbs, resolved.root);
       const { files, folders, roots } = await collectProjectFiles();
       scheduleProjectChange('file-renamed');
       res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, id, files, folders, roots }));
     } catch (err) {
-      res.writeHead(500, CORS); res.end(JSON.stringify({ error: err.message }));
+      const status = err?.code === 'EEXIST' ? 409 : 500;
+      res.writeHead(status, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: status === 409 ? 'target already exists' : err.message }));
     }
     return;
   }
@@ -2609,7 +3009,7 @@ ${raw}
   // POST /file-delete — move one visible workspace file or folder to recoverable trash
   if (req.method === 'POST' && url.pathname === '/file-delete') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const resolved = resolveWorkspaceFileId(payload.id) || resolveWorkspaceDirectoryId(payload.id);
     const permanent = payload.permanent === true;
     if (!resolved || isWorkspaceRootResolved(resolved)) {
@@ -2634,9 +3034,8 @@ ${raw}
         fs.rmSync(resolved.abs, { recursive: stat.isDirectory(), force: false });
       } else {
         const trashPath = recoverableTrashPath(resolved);
-        fs.mkdirSync(path.dirname(trashPath), { recursive: true });
-        fs.renameSync(resolved.abs, trashPath);
-        trashId = path.relative(resolved.root.path, trashPath).replace(/\\/g, '/');
+        await movePathToRecoverableTrashAsync(resolved.abs, trashPath);
+        trashId = path.relative(STATE_DIR, trashPath).replace(/\\/g, '/');
       }
       const { files, folders, roots } = await collectProjectFiles();
       scheduleProjectChange(permanent ? 'file-discarded' : 'file-deleted');
@@ -2659,8 +3058,8 @@ ${raw}
   // POST /file-ops/apply — safely apply proposed project file operations
   if (req.method === 'POST' && url.pathname === '/file-ops/apply') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
-    const result = applyFileOperations(payload.operations || []);
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
+    const result = await applyFileOperations(payload.operations || []);
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, ...result }));
     return;
@@ -2669,7 +3068,7 @@ ${raw}
   // POST /project-chat — project-level conversational instruction
   if (req.method === 'POST' && url.pathname === '/project-chat') {
     let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { res.writeHead(400, CORS); res.end(); return; }
+    try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
     const instruction = String(payload.instruction || '').trim();
     const requestedAgent = ['claude', 'codex'].includes(payload.agent) ? payload.agent : '';
     if (!instruction) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'instruction required' })); return; }
@@ -2716,6 +3115,7 @@ ${raw}
       headers: {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(turnPayload),
+        ...(BRIDGE_TOKEN ? { 'X-DocPilot-Token': BRIDGE_TOKEN } : {}),
       },
     }, proxyRes => {
       let buffer = '';
@@ -2875,7 +3275,129 @@ ${raw}
   }
 
   res.writeHead(404, CORS); res.end();
+}
+
+const server = http.createServer((req, res) => {
+  void handleBridgeRequest(req, res).catch(error => {
+    console.error('bridge request failed:', error);
+    if (res.headersSent) {
+      try { res.destroy(); } catch {}
+      return;
+    }
+    res.writeHead(500, { ...CORS, 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'internal bridge error' }));
+  });
 });
+
+server.on('connection', socket => {
+  if (serverConnections.size >= 64) {
+    socket.destroy();
+    return;
+  }
+  serverConnections.add(socket);
+  socket.once('close', () => serverConnections.delete(socket));
+});
+
+let bridgeShutdownPromise = null;
+
+function closeWatchClients() {
+  for (const client of Array.from(watchClients)) {
+    try { client.end(); } catch {}
+  }
+  watchClients.clear();
+}
+
+function stopActiveAgentTurns(reason) {
+  for (const { sessionId } of agentProcesses.list()) {
+    try { agentProcesses.stop(sessionId, reason); } catch {}
+  }
+}
+
+function stopAllTerminalSessions(reason) {
+  const stopped = [];
+  for (const id of Array.from(terminalSessions.keys())) {
+    try {
+      const session = stopTerminalSession(id, reason);
+      if (session) stopped.push(session);
+    } catch {}
+  }
+  return stopped;
+}
+
+function stopAsciidocWorker(reason) {
+  const error = new Error(`bridge shutdown: ${reason}`);
+  for (const pending of asciidocWorkerPending.values()) pending.reject(error);
+  asciidocWorkerPending.clear();
+  const worker = asciidocWorker;
+  asciidocWorker = null;
+  if (worker) {
+    try { void worker.terminate().catch(() => {}); } catch {}
+  }
+}
+
+function shutdownBridge(reason = 'shutdown') {
+  if (bridgeShutdownPromise) return bridgeShutdownPromise;
+  bridgeShuttingDown = true;
+  bridgeShutdownPromise = new Promise(resolve => {
+    let finished = false;
+    const forceRemainingTerminals = () => {
+      const lateSessions = stopAllTerminalSessions(`bridge ${reason}`);
+      for (const session of new Set([...lateSessions, ...stoppingTerminalSessions])) {
+        forceTerminalSession(session);
+      }
+    };
+    const forceRemainingAgents = () => {
+      for (const proc of Array.from(stoppingAgentProcesses)) forceAgentProcess(proc);
+    };
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(deadline);
+      forceRemainingAgents();
+      forceRemainingTerminals();
+      resolve();
+    };
+    const deadline = setTimeout(() => {
+      forceRemainingAgents();
+      forceRemainingTerminals();
+      try { server.closeAllConnections?.(); } catch {}
+      for (const socket of Array.from(serverConnections)) {
+        try { socket.destroy(); } catch {}
+      }
+      finish();
+    }, BRIDGE_SHUTDOWN_TIMEOUT_MS);
+
+    closeWatchClients();
+    stopProjectWatch();
+    stopActiveAgentTurns(`bridge ${reason}`);
+    forceRemainingAgents();
+    const stoppedTerminalSessions = stopAllTerminalSessions(`bridge ${reason}`);
+    // PTYs own a session outside the bridge process group. Escalate them
+    // synchronously so Electron's own exit cannot interrupt the cleanup timer.
+    for (const session of new Set([...stoppedTerminalSessions, ...stoppingTerminalSessions])) {
+      forceTerminalSession(session);
+    }
+    stopAsciidocWorker(reason);
+
+    try {
+      server.close(finish);
+      server.closeIdleConnections?.();
+      if (!server.listening) queueMicrotask(finish);
+    } catch {
+      finish();
+    }
+  });
+  return bridgeShutdownPromise;
+}
+
+function exitAfterBridgeShutdown(reason, exitCode = 0) {
+  void shutdownBridge(reason).finally(() => process.exit(exitCode));
+}
+
+process.once('SIGTERM', () => exitAfterBridgeShutdown('SIGTERM'));
+process.once('SIGINT', () => exitAfterBridgeShutdown('SIGINT', 130));
+handleParentDisconnect = () => exitAfterBridgeShutdown('parent disconnect');
+if (parentDisconnectRequested) handleParentDisconnect();
 
 server.on('error', err => {
   if (err && err.code === 'EADDRINUSE') {
