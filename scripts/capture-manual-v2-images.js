@@ -105,7 +105,7 @@ async function main() {
     await page.setViewportSize({ width: 1440, height: 900 });
     await dismissReleaseNotice(page);
     await page.evaluate(() => {
-      localStorage.setItem('docpilot:release-notice-seen-id', '2.0.2:r2');
+      localStorage.setItem('docpilot:release-notice-seen-id', '2.0.3:r2');
       localStorage.setItem('docpilot:terminal-open', '0');
       localStorage.setItem('docpilot:preview-width', '760');
     });

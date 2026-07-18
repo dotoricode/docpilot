@@ -1,6 +1,6 @@
 {
   "name": "docpilot",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Local-first document workbench with integrated terminal and review workflows",
   "main": "main.js",
   "scripts": {
@@ -12,6 +12,7 @@
     "test": "node --test tests/*.test.js",
     "check:shutdown": "node scripts/check-shutdown-lifecycle.js",
     "check:terminal:create": "node scripts/check-react-terminal-creation.js",
+    "check:update-flow": "npm run renderer:build && node scripts/check-react-update-preservation.js",
     "check:renderer-security": "npm run renderer:build && node scripts/check-react-asciidoc-security.js",
     "manual:verify": "node scripts/check-manual-v2-orca-parity.mjs && node scripts/check-manual-v2-changelog-evidence.mjs && node scripts/check-manual-v2-demo-playback.mjs && npm --prefix prototypes/manual-v2 run build",
     "manual:pages:stage": "npm --prefix prototypes/manual-v2 run build:pages && rsync -a prototypes/manual-v2/dist/ docs/",

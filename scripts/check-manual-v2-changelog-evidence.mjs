@@ -14,9 +14,13 @@ const releaseSource = fs.readFileSync(releaseSourcePath, 'utf8');
 const packageVersion = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
 
 assert.equal(evidence.current.version, packageVersion, 'Evidence version must match package.json');
-assert.equal(evidence.current.state, 'release', 'v2 evidence must be prepared for the approved release flow');
+assert.ok(['release-candidate', 'release'].includes(evidence.current.state), 'v2 evidence must declare candidate or final release state');
 assert.equal(evidence.current.tag, `v${packageVersion}`, 'Release evidence must name the intended Git tag');
-assert.doesNotMatch(releaseSource, /unreleased:\s*true/, 'Final fallback content must not remain unreleased');
+if (evidence.current.state === 'release-candidate') {
+  assert.match(releaseSource, /unreleased:\s*true/, 'A release candidate must remain visibly unreleased in the public manual source');
+} else {
+  assert.doesNotMatch(releaseSource, /unreleased:\s*true/, 'Final fallback content must not remain unreleased');
+}
 assert.match(releaseSource, new RegExp(`title:\\s*['"]DocPilot ${packageVersion.replace(/\./g, '\\.')}['"]`), 'Fallback title must match the final release');
 if (gitTagExists(evidence.current.tag)) {
   const tagVersion = JSON.parse(execFileSync('git', ['show', `${evidence.current.tag}:package.json`], { cwd: root, encoding: 'utf8' })).version;
@@ -41,7 +45,7 @@ for (const feature of evidence.features) {
 }
 assert.equal(requiredFeatures.size, 0, `Missing v2 feature evidence: ${[...requiredFeatures].join(', ')}`);
 
-const requiredFixes = new Set(['shutdown-lifecycle', 'workspace-security', 'save-integrity', 'multiarch-packaging']);
+const requiredFixes = new Set(['shutdown-lifecycle', 'workspace-security', 'save-integrity', 'multiarch-packaging', 'unsigned-update-flow', 'packaged-icon']);
 assert(Array.isArray(evidence.fixes), 'Current release evidence must contain fix entries');
 for (const fix of evidence.fixes) {
   requiredFixes.delete(fix.id);
@@ -59,7 +63,7 @@ const commitDate = execFileSync('git', ['show', '-s', '--format=%aI', commit], {
 assert.equal(commitDate, evidence.current.implementationDate, 'Implementation date must match Git author date');
 
 const histories = new Map((evidence.history || []).map(entry => [entry.version, entry]));
-for (const version of ['1.0.27', '1.0.28', '2.0.0', '2.0.1']) {
+for (const version of ['1.0.27', '1.0.28', '2.0.0', '2.0.1', '2.0.2']) {
   const entry = histories.get(version);
   assert(entry, `Missing historical evidence for ${version}`);
   const tag = `v${version}`;

@@ -2,6 +2,28 @@ export const RELEASES_ENDPOINT = 'https://api.github.com/repos/dotoricode/docpil
 
 export const FALLBACK_RELEASES = Object.freeze([
   {
+    version: '2.0.3',
+    title: 'DocPilot 2.0.3',
+    date: '2026-07-18',
+    summary: '공식 DMG를 앱 안에서 안전하게 내려받고 검증하는 수동 업데이트 흐름을 추가하고, 설치 이미지와 Dock 아이콘의 검은 배경을 제거했습니다.',
+    body: `## Added
+- 새 공개 버전과 현재 Mac 아키텍처를 확인해 앱 안에서 DMG를 다운로드하는 업데이트 카드를 추가했습니다.
+- GitHub Release asset의 이름, 크기, 전달 호스트와 SHA-256 digest를 검증합니다.
+- 다운로드 가능, 진행 중, 완료와 오류 상태에서 릴리즈 노트와 수동 설치 단계를 안내합니다.
+
+## Fixed
+- 투명 PNG·ICNS가 패키지와 마운트된 DMG까지 유지되도록 검사해 설치 화면과 Dock의 검은 사각 배경을 제거했습니다.
+- 패키지에서 New terminal을 눌러도 기본 로그인 셸이 생성되지 않던 native PTY 포함 경로를 수정했습니다.
+
+## Upgrade notes
+- 이 공개 빌드는 Developer ID 서명과 Apple 공증이 없는 ad-hoc 배포입니다.
+- DocPilot은 검증된 DMG를 열어 주지만 자동 종료하거나 Applications의 앱을 자동 교체하지 않습니다.
+- 다운로드 중 terminal·agent 세션과 미저장 문서는 유지됩니다. 교체할 때는 작업을 저장하고 사용자가 앱을 종료하세요.`,
+    assets: [],
+    fallback: true,
+    unreleased: true,
+  },
+  {
     version: '2.0.2',
     title: 'DocPilot 2.0.2',
     date: '2026-07-18',

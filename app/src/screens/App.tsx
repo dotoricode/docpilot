@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { ArrowRight, Check, ClockCounterClockwise, DotsSixVertical, FileText, FolderOpen, MagnifyingGlass, Moon, SidebarSimple, Sun, TerminalWindow, X } from '@phosphor-icons/react';
+import { ArrowRight, ArrowSquareOut, Check, ClockCounterClockwise, DotsSixVertical, DownloadSimple, FileText, FolderOpen, MagnifyingGlass, Moon, SidebarSimple, Sun, TerminalWindow, X } from '@phosphor-icons/react';
 import { EditorPane } from '../features/editor/EditorPane';
 import { InstructionsPanel } from '../features/instructions/InstructionsPanel';
 import { TerminalPane } from '../features/terminal/TerminalPane';
@@ -54,6 +54,24 @@ type ReleaseNoteItem = {
 };
 
 const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
+  '2.0.3': [
+    {
+      title: '새 버전을 앱 안에서 안전하게 내려받습니다',
+      body: '공식 GitHub Release의 현재 Mac 아키텍처 DMG만 선택하고 파일 크기와 SHA-256을 검증한 뒤 Downloads 폴더에 보관합니다.',
+    },
+    {
+      title: '다운로드가 진행 중인 작업을 멈추지 않습니다',
+      body: '업데이트 카드와 다운로드 상태가 terminal·agent 세션, 열린 창과 미저장 문서를 종료하거나 초기화하지 않습니다.',
+    },
+    {
+      title: '서명 없는 배포의 설치 경계를 명확히 표시합니다',
+      body: '검증된 DMG를 여는 단계까지만 지원하며, 사용자가 DocPilot을 종료하고 Applications의 앱을 직접 교체하도록 안내합니다.',
+    },
+    {
+      title: '설치 이미지와 Dock 아이콘의 검은 사각형을 제거했습니다',
+      body: '투명 PNG와 ICNS를 패키지 및 마운트된 DMG에서 다시 검증해 아이콘 바깥쪽의 불투명 배경이 포함되지 않게 했습니다.',
+    },
+  ],
   '2.0.2': [
     {
       title: '앱 종료가 백그라운드 작업을 남기지 않습니다',
@@ -279,6 +297,9 @@ export function App() {
   const [quickOpenIndex, setQuickOpenIndex] = useState(0);
   const [quickOpenRecent, setQuickOpenRecent] = useState<string[]>(() => readStoredStringList('docpilot:quick-open-recent'));
   const [releaseNotice, setReleaseNotice] = useState<ReleaseNotice | null>(null);
+  const [updateState, setUpdateState] = useState<DocPilotUpdateState>({ status: 'idle' });
+  const [updateCardVisible, setUpdateCardVisible] = useState(false);
+  const dismissedUpdateVersionRef = useRef('');
   const openPathRef = useRef('');
   const secondaryOpenPathRef = useRef('');
   const activePreviewPaneRef = useRef<'primary' | 'secondary'>('primary');
@@ -387,6 +408,23 @@ export function App() {
     return bridge.onMenuCommand(command => {
       if (command === 'save') menuSaveRef.current();
     });
+  }, []);
+
+  useEffect(() => {
+    const bridge = window.docpilot;
+    if (!bridge) return;
+    let disposed = false;
+    const applyUpdateState = (nextState: DocPilotUpdateState) => {
+      if (disposed || !nextState || nextState.status === 'idle') return;
+      setUpdateState(nextState);
+      if (dismissedUpdateVersionRef.current !== nextState.version) setUpdateCardVisible(true);
+    };
+    void bridge.getUpdateState?.().then(applyUpdateState).catch(() => {});
+    const disposeListener = bridge.onUpdateState?.(applyUpdateState);
+    return () => {
+      disposed = true;
+      disposeListener?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -1038,6 +1076,29 @@ export function App() {
     setReleaseNotice(null);
   }
 
+  async function runUpdateAction() {
+    const bridge = window.docpilot;
+    if (!bridge) return;
+    try {
+      if (updateState.status === 'downloaded') {
+        await bridge.openDownloadedUpdate?.();
+        return;
+      }
+      const nextState = await bridge.downloadUpdate?.();
+      if (nextState) setUpdateState(nextState);
+    } catch (error) {
+      setUpdateState(current => ({
+        ...current,
+        status: 'error',
+        error: error instanceof Error ? error.message : '업데이트 다운로드에 실패했습니다.',
+      }));
+    }
+  }
+
+  function openUpdateReleaseNotes() {
+    if (updateState.releaseUrl) void window.docpilot?.openUrl?.(updateState.releaseUrl);
+  }
+
   function goHome() {
     if (dirtyFileIds.length) {
       setOpenError('저장되지 않은 변경사항이 있어 홈으로 이동하지 않았습니다. 먼저 저장하거나 탭을 닫아주세요.');
@@ -1425,6 +1486,58 @@ export function App() {
             </footer>
           </section>
         </div>
+      ) : null}
+      {updateCardVisible && updateState.version ? (
+        <aside className="update-card" role="dialog" aria-label="업데이트 가능" aria-live="polite">
+          <header>
+            <div>
+              <span className="update-card-icon" aria-hidden="true"><DownloadSimple size={16} weight="bold" /></span>
+              <strong>업데이트 가능</strong>
+            </div>
+            <button
+              type="button"
+              aria-label="업데이트 안내 닫기"
+              onClick={() => {
+                dismissedUpdateVersionRef.current = updateState.version || '';
+                setUpdateCardVisible(false);
+              }}
+            ><X size={17} /></button>
+          </header>
+          <div className="update-card-body">
+            <p className="update-card-version">DocPilot v{updateState.version}이(가) 준비되었습니다.</p>
+            <p className="update-card-preservation">다운로드 중에도 terminal·agent 세션과 편집 중인 문서는 유지됩니다.</p>
+            {updateState.status === 'downloading' ? (
+              <div className="update-card-progress" role="status" aria-label={`업데이트 ${updateState.percent || 0}% 다운로드됨`}>
+                <span style={{ width: `${updateState.percent || 0}%` }} />
+              </div>
+            ) : null}
+            {updateState.status === 'downloaded' ? (
+              <p className="update-card-status">SHA-256 검증을 마쳤습니다. DMG를 열어 Applications의 앱을 직접 교체하세요.</p>
+            ) : null}
+            {updateState.status === 'error' ? (
+              <p className="update-card-error" role="alert">{updateState.error || '업데이트 다운로드에 실패했습니다.'}</p>
+            ) : null}
+            <button className="update-release-link" type="button" onClick={openUpdateReleaseNotes}>
+              릴리즈 노트 <ArrowSquareOut size={13} />
+            </button>
+          </div>
+          <footer>
+            <button
+              className="update-primary-action"
+              type="button"
+              disabled={updateState.status === 'downloading'}
+              onClick={() => void runUpdateAction()}
+            >
+              {updateState.status === 'downloading'
+                ? `다운로드 중 ${updateState.percent || 0}%`
+                : updateState.status === 'downloaded'
+                  ? 'DMG 열기'
+                  : updateState.status === 'error'
+                    ? '다시 다운로드'
+                    : '업데이트 다운로드'}
+            </button>
+          </footer>
+        </aside>
       ) : null}
       <section
         className={`editor-stack workbench-stack terminal-${terminalPosition} ${terminalOpen && !showHome ? 'with-terminal' : ''} ${draggingPane ? 'pane-dragging' : ''} ${paneDropPreview ? 'pane-layout-preview' : ''}`}

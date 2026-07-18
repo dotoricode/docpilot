@@ -9,6 +9,7 @@ const nodeNet = require('net');
 const Store = require('./store');
 const { isFileUrlForPath, normalizeExternalUrl } = require('./shared/core/app-navigation');
 const { canonicalizeRoot, isPathInside } = require('./shared/core/bridge-security');
+const { createUpdateController } = require('./shared/core/update-controller');
 
 if (process.env.DOCPILOT_USER_DATA_DIR) {
   app.setPath('userData', process.env.DOCPILOT_USER_DATA_DIR);
@@ -32,6 +33,7 @@ let activeRoot = '';
 let devWatchersStarted = false;
 let devReloadTimer = null;
 let devBridgeTimer = null;
+let updateController = null;
 const devWatchMtimes = new Map();
 const devWatchers = new Set();
 
@@ -723,7 +725,7 @@ async function openFolder(folderPath, openFileRel = '', owner = BrowserWindow.ge
     if (ownerWindow?._docpilotWindowKind === 'start' && !ownerWindow.isDestroyed()) {
       ownerWindow.close();
     }
-    checkForUpdates(win);
+    checkForUpdates();
   } catch (error) {
     const hasWindow = BrowserWindow.getAllWindows().some(win => !win.isDestroyed());
     if (!appQuitting && !hasWindow) createStartWindow();
@@ -858,6 +860,20 @@ handleTrustedIpc('set-window-theme', (_event, win, requestedTheme) => {
   return true;
 });
 
+handleTrustedIpc('get-update-state', () => {
+  return getUpdateController().getState();
+});
+
+handleTrustedIpc('download-update', async (_event, win) => {
+  if (win._docpilotWindowKind !== 'editor') throw new Error('업데이트는 작업 화면에서 내려받을 수 있습니다.');
+  return getUpdateController().download();
+});
+
+handleTrustedIpc('open-downloaded-update', async (_event, win) => {
+  if (win._docpilotWindowKind !== 'editor') throw new Error('업데이트는 작업 화면에서 열 수 있습니다.');
+  return getUpdateController().openDownloaded();
+});
+
 // ── Application menu ───────────────────────────────────
 function focusedEditorWindow() {
   const focused = BrowserWindow.getFocusedWindow();
@@ -971,25 +987,43 @@ function buildAppMenu() {
 
 // ── Version check ────────────────────────────────────────
 const GITHUB_REPO = 'dotoricode/docpilot';
+const GITHUB_LATEST_RELEASE_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
-function checkForUpdates(targetWin = focusedEditorWindow()) {
-  const req = net.request(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
-  req.on('response', res => {
-    let body = '';
-    res.on('data', chunk => { body += chunk; });
-    res.on('end', () => {
-      try {
-        const data = JSON.parse(body);
-        const latest = (data.tag_name || '').replace(/^v/, '');
-        const current = app.getVersion();
-        if (latest && latest !== current && targetWin && !targetWin.isDestroyed()) {
-          targetWin.webContents.send('update-available', { version: latest, url: data.html_url });
-        }
-      } catch {}
-    });
+function broadcastUpdateState(state) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed() && win._docpilotWindowKind === 'editor') {
+      win.webContents.send('update-state', state);
+    }
+  }
+}
+
+function getUpdateController() {
+  if (updateController) return updateController;
+  updateController = createUpdateController({
+    repository: GITHUB_REPO,
+    currentVersion: app.getVersion(),
+    arch: process.arch,
+    downloadsDirectory: () => app.getPath('downloads'),
+    fetchRelease: async () => {
+      const response = await net.fetch(GITHUB_LATEST_RELEASE_API, {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': `DocPilot/${app.getVersion()}`,
+        },
+      });
+      if (!response.ok) throw new Error(`업데이트 확인에 실패했습니다 (${response.status}).`);
+      return response.json();
+    },
+    fetchAsset: (url, options) => net.fetch(url, options),
+    openPath: filePath => shell.openPath(filePath),
+    onState: broadcastUpdateState,
   });
-  req.on('error', () => {});
-  req.end();
+  return updateController;
+}
+
+async function checkForUpdates() {
+  if (process.platform !== 'darwin') return;
+  await getUpdateController().check().catch(() => {});
 }
 
 // ── App lifecycle ────────────────────────────────────────
