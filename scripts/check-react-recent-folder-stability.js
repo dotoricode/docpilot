@@ -15,13 +15,14 @@ async function waitForReactEditorWindow(app) {
   throw new Error(`React editor window did not open. Windows: ${app.windows().map(win => win.url()).join(', ')}`);
 }
 
-async function openWorkspace(repoRoot, root, expectedFile, executablePath = '') {
+async function openWorkspace(repoRoot, root, expectedFile, userData, executablePath = '') {
   const app = await electron.launch({
     ...(executablePath ? { executablePath } : { args: ['.'] }),
     cwd: repoRoot,
     env: {
       ...process.env,
       DOCPILOT_FAKE_AGENT: '1',
+      DOCPILOT_USER_DATA_DIR: userData,
     },
   });
   const start = await app.firstWindow();
@@ -32,11 +33,15 @@ async function openWorkspace(repoRoot, root, expectedFile, executablePath = '') 
   }, root);
   const editor = await waitForReactEditorWindow(app);
   await editor.waitForSelector('.workspace-sidebar');
-  await editor.waitForSelector('.workspace-recent-list');
+  await editor.waitForSelector('.workspace-recent-list', { state: 'attached' });
   await editor.waitForSelector('.workspace-file-row');
   const primary = await editor.evaluate(async () => {
-    const port = new URLSearchParams(window.location.search).get('port') || '7474';
-    const response = await fetch(`http://localhost:${port}/file-path?id=${encodeURIComponent('workspace:primary')}`);
+    const params = new URLSearchParams(window.location.search);
+    const port = params.get('port') || '7474';
+    const token = params.get('token') || '';
+    const response = await fetch(`http://localhost:${port}/file-path?id=${encodeURIComponent('workspace:primary')}`, {
+      headers: token ? { 'X-DocPilot-Token': token } : {},
+    });
     return response.json();
   });
   if (primary.path !== root) {
@@ -54,16 +59,19 @@ async function main() {
   const executablePath = process.env.DOCPILOT_ELECTRON_EXECUTABLE || '';
   const rootA = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-recent-a-'));
   const rootB = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-recent-b-'));
+  const canonicalRootA = fs.realpathSync.native(rootA);
+  const canonicalRootB = fs.realpathSync.native(rootB);
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-recent-user-'));
   fs.writeFileSync(path.join(rootA, 'A.md'), '# Root A\n', 'utf8');
   fs.writeFileSync(path.join(rootB, 'B.md'), '# Root B\n', 'utf8');
 
   let app;
   let editor;
   try {
-    const priming = await openWorkspace(repoRoot, rootB, 'B.md', executablePath);
+    const priming = await openWorkspace(repoRoot, canonicalRootB, 'B.md', userData, executablePath);
     await priming.app.close().catch(() => {});
 
-    ({ app, editor } = await openWorkspace(repoRoot, rootA, 'A.md', executablePath));
+    ({ app, editor } = await openWorkspace(repoRoot, canonicalRootA, 'A.md', userData, executablePath));
     await editor.evaluate(() => {
       window.__docpilotRecentWindowMarker = 'same-window';
     });
@@ -79,13 +87,13 @@ async function main() {
       if (!(row instanceof HTMLElement)) return false;
       row.click();
       return true;
-    }, rootB);
+    }, canonicalRootB);
     if (!clicked) {
       const rows = await editor.locator('.workspace-recent-row').evaluateAll(nodes => nodes.map(node => ({
         title: node.getAttribute('title'),
         text: node.textContent,
       })));
-      throw new Error(`recent test row was not found for ${rootB}: ${JSON.stringify(rows)}`);
+      throw new Error(`recent test row was not found for ${canonicalRootB}: ${JSON.stringify(rows)}`);
     }
     await editor.waitForTimeout(800);
     if (closed || editor.isClosed()) {
@@ -99,10 +107,13 @@ async function main() {
 
     await editor.waitForSelector('.workspace-file-row');
     const state = await editor.evaluate(async () => {
-      const port = new URLSearchParams(window.location.search).get('port') || '7474';
+      const params = new URLSearchParams(window.location.search);
+      const port = params.get('port') || '7474';
+      const token = params.get('token') || '';
+      const headers = token ? { 'X-DocPilot-Token': token } : {};
       const [filesResponse, primaryResponse] = await Promise.all([
-        fetch(`http://localhost:${port}/files`).then(response => response.json()),
-        fetch(`http://localhost:${port}/file-path?id=${encodeURIComponent('workspace:primary')}`).then(response => response.json()),
+        fetch(`http://localhost:${port}/files`, { headers }).then(response => response.json()),
+        fetch(`http://localhost:${port}/file-path?id=${encodeURIComponent('workspace:primary')}`, { headers }).then(response => response.json()),
       ]);
       return { filesResponse, primaryResponse };
     });
@@ -111,25 +122,26 @@ async function main() {
       throw new Error(`recent folder should attach beside current workspace files, got: ${files.join(', ')}`);
     }
     const rootNames = await editor.locator('.workspace-root-row span').allInnerTexts();
-    if (!rootNames.includes(path.basename(rootB))) {
+    if (!rootNames.includes(path.basename(canonicalRootB))) {
       throw new Error(`recent folder should appear as an attached root, got: ${rootNames.join(', ')}`);
     }
 
     const primary = state.primaryResponse;
-    if (primary.path !== rootA) {
+    if (primary.path !== canonicalRootA) {
       throw new Error(`recent folder click should not replace primary workspace, got ${primary.path}`);
     }
 
     await editor.evaluate(([a, b]) => Promise.all([
       window.docpilot.removeRecent?.(a),
       window.docpilot.removeRecent?.(b),
-    ]), [rootA, rootB]);
+    ]), [canonicalRootA, canonicalRootB]);
 
     console.log(`${executablePath ? 'packaged ' : ''}react recent folder stability check passed`);
   } finally {
     if (app) await app.close().catch(() => {});
     fs.rmSync(rootA, { recursive: true, force: true });
     fs.rmSync(rootB, { recursive: true, force: true });
+    fs.rmSync(userData, { recursive: true, force: true });
   }
 }
 

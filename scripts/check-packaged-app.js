@@ -10,8 +10,13 @@ const asar = require('@electron/asar');
 const root = path.resolve(__dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const packageOutput = path.join(root, pkg.build.directories.output);
-const dmgPath = path.join(packageOutput, `DocPilot-${pkg.version}.dmg`);
-const appPath = path.join(packageOutput, 'mac', 'DocPilot.app');
+const packagedArchitectures = [
+  { arch: 'x64', fileArch: 'x86_64', dir: 'mac' },
+  { arch: 'arm64', fileArch: 'arm64', dir: 'mac-arm64' },
+];
+const hostArchitecture = process.arch === 'arm64' ? 'arm64' : 'x64';
+const hostPackage = packagedArchitectures.find(item => item.arch === hostArchitecture);
+const appPath = path.join(packageOutput, hostPackage.dir, 'DocPilot.app');
 const plistPath = path.join(appPath, 'Contents', 'Info.plist');
 const asarPath = path.join(appPath, 'Contents', 'Resources', 'app.asar');
 const ptyPath = path.join(
@@ -83,10 +88,11 @@ function fetchPing(port) {
 
 async function assertPackagedBridgeStarts() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-packaged-bridge-'));
+  const canonicalRoot = fs.realpathSync.native(root);
   const port = await freePort();
   let output = '';
   const child = spawn(process.execPath, [unpackedBridgePath, '--root', root], {
-    env: { ...process.env, DOCPILOT_BRIDGE_PORT: String(port) },
+    env: { ...process.env, DOCPILOT_BRIDGE_PORT: String(port), DOCPILOT_ALLOW_UNAUTHENTICATED: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout.on('data', chunk => { output += chunk.toString(); });
@@ -96,7 +102,7 @@ async function assertPackagedBridgeStarts() {
     while (Date.now() < deadline) {
       if (child.exitCode != null) break;
       const ping = await fetchPing(port);
-      if (ping?.ok && ping.root === root) return;
+      if (ping?.ok && ping.root === canonicalRoot) return;
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     assert.fail(`packaged bridge did not start:\n${output}`);
@@ -107,12 +113,29 @@ async function assertPackagedBridgeStarts() {
 }
 
 (async () => {
-  assert(fs.existsSync(dmgPath), `DMG missing: ${dmgPath}`);
-  assert(fs.statSync(dmgPath).size > 50 * 1024 * 1024, 'DMG looks too small to contain the Electron app');
-  assert(fs.existsSync(appPath), `packaged app missing: ${appPath}`);
-  execFileSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath], {
-    stdio: 'inherit',
-  });
+  for (const target of packagedArchitectures) {
+    const targetAppPath = path.join(packageOutput, target.dir, 'DocPilot.app');
+    const targetDmgPath = path.join(packageOutput, `DocPilot-${pkg.version}-${target.arch}.dmg`);
+    const targetPtyPath = path.join(
+      targetAppPath,
+      'Contents',
+      'Resources',
+      'app.asar.unpacked',
+      'node_modules',
+      'node-pty',
+      'build',
+      'Release',
+      'pty.node',
+    );
+    assert(fs.existsSync(targetDmgPath), `DMG missing: ${targetDmgPath}`);
+    assert(fs.statSync(targetDmgPath).size > 50 * 1024 * 1024, `${target.arch} DMG looks too small to contain the Electron app`);
+    assert(fs.existsSync(targetAppPath), `packaged app missing: ${targetAppPath}`);
+    assert.match(execFileSync('file', [path.join(targetAppPath, 'Contents', 'MacOS', 'DocPilot')], { encoding: 'utf8' }), new RegExp(`\\b${target.fileArch}\\b`));
+    assert.match(execFileSync('file', [targetPtyPath], { encoding: 'utf8' }), new RegExp(`\\b${target.fileArch}\\b`));
+    execFileSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', targetAppPath], {
+      stdio: 'inherit',
+    });
+  }
   assert(fs.existsSync(asarPath), `app.asar missing: ${asarPath}`);
   assert(fs.existsSync(ptyPath), `node-pty native module missing: ${ptyPath}`);
   assert(fs.existsSync(unpackedBridgePath), `unpacked bridge missing: ${unpackedBridgePath}`);

@@ -16,7 +16,6 @@
   "/docs/editing/preview",
   "/docs/review/diff",
   "/docs/review/context-copy",
-  "/docs/review/instructions",
   "/docs/terminal/overview",
   "/docs/terminal/layout",
   "/docs/settings/appearance",
@@ -25,6 +24,8 @@
   "/docs/reference/shortcuts",
   "/docs/troubleshooting",
   "/changelog",
+  "/changelog/2.0.2",
+  "/changelog/2.0.1",
   "/changelog/2.0.0",
   "/changelog/1.0.28",
   "/changelog/1.0.27"

@@ -107,9 +107,47 @@ function changedBlocksComparable(oldBlock, newBlock) {
   return textSimilarity(oldBlock, newBlock) >= 0.25;
 }
 
+const MAX_LCS_MATRIX_CELLS = 750000;
+
+function boundedFallbackRows(oldItems, newItems) {
+  let prefix = 0;
+  while (prefix < oldItems.length && prefix < newItems.length && oldItems[prefix] === newItems[prefix]) prefix++;
+
+  let suffix = 0;
+  while (
+    suffix + prefix < oldItems.length
+    && suffix + prefix < newItems.length
+    && oldItems[oldItems.length - 1 - suffix] === newItems[newItems.length - 1 - suffix]
+  ) suffix++;
+
+  const rows = [];
+  for (let index = 0; index < prefix; index++) {
+    rows.push({ type: 'same', oldBlock: oldItems[index], newBlock: newItems[index] });
+  }
+  for (let index = prefix; index < oldItems.length - suffix; index++) {
+    rows.push({ type: 'del', oldBlock: oldItems[index], newBlock: '' });
+  }
+  for (let index = prefix; index < newItems.length - suffix; index++) {
+    rows.push({ type: 'add', oldBlock: '', newBlock: newItems[index] });
+  }
+  for (let index = suffix; index > 0; index--) {
+    const oldIndex = oldItems.length - index;
+    const newIndex = newItems.length - index;
+    rows.push({ type: 'same', oldBlock: oldItems[oldIndex], newBlock: newItems[newIndex] });
+  }
+  return markDiffGroups(rows);
+}
+
 function sequenceDiffRows(oldItems, newItems) {
   const n = oldItems.length;
   const m = newItems.length;
+  // The exact LCS table is quadratic. On long list/table documents it can
+  // allocate hundreds of MB on the renderer thread, so retain exact matching
+  // for normal documents and degrade to a bounded prefix/suffix diff for large
+  // comparisons. The fallback is intentionally coarse but never loses text.
+  if ((n + 1) * (m + 1) > MAX_LCS_MATRIX_CELLS) {
+    return boundedFallbackRows(oldItems, newItems);
+  }
   const dp = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
@@ -161,5 +199,7 @@ module.exports = {
   changedBlocksComparable,
   sequenceDiffRows,
   pairChangedPreviewRows,
+  boundedFallbackRows,
+  MAX_LCS_MATRIX_CELLS,
   markdownBlockDiffRows,
 };

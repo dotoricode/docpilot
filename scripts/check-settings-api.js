@@ -57,6 +57,8 @@ function waitForBridge(proc) {
 async function main() {
   const repoRoot = path.resolve(__dirname, '..');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-settings-'));
+  const canonicalRoot = fs.realpathSync.native(root);
+  const stateDir = path.join(root, '.test-docpilot-state');
   fs.writeFileSync(path.join(root, 'README.md'), '# Root\n', 'utf8');
   fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
   fs.writeFileSync(path.join(root, 'dist', 'ignored.md'), '# Ignore\n', 'utf8');
@@ -66,6 +68,8 @@ async function main() {
     env: {
       ...process.env,
       DOCPILOT_BRIDGE_PORT: String(port),
+      DOCPILOT_ALLOW_UNAUTHENTICATED: '1',
+      DOCPILOT_STATE_DIR: stateDir,
       DOCPILOT_FAKE_AGENT: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -77,7 +81,7 @@ async function main() {
     assert.strictEqual(initial.settings.theme, 'system');
     assert.strictEqual(initial.settings.agentCommandMode, 'auto');
     assert.strictEqual(initial.settings.claudeCommand, 'claude');
-    assert.deepStrictEqual(initial.settings.recentWorkspaces, [root]);
+    assert.deepStrictEqual(initial.settings.recentWorkspaces, [canonicalRoot]);
 
     const saved = await requestJson(port, 'POST', '/settings', {
       settings: {
@@ -105,10 +109,10 @@ async function main() {
     assert(!files.files.includes('dist/ignored.md'), 'fileWatcherIgnore should exclude matching markdown files');
 
     const diagnostics = await requestJson(port, 'GET', '/diagnostics');
-    assert.strictEqual(diagnostics.diagnostics.root, root);
-    assert.strictEqual(diagnostics.diagnostics.docpilotDir, path.join(root, '.docpilot'));
-    assert.strictEqual(diagnostics.diagnostics.settingsFile, path.join(root, '.docpilot', 'settings.json'));
-    assert.strictEqual(diagnostics.diagnostics.sessionLogsDir, path.join(root, '.docpilot', 'session-logs'));
+    assert.strictEqual(diagnostics.diagnostics.root, canonicalRoot);
+    assert.strictEqual(diagnostics.diagnostics.docpilotDir, stateDir);
+    assert.strictEqual(diagnostics.diagnostics.settingsFile, path.join(stateDir, 'settings.json'));
+    assert.strictEqual(diagnostics.diagnostics.sessionLogsDir, path.join(stateDir, 'session-logs'));
     assert.strictEqual(typeof diagnostics.diagnostics.sessionLogCount, 'number');
     assert.strictEqual(typeof diagnostics.diagnostics.bridgePid, 'number');
 
@@ -120,7 +124,7 @@ async function main() {
     assert.strictEqual(runtime.runtime.commandMode, 'custom');
     assert.strictEqual(runtime.runtime.claudeCommand, '/opt/bin/claude');
 
-    const persisted = JSON.parse(fs.readFileSync(path.join(root, '.docpilot', 'settings.json'), 'utf8'));
+    const persisted = JSON.parse(fs.readFileSync(path.join(stateDir, 'settings.json'), 'utf8'));
     assert.strictEqual(persisted.claudeCommand, '/opt/bin/claude');
     console.log('settings api check passed');
   } finally {

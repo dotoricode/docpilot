@@ -4,19 +4,26 @@
 
 | Version | State | Public date / tag date | Commit / tag | Rule |
 | --- | --- | --- | --- | --- |
-| 2.0.1 | Release candidate | Planned public date: 2026-07-16 | Fix implementation `81374c537150966e8f8bfa0da958f40b2350284f`; intended tag `v2.0.1` | Merge through a reviewed PR, tag the squash commit, publish the GitHub Release, then deploy the final manual. |
+| 2.0.2 | Release candidate | Planned public date: 2026-07-18 | Hardening implementation `d67997fc86b69d04781afc88749cfef3b3388d22`; intended tag `v2.0.2` | Merge PR #24, tag the merged commit, publish both architecture DMGs, then verify the final manual. |
+| 2.0.1 | Released | Published and tagged 2026-07-16 | `v2.0.1` → `8d037bd0c7a1d6ef5d7c825827458d89558f0074` | Retained as the verified preview and launch behavior baseline. |
 | 2.0.0 | Released | Published and tagged 2026-07-15 | `v2.0.0` → `1482adf8099306b791f9ed25fe61632ae7d2457a` | Retained as the verified v2 feature baseline. |
 | 1.0.28 | Released | Published 2026-07-10; release record and tag 2026-07-13 | Release target `315b5be`; `v1.0.28` → `b7dca9c2f0ed8d5b111eebfb3e1723a83d1d9f61` | Public date, release-record creation, implementation target, and final tag are recorded separately. |
 | 1.0.27 | Released baseline | Published and tagged 2026-07-08 | `v1.0.27` → `461ab0aa84fbd6c811ca3eafb3b415d1ab3805cb` | No earlier repository tag exists, so unsupported feature reconstruction is omitted. |
 
-## 2.0.1 — 2026-07-16
+## 2.0.2 — 2026-07-18
 
 | Fix | Bounded claim | Implementation | Verification |
 | --- | --- | --- | --- |
-| Preview typography | Markdown and AsciiDoc heading scales, weights, and bundled Korean font render consistently. | `EditorPane.tsx`, `styles.css`, `workbench-final.css` | `check-react-ui-regressions.js` |
-| Preview overflow | AsciiDoc NOTE content and long line ranges do not wrap into overlapping labels or escape the document. | `styles.css`, `workbench-final.css` | `check-react-ui-regressions.js` |
-| Preview controls | Line numbers default off with a visible toolbar switch, and the width boundary remains discoverable without hover. | `EditorPane.tsx`, `workbench-final.css` | UI regression and width-drag checks |
-| Launch defaults | Fresh installs follow the system theme, start near maximum reading width, and expose terminal reopening after close. | `main.js`, `bridge.js`, `App.tsx` | UI regression and settings checks |
+| Shutdown lifecycle | Owned bridges, streams, watchers, workers, terminals, and agent children stop without accepting late resources. | `main.js`, `bridge.js`, `adoc-worker.js` | shutdown lifecycle check |
+| Workspace security | Authentication, origin policy, canonical paths, symlink and request limits fail closed. | `bridge.js`, `workspace-file.js` | bridge and workspace security tests |
+| Save integrity | Concurrent saves, split views, external conflicts, and trash failures preserve drafts and originals. | `file-buffer.js`, `workspace-file.js`, `recoverable-trash.js` | unit regressions and conflict E2E |
+| Multi-architecture package | Separate x64 and arm64 DMGs contain matching app and native PTY binaries. | `package.json`, `check-packaged-app.js` | package check and packaged Electron smoke |
+
+## 2.0.1 — 2026-07-16
+
+- Corrected Markdown and AsciiDoc preview typography and overflow.
+- Exposed preview width and line-number controls.
+- Followed the macOS system theme on first launch and restored terminal reopening.
 
 ## 2.0.0 — 2026-07-15
 

@@ -97,15 +97,41 @@ function collectTerminalEvents(port, sessionId, stopWhen) {
   });
 }
 
+function processGroupExists(pid) {
+  if (process.platform === 'win32') return false;
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForProcessGroupGone(pid, deadline = Date.now() + 2500) {
+  if (process.platform === 'win32') return;
+  while (Date.now() < deadline) {
+    if (!processGroupExists(pid)) return;
+    await new Promise(resolve => setTimeout(resolve, 40));
+  }
+  throw new Error(`terminal process group ${pid} survived session close`);
+}
+
 (async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-terminal-'));
+  const terminalPidFile = path.join(workspace, '.terminal-pid');
+  const terminalChildPidFile = path.join(workspace, '.terminal-child-pid');
   const port = await freePort();
+  let terminalPid = null;
+  let terminalChildPid = null;
   const proc = spawn(process.execPath, [path.join(repoRoot, 'bridge.js'), '--root', workspace], {
     cwd: repoRoot,
     env: {
       ...process.env,
       DOCPILOT_BRIDGE_PORT: String(port),
+      DOCPILOT_ALLOW_UNAUTHENTICATED: '1',
       DOCPILOT_FAKE_AGENT: '1',
+      DOCPILOT_FAKE_TERMINAL_PID_FILE: terminalPidFile,
+      DOCPILOT_FAKE_TERMINAL_CHILD_PID_FILE: terminalChildPidFile,
     },
     stdio: ['ignore', 'ignore', 'pipe'],
   });
@@ -119,6 +145,14 @@ function collectTerminalEvents(port, sessionId, stopWhen) {
     assert(created.session.shell, 'terminal should expose its login shell');
     assert.strictEqual(created.session.status, 'running');
     assert.strictEqual(created.session.mode, 'fake-interactive');
+    const pidDeadline = Date.now() + 1500;
+    while ((!fs.existsSync(terminalPidFile) || !fs.existsSync(terminalChildPidFile)) && Date.now() < pidDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    terminalPid = Number(fs.readFileSync(terminalPidFile, 'utf8'));
+    terminalChildPid = Number(fs.readFileSync(terminalChildPidFile, 'utf8'));
+    assert(Number.isInteger(terminalPid) && terminalPid > 0, 'terminal PID missing');
+    assert(Number.isInteger(terminalChildPid) && terminalChildPid > 0, 'terminal child PID missing');
     await requestJson(port, 'POST', `/terminal-sessions/${encodeURIComponent(created.session.id)}/resize`, { cols: 90, rows: 24 });
 
     const eventsPromise = collectTerminalEvents(port, created.session.id, events =>
@@ -134,12 +168,20 @@ function collectTerminalEvents(port, sessionId, stopWhen) {
     const listed = await requestJson(port, 'GET', '/terminal-sessions');
     assert(listed.sessions.some(session => session.id === created.session.id), 'terminal session should be listed');
     const runtime = await requestJson(port, 'GET', '/agent-runtime');
-    assert.strictEqual(runtime.runtime.ptyAvailable, true, 'node-pty should be available after dependency installation');
-    assert.strictEqual(runtime.runtime.executionMode, 'node-pty');
+    assert.strictEqual(typeof runtime.runtime.ptyAvailable, 'boolean');
+    assert.strictEqual(
+      runtime.runtime.executionMode,
+      runtime.runtime.ptyAvailable ? 'node-pty' : 'stream',
+      'runtime mode must reflect whether the native node-pty binding can actually load',
+    );
     const stopped = await requestJson(port, 'DELETE', `/terminal-sessions/${encodeURIComponent(created.session.id)}`);
     assert.strictEqual(stopped.ok, true);
+    await waitForProcessGroupGone(terminalPid);
   } finally {
     proc.kill();
+    if (process.platform !== 'win32' && Number.isInteger(terminalPid) && terminalPid > 0) {
+      try { process.kill(-terminalPid, 'SIGKILL'); } catch {}
+    }
     fs.rmSync(workspace, { recursive: true, force: true });
   }
   if (stderr.trim()) process.stderr.write(stderr);

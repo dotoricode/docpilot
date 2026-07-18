@@ -35,7 +35,8 @@ import yaml from 'highlight.js/lib/languages/yaml';
 import { DotsThreeVertical } from '@phosphor-icons/react';
 import { markdownBlockDiffRows, markdownPreviewBlocks } from '../../../../shared/core/markdown-block-diff';
 import { markdownRichSafety } from '../../../../shared/core/document-adapters';
-import { bridgeBaseUrl, convertAsciidoc, copyText, readWorkspaceFileBase } from '../../shared/bridge-client';
+import { convertAsciidoc, copyText, readWorkspaceFileBase, workspaceAssetUrl } from '../../shared/bridge-client';
+import { sanitizeRenderedDocumentHtml } from '../../shared/sanitize-rendered-html';
 import { copyTextWithActiveInstructions } from '../../shared/copy-with-instructions';
 import { formatContextLocation } from '../../shared/context-format';
 import { RichMarkdownEditor } from './RichMarkdownEditor';
@@ -66,6 +67,8 @@ type EditorPaneProps = {
   onClearContextChips: () => void;
   onChange: (content: string) => void;
   onSave: () => void;
+  onReloadConflict: () => void;
+  onOverwriteConflict: () => void;
   onCloseSecondary: (activePane?: 'primary' | 'secondary') => void;
   onOpenCurrentInSplit: () => void;
   onActivePreviewPaneChange: (pane: 'primary' | 'secondary') => void;
@@ -159,6 +162,17 @@ const emptyDocument = `# DocPilot
 왼쪽에서 Markdown 파일을 선택하세요.
 `;
 
+function conflictStateLabel(state: string) {
+  switch (state) {
+    case 'agent-change': return '에이전트 변경';
+    case 'external-change': return '외부 변경';
+    case 'agent-conflict': return '에이전트 변경 충돌';
+    case 'external-conflict': return '외부 변경 충돌';
+    case 'dirty-conflict': return '저장 충돌';
+    default: return state;
+  }
+}
+
 const PREVIEW_WIDTH_MIN = 480;
 const PREVIEW_WIDTH_MAX = 2400;
 const PREVIEW_WIDTH_STEP = 20;
@@ -201,6 +215,10 @@ const ASCIIDOC_PREVIEW_PENDING_HTML = `
 const ASCIIDOC_PREVIEW_ERROR_HTML = '<p class="docpilot-preview-error">AsciiDoc 렌더링 중 오류가 발생했습니다.</p>';
 const ASCIIDOC_RENDER_CACHE_LIMIT = 8;
 const asciidocRenderCache = new Map<string, string>();
+
+function isAsciidocBackpressureError(error: unknown) {
+  return error instanceof Error && /HTTP 429\b/.test(error.message);
+}
 
 function asciidocPreviewCacheKey(filePath: string, source: string) {
   return `${filePath}:${source.length}:${fastHashString(source)}`;
@@ -249,7 +267,7 @@ function resolveWorkspaceAssetSrc(rawSrc: string, docId: string) {
   if (/^(https?:|data:|\/\/)/i.test(rawSrc)) return rawSrc;
   const docDir = docId.includes('/') ? docId.slice(0, docId.lastIndexOf('/')) : '';
   const resolved = normalizeRelativePath(docDir ? `${docDir}/${rawSrc}` : rawSrc);
-  return `${bridgeBaseUrl()}/workspace-asset?id=${encodeURIComponent(resolved)}`;
+  return workspaceAssetUrl(resolved);
 }
 
 const defaultImageRule = markdownRenderer.renderer.rules.image
@@ -425,6 +443,8 @@ export function EditorPane({
   onClearContextChips,
   onChange,
   onSave,
+  onReloadConflict,
+  onOverwriteConflict,
   onCloseSecondary,
   onOpenCurrentInSplit,
   onActivePreviewPaneChange,
@@ -521,16 +541,30 @@ export function EditorPane({
       return;
     }
     let cancelled = false;
-    convertAsciidoc(previewSource, buffer.path)
-      .then(result => {
-        setCachedAsciidocHtml(key, result.html);
-        if (!cancelled) setAsciidocResult({ key, html: result.html });
-      })
-      .catch(error => {
-        console.error('AsciiDoc render failed', error);
-        if (!cancelled) setAsciidocResult({ key, html: ASCIIDOC_PREVIEW_ERROR_HTML });
-      });
-    return () => { cancelled = true; };
+    let retryTimer = 0;
+    const render = () => {
+      convertAsciidoc(previewSource, buffer.path)
+        .then(result => {
+          const html = sanitizeRenderedDocumentHtml(result.html);
+          setCachedAsciidocHtml(key, html);
+          if (!cancelled) setAsciidocResult({ key, html });
+        })
+        .catch(error => {
+          if (cancelled) return;
+          if (isAsciidocBackpressureError(error)) {
+            retryTimer = window.setTimeout(render, 250);
+            return;
+          }
+          console.error('AsciiDoc render failed', error);
+          setAsciidocResult({ key, html: ASCIIDOC_PREVIEW_ERROR_HTML });
+        });
+    };
+    const timer = window.setTimeout(render, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      window.clearTimeout(retryTimer);
+    };
   }, [primaryIsAsciidoc, buffer.path, previewSource, asciidocResult]);
 
   useEffect(() => {
@@ -543,16 +577,30 @@ export function EditorPane({
       return;
     }
     let cancelled = false;
-    convertAsciidoc(secondaryPreviewSource, secondaryBuffer?.path || '')
-      .then(result => {
-        setCachedAsciidocHtml(key, result.html);
-        if (!cancelled) setSecondaryAsciidocResult({ key, html: result.html });
-      })
-      .catch(error => {
-        console.error('AsciiDoc render failed', error);
-        if (!cancelled) setSecondaryAsciidocResult({ key, html: ASCIIDOC_PREVIEW_ERROR_HTML });
-      });
-    return () => { cancelled = true; };
+    let retryTimer = 0;
+    const render = () => {
+      convertAsciidoc(secondaryPreviewSource, secondaryBuffer?.path || '')
+        .then(result => {
+          const html = sanitizeRenderedDocumentHtml(result.html);
+          setCachedAsciidocHtml(key, html);
+          if (!cancelled) setSecondaryAsciidocResult({ key, html });
+        })
+        .catch(error => {
+          if (cancelled) return;
+          if (isAsciidocBackpressureError(error)) {
+            retryTimer = window.setTimeout(render, 250);
+            return;
+          }
+          console.error('AsciiDoc render failed', error);
+          setSecondaryAsciidocResult({ key, html: ASCIIDOC_PREVIEW_ERROR_HTML });
+        });
+    };
+    const timer = window.setTimeout(render, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      window.clearTimeout(retryTimer);
+    };
   }, [secondaryIsAsciidoc, secondaryBuffer?.path, secondaryPreviewSource, secondaryAsciidocResult]);
 
   const previewHtml = useMemo(() => {
@@ -1584,7 +1632,7 @@ export function EditorPane({
         <span>{buffer.path || 'Editor'}</span>
         <span>{markdownPreviewBlocks(visibleContent).length} blocks</span>
         {buffer.dirtyByUser ? <span className="dirty-pill">수정됨</span> : null}
-        {buffer.conflictState !== 'clean' ? <span className="conflict-pill">{buffer.conflictState}</span> : null}
+        {buffer.conflictState !== 'clean' ? <span className="conflict-pill">{conflictStateLabel(buffer.conflictState)}</span> : null}
         {canPreviewBody ? (
           <div className="editor-mode-toggle" aria-label="본문 모드">
             <button className={mode === 'edit' ? 'active' : ''} type="button" onClick={() => switchBodyMode('edit')}>Source</button>
@@ -1707,6 +1755,15 @@ export function EditorPane({
         </button>
       </div>
       {error ? <div className="editor-error">{error}</div> : null}
+      {buffer.conflictState.includes('conflict') ? (
+        <div className="editor-conflict-bar" role="alert">
+          <span>디스크의 변경과 현재 편집 내용이 충돌합니다. 내용을 확인한 뒤 어느 버전을 유지할지 선택하세요.</span>
+          <div>
+            <button type="button" onClick={onReloadConflict}>디스크 버전 사용</button>
+            <button type="button" onClick={onOverwriteConflict} disabled={saving}>내 버전으로 덮어쓰기</button>
+          </div>
+        </div>
+      ) : null}
       <div className={`editor-workspace ${mode} ${diffOn ? 'diffing' : ''}`}>
         <div className="editor-host" ref={hostRef} />
         {mode === 'rich' ? (
@@ -3685,6 +3742,38 @@ function lineDiffRows(oldText: string, newText: string): LineDiffRow[] {
   const newLines = String(newText || '').split('\n');
   const n = oldLines.length;
   const m = newLines.length;
+  if ((n + 1) * (m + 1) > 750_000) {
+    let prefix = 0;
+    while (prefix < n && prefix < m && oldLines[prefix] === newLines[prefix]) prefix += 1;
+    let suffix = 0;
+    while (
+      suffix < n - prefix
+      && suffix < m - prefix
+      && oldLines[n - 1 - suffix] === newLines[m - 1 - suffix]
+    ) suffix += 1;
+    const rows: LineDiffRow[] = [];
+    for (let index = 0; index < prefix; index += 1) {
+      rows.push({ type: 'same', oldNo: index + 1, newNo: index + 1, oldText: oldLines[index], newText: newLines[index] });
+    }
+    for (let index = prefix; index < n - suffix; index += 1) {
+      rows.push({ type: 'del', oldNo: index + 1, oldText: oldLines[index] });
+    }
+    for (let index = prefix; index < m - suffix; index += 1) {
+      rows.push({ type: 'add', newNo: index + 1, newText: newLines[index] });
+    }
+    for (let offset = suffix; offset > 0; offset -= 1) {
+      const oldIndex = n - offset;
+      const newIndex = m - offset;
+      rows.push({
+        type: 'same',
+        oldNo: oldIndex + 1,
+        newNo: newIndex + 1,
+        oldText: oldLines[oldIndex],
+        newText: newLines[newIndex],
+      });
+    }
+    return rows;
+  }
   const dp = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
   for (let i = n - 1; i >= 0; i -= 1) {
     for (let j = m - 1; j >= 0; j -= 1) {

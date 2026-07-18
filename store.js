@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+const { writeJsonAtomic } = require('./shared/core/atomic-file');
 
 class Store {
   constructor() {
@@ -11,7 +12,7 @@ class Store {
   get(key) { return this.data[key]; }
   set(key, value) {
     this.data[key] = value;
-    fs.writeFileSync(this.path, JSON.stringify(this.data, null, 2));
+    writeJsonAtomic(this.path, this.data);
   }
 }
 

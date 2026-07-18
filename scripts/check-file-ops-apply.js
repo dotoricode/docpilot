@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 const repoRoot = path.resolve(__dirname, '..');
 const bridgePath = path.join(repoRoot, 'bridge.js');
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-file-ops-'));
+const stateDir = path.join(tempRoot, '.test-docpilot-state');
 const port = 19000 + Math.floor(Math.random() * 1000);
 
 function assert(condition, message) {
@@ -38,7 +39,12 @@ async function main() {
 
   const child = spawn(process.execPath, [bridgePath, '--root', tempRoot], {
     cwd: repoRoot,
-    env: { ...process.env, DOCPILOT_BRIDGE_PORT: String(port) },
+    env: {
+      ...process.env,
+      DOCPILOT_BRIDGE_PORT: String(port),
+      DOCPILOT_ALLOW_UNAUTHENTICATED: '1',
+      DOCPILOT_STATE_DIR: stateDir,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
@@ -67,8 +73,8 @@ async function main() {
     assert(fs.existsSync(path.join(tempRoot, 'keep.md')), 'keep.md should remain');
     assert(!fs.existsSync(path.join(tempRoot, 'remove.md')), 'remove.md should move away');
     assert(!fs.existsSync(path.join(tempRoot, 'docs/adr')), 'docs/adr should move away');
-    assert(fs.existsSync(path.join(tempRoot, data.trashRoot, 'remove.md')), 'remove.md should be in trash');
-    assert(fs.existsSync(path.join(tempRoot, data.trashRoot, 'docs/adr/ADR-1.md')), 'adr file should be in trash');
+    assert(fs.existsSync(path.join(stateDir, data.trashRoot, 'remove.md')), 'remove.md should be in trash');
+    assert(fs.existsSync(path.join(stateDir, data.trashRoot, 'docs/adr/ADR-1.md')), 'adr file should be in trash');
 
     console.log('file-ops apply check passed');
   } finally {

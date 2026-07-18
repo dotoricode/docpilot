@@ -160,6 +160,19 @@ kbd { border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; bac
 
 .dialog-backdrop, .mobile-backdrop { position: fixed; z-index: 80; inset: 0; display: grid; place-items: start center; padding-top: 12vh; background: var(--overlay); backdrop-filter: blur(4px); }
 .search-dialog { width: min(610px, calc(100vw - 32px)); overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--popover); color: var(--popover-foreground); box-shadow: 0 22px 70px #0005; }
+.download-dialog { width: min(520px, calc(100vw - 32px)); overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--popover); color: var(--popover-foreground); box-shadow: 0 22px 70px #0005; }
+.download-dialog > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; border-bottom: 1px solid var(--border); padding: 22px 22px 18px; }
+.download-dialog > header small { color: var(--muted-foreground); font: 11px 'JetBrains Mono', monospace; }
+.download-dialog > header h2 { margin: 5px 0 0; font-family: 'Space Grotesk Variable', 'Noto Sans KR Variable', sans-serif; font-size: 22px; font-weight: 590; }
+.download-dialog > header button { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--muted-foreground); cursor: pointer; }
+.download-dialog > header button:hover { background: var(--accent); color: var(--accent-foreground); }
+.download-options { display: grid; gap: 8px; padding: 14px; }
+.download-options > button { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 13px; border: 1px solid var(--border); border-radius: 9px; padding: 14px 15px; background: var(--card); color: var(--card-foreground); cursor: pointer; text-align: left; }
+.download-options > button:hover { border-color: var(--ring); background: var(--accent); }
+.download-options span { display: flex; flex-direction: column; gap: 3px; }
+.download-options strong { font-size: 14px; font-weight: 600; }
+.download-options small { color: var(--muted-foreground); font-size: 11px; }
+.download-dialog > p { margin: 0; border-top: 1px solid var(--border); padding: 12px 22px 15px; color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
 .search-row { height: 58px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); padding: 0 16px; }
 .search-row input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: inherit; font-size: 15px; }
 .search-results { max-height: 430px; overflow: auto; padding: 8px; }

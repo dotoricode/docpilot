@@ -98,7 +98,7 @@ async function waitForPing(port, deadline = Date.now() + 8000) {
   const port = await freePort();
   const proc = spawn(process.execPath, [path.join(repoRoot, 'bridge.js'), '--root', workspace], {
     cwd: repoRoot,
-    env: { ...process.env, DOCPILOT_BRIDGE_PORT: String(port) },
+    env: { ...process.env, DOCPILOT_BRIDGE_PORT: String(port), DOCPILOT_ALLOW_UNAUTHENTICATED: '1' },
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   let stderr = '';

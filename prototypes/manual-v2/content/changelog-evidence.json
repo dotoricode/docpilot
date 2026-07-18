@@ -1,37 +1,37 @@
 {
-  "generatedAt": "2026-07-16",
+  "generatedAt": "2026-07-18",
   "current": {
-    "version": "2.0.1",
+    "version": "2.0.2",
     "state": "release",
-    "tag": "v2.0.1",
-    "implementationCommit": "81374c537150966e8f8bfa0da958f40b2350284f",
-    "implementationDate": "2026-07-16",
-    "note": "Release source is prepared through a reviewed PR; public deployment is gated on the v2.0.1 tag and GitHub Release."
+    "tag": "v2.0.2",
+    "implementationCommit": "d67997fc86b69d04781afc88749cfef3b3388d22",
+    "implementationDate": "2026-07-18",
+    "note": "Release source is prepared through PR #24; public deployment is gated on the v2.0.2 tag and GitHub Release."
   },
   "fixes": [
     {
-      "id": "preview-typography",
-      "claim": "Markdown and AsciiDoc previews use a consistent heading scale and bundled Korean variable font.",
-      "implementation": ["app/src/features/editor/EditorPane.tsx", "app/src/styles.css", "app/src/workbench-final.css"],
-      "verification": ["scripts/check-react-ui-regressions.js"]
+      "id": "shutdown-lifecycle",
+      "claim": "Application shutdown closes owned bridges, streams, watchers, workers, terminals, and agent child processes without accepting late resources.",
+      "implementation": ["main.js", "bridge.js", "adoc-worker.js"],
+      "verification": ["scripts/check-shutdown-lifecycle.js"]
     },
     {
-      "id": "preview-overflow",
-      "claim": "AsciiDoc admonitions and long source-line ranges stay inside their intended preview layout.",
-      "implementation": ["app/src/styles.css", "app/src/workbench-final.css"],
-      "verification": ["scripts/check-react-ui-regressions.js"]
+      "id": "workspace-security",
+      "claim": "Bridge authentication, origin policy, canonical path checks, and request limits fail closed at workspace boundaries.",
+      "implementation": ["bridge.js", "shared/core/workspace-file.js"],
+      "verification": ["tests/bridge-integration-security.test.js", "tests/bridge-security.test.js", "tests/workspace-file.test.js"]
     },
     {
-      "id": "preview-controls",
-      "claim": "Line numbers default off with a visible toolbar control, while the reading-width boundary remains discoverable without hover.",
-      "implementation": ["app/src/features/editor/EditorPane.tsx", "app/src/workbench-final.css"],
-      "verification": ["scripts/check-react-ui-regressions.js", "scripts/check-react-preview-width-drag.js"]
+      "id": "save-integrity",
+      "claim": "Concurrent saves, split views, external conflicts, and recoverable-trash failures preserve user drafts and original files.",
+      "implementation": ["shared/core/file-buffer.js", "shared/core/workspace-file.js", "shared/core/recoverable-trash.js"],
+      "verification": ["tests/file-buffer.test.js", "tests/workspace-file.test.js", "tests/recoverable-trash.test.js", "scripts/check-react-external-conflict.js"]
     },
     {
-      "id": "launch-defaults",
-      "claim": "Fresh installs follow the system theme, use a near-maximum reading width, and expose a terminal reopen action after the terminal closes.",
-      "implementation": ["main.js", "bridge.js", "app/src/screens/App.tsx"],
-      "verification": ["scripts/check-react-ui-regressions.js", "scripts/check-settings-api.js"]
+      "id": "multiarch-packaging",
+      "claim": "Release builds produce distinct x64 and arm64 DMGs whose app and native PTY binaries match the declared architecture.",
+      "implementation": ["package.json", "scripts/check-packaged-app.js"],
+      "verification": ["scripts/check-packaged-app.js", "scripts/check-react-recent-folder-stability.js"]
     }
   ],
   "features": [
@@ -140,6 +140,25 @@
     }
   ],
   "history": [
+    {
+      "version": "2.0.1",
+      "tag": "v2.0.1",
+      "date": "2026-07-16",
+      "releasePublishedAt": "2026-07-16T04:14:41Z",
+      "releaseCreatedAt": "2026-07-16T04:14:03Z",
+      "releaseTarget": "8d037bd0c7a1d6ef5d7c825827458d89558f0074",
+      "tagDate": "2026-07-16",
+      "commit": "8d037bd0c7a1d6ef5d7c825827458d89558f0074",
+      "baselineOnly": false,
+      "claims": [
+        {
+          "title": "Preview and launch corrections",
+          "claim": "Aligned Markdown and AsciiDoc preview typography and overflow, exposed preview controls, followed the system theme, and restored terminal reopening.",
+          "sourceCommit": "8d037bd0c7a1d6ef5d7c825827458d89558f0074"
+        }
+      ],
+      "note": "This patch release remains the verified preview and launch behavior baseline for v2.0.2."
+    },
     {
       "version": "2.0.0",
       "tag": "v2.0.0",

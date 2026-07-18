@@ -15,7 +15,7 @@ import {
 } from '@phosphor-icons/react';
 import { curatedReleaseMedia, navigationGroups, pageForSlug, searchablePages } from './content.js';
 import { canonicalPath, DOC_ROUTES, matchRoute, normalizeBase } from './routes.mjs';
-import { FALLBACK_RELEASES, fetchReleases, resolveLatestDmg } from './releases.mjs';
+import { FALLBACK_RELEASES, fetchReleases, resolveLatestDmgs } from './releases.mjs';
 
 const assetPath = value => `${normalizeBase(import.meta.env.BASE_URL)}${String(value).replace(/^\/+/, '')}`;
 const routeFromLocation = () => matchRoute(window.location.pathname, import.meta.env.BASE_URL);
@@ -126,6 +126,33 @@ function SearchDialog({ open, onClose }) {
           {!results.length ? <p>일치하는 가이드가 없습니다.</p> : null}
         </div>
         <footer><span>↑↓ 이동</span><span>Enter 열기</span><span>Cmd/Ctrl+K</span></footer>
+      </section>
+    </div>
+  );
+}
+
+function DownloadDialog({ release, onChoose, onClose }) {
+  if (!release) return null;
+  return (
+    <div className="dialog-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+      <section className="download-dialog" role="dialog" aria-modal="true" aria-label="macOS 다운로드 선택">
+        <header>
+          <div><small>DocPilot v{release.version}</small><h2>사용 중인 Mac을 선택하세요</h2></div>
+          <button type="button" onClick={onClose} aria-label="다운로드 선택 닫기"><X size={18} /></button>
+        </header>
+        <div className="download-options">
+          {release.assets.map(asset => (
+            <button type="button" key={asset.name} onClick={() => onChoose(asset)}>
+              <DownloadSimple size={22} />
+              <span>
+                <strong>{asset.arch === 'arm64' ? 'Apple Silicon' : asset.arch === 'x64' ? 'Intel Mac' : 'macOS'}</strong>
+                <small>{asset.arch === 'arm64' ? 'M1 및 이후 Apple 칩' : asset.arch === 'x64' ? 'Intel 프로세서' : asset.name}</small>
+              </span>
+              <ArrowRight size={17} />
+            </button>
+          ))}
+        </div>
+        <p> 메뉴의 ‘이 Mac에 관하여’에서 칩 또는 프로세서를 확인할 수 있습니다.</p>
       </section>
     </div>
   );
@@ -368,6 +395,7 @@ export function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [downloadState, setDownloadState] = useState('idle');
+  const [downloadRelease, setDownloadRelease] = useState(null);
   const [notice, setNotice] = useState('');
 
   useEffect(() => {
@@ -382,7 +410,7 @@ export function App() {
   useEffect(() => {
     const onKey = event => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'k') { event.preventDefault(); setSearchOpen(true); }
-      if (event.key === 'Escape') { setSearchOpen(false); setMobileOpen(false); }
+      if (event.key === 'Escape') { setSearchOpen(false); setMobileOpen(false); setDownloadRelease(null); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -391,13 +419,19 @@ export function App() {
   const download = async () => {
     setDownloadState('loading'); setNotice('');
     try {
-      const asset = await resolveLatestDmg();
-      window.location.assign(asset.url);
+      const release = await resolveLatestDmgs();
+      if (release.assets.length === 1) window.location.assign(release.assets[0].url);
+      else setDownloadRelease(release);
       setDownloadState('ready');
     } catch (error) {
       setDownloadState('error');
       setNotice(error instanceof Error ? error.message : '다운로드를 준비하지 못했습니다.');
     }
+  };
+
+  const downloadAsset = asset => {
+    setDownloadRelease(null);
+    window.location.assign(asset.url);
   };
 
   const docsRoute = route.kind === 'docs';
@@ -417,6 +451,7 @@ export function App() {
       </div>
       {mobileOpen ? <div className="mobile-backdrop" onMouseDown={event => event.target === event.currentTarget && setMobileOpen(false)}><Sidebar route={route} mobile onClose={() => setMobileOpen(false)} onSearch={() => setSearchOpen(true)} /></div> : null}
       <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <DownloadDialog release={downloadRelease} onChoose={downloadAsset} onClose={() => setDownloadRelease(null)} />
     </div>
   );
 }

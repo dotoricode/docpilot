@@ -8,6 +8,7 @@ const { spawn } = require('child_process');
 const repoRoot = path.resolve(__dirname, '..');
 const bridgePath = path.join(repoRoot, 'bridge.js');
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-watch-'));
+const attachedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-watch-attached-'));
 const port = 20000 + Math.floor(Math.random() * 1000);
 
 function assert(condition, message) {
@@ -65,7 +66,7 @@ function waitForWatchEvent() {
 async function main() {
   const child = spawn(process.execPath, [bridgePath, '--root', tempRoot], {
     cwd: repoRoot,
-    env: { ...process.env, DOCPILOT_BRIDGE_PORT: String(port) },
+    env: { ...process.env, DOCPILOT_BRIDGE_PORT: String(port), DOCPILOT_ALLOW_UNAUTHENTICATED: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stderr = '';
@@ -87,10 +88,31 @@ async function main() {
     const data = await filesResponse.json();
     assert(data.files.includes('docs/new-file.md'), 'new file should appear in /files');
 
+    const attachedResponse = await fetch(`http://127.0.0.1:${port}/workspace-roots`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: attachedRoot }),
+    });
+    assert(attachedResponse.ok, `attach root failed: HTTP ${attachedResponse.status}`);
+    const attached = await attachedResponse.json();
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    const attachedWatchEvent = waitForWatchEvent();
+    setTimeout(() => {
+      fs.writeFileSync(path.join(attachedRoot, 'attached.md'), '# Attached\n', 'utf8');
+    }, 300);
+    const attachedEvent = await attachedWatchEvent;
+    assert(attachedEvent && attachedEvent.type === 'files.changed', 'expected attached-root files.changed event');
+
+    const attachedFilesResponse = await fetch(`http://127.0.0.1:${port}/files`);
+    const attachedFiles = await attachedFilesResponse.json();
+    assert(attachedFiles.files.includes(`${attached.root.id}/attached.md`), 'attached root file should appear in /files');
+
     console.log('file watch check passed');
   } finally {
     child.kill();
     fs.rmSync(tempRoot, { recursive: true, force: true });
+    fs.rmSync(attachedRoot, { recursive: true, force: true });
     if (stderr.trim()) process.stderr.write(stderr);
   }
 }

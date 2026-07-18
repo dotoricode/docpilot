@@ -24,6 +24,7 @@ type WorkspaceSidebarProps = {
   dirtyFileIds?: string[];
   refreshSignal: number;
   instructionsPanel?: ReactNode;
+  settingsPanel?: ReactNode;
   onOpenFile: (file: string) => void;
   onOpenFileInSplit?: (file: string) => void;
   onCollapse?: () => void;
@@ -53,7 +54,7 @@ type EditingNodeState = {
   isNew: boolean;
 } | null;
 
-export function WorkspaceSidebar({ activeFile, dirtyFileIds = [], refreshSignal, instructionsPanel, onOpenFile, onOpenFileInSplit, onCollapse }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ activeFile, dirtyFileIds = [], refreshSignal, instructionsPanel, settingsPanel, onOpenFile, onOpenFileInSplit, onCollapse }: WorkspaceSidebarProps) {
   const editFinalizingRef = useRef(false);
   const [files, setFiles] = useState<string[]>([]);
   const [folders, setFolders] = useState<string[]>([]);
@@ -64,7 +65,7 @@ export function WorkspaceSidebar({ activeFile, dirtyFileIds = [], refreshSignal,
   const [busy, setBusy] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'docs' | 'instructions'>('docs');
+  const [activeTab, setActiveTab] = useState<'docs' | 'instructions' | 'settings'>('docs');
   const [treeMenu, setTreeMenu] = useState<TreeMenuState>(null);
   const [editingNode, setEditingNode] = useState<EditingNodeState>(null);
   const [notice, setNotice] = useState('');
@@ -602,6 +603,15 @@ export function WorkspaceSidebar({ activeFile, dirtyFileIds = [], refreshSignal,
         >
           지침
         </button>
+        <button
+          className={activeTab === 'settings' ? 'active' : ''}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'settings'}
+          onClick={() => setActiveTab('settings')}
+        >
+          설정
+        </button>
       </div>
       {activeTab === 'docs' ? (
         <div className="workspace-docs-pane" onContextMenuCapture={openBlankTreeMenu}>
@@ -669,9 +679,13 @@ export function WorkspaceSidebar({ activeFile, dirtyFileIds = [], refreshSignal,
             {files.length > 0 && normalizedQuery && !visibleTree.length ? <div className="empty-note">검색 결과 없음</div> : null}
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'instructions' ? (
         <div className="workspace-instructions-pane">
           {instructionsPanel}
+        </div>
+      ) : (
+        <div className="workspace-instructions-pane workspace-settings-pane">
+          {settingsPanel}
         </div>
       )}
       {treeMenu ? (

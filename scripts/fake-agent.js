@@ -5,6 +5,18 @@ const agent = requestedRuntime === 'codex' || requestedRuntime === 'shell' ? req
 const interactive = process.argv.includes('--interactive');
 
 if (interactive) {
+  if (process.argv.includes('--ignore-sigterm')) process.on('SIGTERM', () => {});
+  if (process.env.DOCPILOT_FAKE_TERMINAL_PID_FILE) {
+    require('fs').writeFileSync(process.env.DOCPILOT_FAKE_TERMINAL_PID_FILE, String(process.pid), 'utf8');
+  }
+  if (process.env.DOCPILOT_FAKE_TERMINAL_CHILD_PID_FILE) {
+    const { spawn } = require('child_process');
+    const child = spawn(process.execPath, ['-e', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], {
+      stdio: 'ignore',
+    });
+    child.unref();
+    require('fs').writeFileSync(process.env.DOCPILOT_FAKE_TERMINAL_CHILD_PID_FILE, String(child.pid), 'utf8');
+  }
   process.stdout.write(`fake ${agent} interactive ready\n`);
   process.stdin.setEncoding('utf8');
   let line = '';
@@ -24,6 +36,18 @@ if (interactive) {
 }
 
 let input = '';
+if (process.env.DOCPILOT_FAKE_AGENT_IGNORE_SIGTERM === '1') process.on('SIGTERM', () => {});
+if (process.env.DOCPILOT_FAKE_AGENT_PID_FILE) {
+  require('fs').writeFileSync(process.env.DOCPILOT_FAKE_AGENT_PID_FILE, String(process.pid), 'utf8');
+}
+if (process.env.DOCPILOT_FAKE_AGENT_CHILD_PID_FILE) {
+  const { spawn } = require('child_process');
+  const child = spawn(process.execPath, ['-e', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], {
+    stdio: 'ignore',
+  });
+  child.unref();
+  require('fs').writeFileSync(process.env.DOCPILOT_FAKE_AGENT_CHILD_PID_FILE, String(child.pid), 'utf8');
+}
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => {
   input += chunk;

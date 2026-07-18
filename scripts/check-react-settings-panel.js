@@ -22,19 +22,21 @@ assert(bridge.includes("url.pathname === '/settings'"), 'bridge must expose /set
 assert(bridge.includes("url.pathname === '/diagnostics'"), 'bridge must expose /diagnostics');
 assert(bridge.includes("settings.agentCommandMode === 'custom'"), 'agent spawn must respect custom command mode');
 assert(bridge.includes('codexExecArgs(codexCommand)'), 'codex command must be configurable');
-assert(bridge.includes('claudePrintArgs(claudeCommand, prompt)'), 'claude command must be configurable');
+assert(bridge.includes('claudePrintArgs(claudeCommand)'), 'claude command must be configurable');
+assert(bridge.includes('stdinText: prompt'), 'agent prompts must be sent through stdin');
 
 assert(client.includes('export type AppSettings'), 'bridge client must export AppSettings');
 assert(client.includes('getSettings'), 'bridge client must expose getSettings');
 assert(client.includes('getDiagnostics'), 'bridge client must expose getDiagnostics');
 assert(client.includes('openLocalPath'), 'bridge client must expose openLocalPath');
 assert(client.includes('saveSettings'), 'bridge client must expose saveSettings');
-assert(main.includes("ipcMain.handle('open-local-path'"), 'main process must expose open-local-path IPC');
+assert(main.includes("handleTrustedIpc('open-local-path'"), 'main process must expose trusted open-local-path IPC');
 assert(main.includes('shell.showItemInFolder'), 'main process must reveal files in Finder');
 assert(preload.includes('openLocalPath'), 'preload must expose openLocalPath');
 assert(viteEnv.includes('openLocalPath?: (targetPath: string) => Promise<boolean>'), 'vite env must type openLocalPath');
 
 assert(app.includes('SettingsPanel'), 'app shell must render SettingsPanel');
+assert(app.includes('autosaveEnabled'), 'app shell must honor the autosave setting');
 assert(app.includes('applyThemePreference'), 'app shell must apply persisted theme preference');
 assert(app.includes('docpilot-settings-saved'), 'app shell must react to settings save events');
 assert(theme.includes('resolveThemePreference'), 'theme helper must resolve system theme preference');
