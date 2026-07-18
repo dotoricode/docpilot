@@ -176,7 +176,7 @@ async function typeHuman(page, text) {
 async function initializeScenario(page, name) {
   await page.evaluate(({ terminalOpen }) => {
     localStorage.setItem('docpilot:theme-preference', 'dark');
-    localStorage.setItem('docpilot:release-notice-seen-id', '2.0.1:r2');
+    localStorage.setItem('docpilot:release-notice-seen-id', '2.0.2:r2');
     localStorage.setItem('docpilot:terminal-open', terminalOpen ? '1' : '0');
     localStorage.setItem('docpilot:preview-width', '760');
     localStorage.setItem('docpilot:workbench-pane-layout', JSON.stringify({

@@ -54,6 +54,24 @@ type ReleaseNoteItem = {
 };
 
 const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
+  '2.0.2': [
+    {
+      title: '앱 종료가 백그라운드 작업을 남기지 않습니다',
+      body: 'Bridge, watcher, worker, 터미널과 Agent 자식 프로세스를 순서대로 정리해 창을 닫은 뒤 앱이 멈춰 있던 상황을 줄였습니다.',
+    },
+    {
+      title: '워크스페이스 경계를 더 엄격하게 지킵니다',
+      body: 'Bridge 요청 인증과 경로 검사를 강화하고 traversal, symlink, 잘못된 요청이 작업공간 밖 파일에 닿지 않도록 방어했습니다.',
+    },
+    {
+      title: '동시 편집과 외부 변경에서 초안을 보호합니다',
+      body: '저장 중 파일 변경, 분할 편집, 외부 변경 충돌에서도 사용자 초안을 유지하고 명시적으로 선택한 경우에만 덮어씁니다.',
+    },
+    {
+      title: 'Intel과 Apple Silicon 패키지를 각각 제공합니다',
+      body: 'x64와 arm64 앱 및 네이티브 터미널 모듈을 각 아키텍처에 맞춰 패키징하고 독립된 DMG로 검증합니다.',
+    },
+  ],
   '2.0.1': [
     {
       title: '문서 제목 체계를 다시 맞췄습니다',

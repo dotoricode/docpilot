@@ -41,7 +41,7 @@ for (const feature of evidence.features) {
 }
 assert.equal(requiredFeatures.size, 0, `Missing v2 feature evidence: ${[...requiredFeatures].join(', ')}`);
 
-const requiredFixes = new Set(['preview-typography', 'preview-overflow', 'preview-controls', 'launch-defaults']);
+const requiredFixes = new Set(['shutdown-lifecycle', 'workspace-security', 'save-integrity', 'multiarch-packaging']);
 assert(Array.isArray(evidence.fixes), 'Current release evidence must contain fix entries');
 for (const fix of evidence.fixes) {
   requiredFixes.delete(fix.id);
@@ -59,7 +59,7 @@ const commitDate = execFileSync('git', ['show', '-s', '--format=%aI', commit], {
 assert.equal(commitDate, evidence.current.implementationDate, 'Implementation date must match Git author date');
 
 const histories = new Map((evidence.history || []).map(entry => [entry.version, entry]));
-for (const version of ['1.0.27', '1.0.28', '2.0.0']) {
+for (const version of ['1.0.27', '1.0.28', '2.0.0', '2.0.1']) {
   const entry = histories.get(version);
   assert(entry, `Missing historical evidence for ${version}`);
   const tag = `v${version}`;

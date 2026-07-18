@@ -34,6 +34,21 @@ const browser = await chromium.launch({ headless: true });
 try {
   await waitForServer();
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await page.route('https://api.github.com/repos/dotoricode/docpilot/releases', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify([{
+      tag_name: 'v2.0.2',
+      name: 'DocPilot 2.0.2',
+      body: 'Release download fixture',
+      published_at: '2026-07-18T00:00:00Z',
+      assets: [
+        { name: 'DocPilot-2.0.2-x64.dmg', browser_download_url: 'https://downloads.example/DocPilot-2.0.2-x64.dmg' },
+        { name: 'DocPilot-2.0.2-arm64.dmg', browser_download_url: 'https://downloads.example/DocPilot-2.0.2-arm64.dmg' },
+      ],
+    }]),
+  }));
+  await page.route('https://downloads.example/*.dmg', route => route.fulfill({ status: 204 }));
   await page.addInitScript(() => {
     window.__demoObservers = [];
     window.IntersectionObserver = class MockIntersectionObserver {
@@ -130,7 +145,19 @@ try {
   assert.equal(await page.locator('video[data-media-asset="workbench"]').count(), 0, 'Changelog must not revive a legacy fast demo');
   assert.match(await changelogVideo.locator('source[type="video/webm"]').getAttribute('src'), /workbench-overview\.webm$/, 'Changelog must use the current overview demo');
 
-  console.log('manual v2 demo playback regression: passed');
+  await page.locator('.download-action').click();
+  await page.getByRole('dialog', { name: 'macOS 다운로드 선택' }).waitFor();
+  assert.equal(await page.locator('.download-options > button').count(), 2, 'Download must expose both macOS architectures');
+  const arm64Request = page.waitForRequest('https://downloads.example/DocPilot-2.0.2-arm64.dmg');
+  await page.locator('.download-options > button').filter({ hasText: 'Apple Silicon' }).click();
+  await arm64Request;
+
+  await page.locator('.download-action').click();
+  const x64Request = page.waitForRequest('https://downloads.example/DocPilot-2.0.2-x64.dmg');
+  await page.locator('.download-options > button').filter({ hasText: 'Intel Mac' }).click();
+  await x64Request;
+
+  console.log('manual v2 demo playback and architecture download regression: passed');
 } finally {
   await browser.close();
   server.kill('SIGTERM');

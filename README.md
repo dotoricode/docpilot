@@ -29,10 +29,11 @@ npm run build
 node scripts/check-packaged-app.js
 ```
 
-현재 체크포인트 DMG:
+현재 아키텍처별 DMG:
 
 ```txt
-dist/package/DocPilot-2.0.1.dmg
+dist/package/DocPilot-2.0.2-arm64.dmg
+dist/package/DocPilot-2.0.2-x64.dmg
 ```
 
 ## Main Workflow

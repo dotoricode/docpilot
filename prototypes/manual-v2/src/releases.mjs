@@ -2,6 +2,28 @@ export const RELEASES_ENDPOINT = 'https://api.github.com/repos/dotoricode/docpil
 
 export const FALLBACK_RELEASES = Object.freeze([
   {
+    version: '2.0.2',
+    title: 'DocPilot 2.0.2',
+    date: '2026-07-18',
+    summary: '종료 수명주기와 워크스페이스 보안 경계를 강화하고, 동시 저장·외부 변경에서 초안을 보호하며 Intel·Apple Silicon 패키지를 분리했습니다.',
+    body: `## Fixed
+- Bridge, watcher, worker, 터미널과 Agent 자식 프로세스를 종료 단계에서 정리해 앱 종료가 멈추는 상황을 줄였습니다.
+- traversal, symlink, 잘못된 Origin과 malformed 요청을 차단하고 작업공간 밖 파일을 보호합니다.
+- 저장 중 디스크 변경과 분할 편집, 외부 변경 충돌에서 사용자 초안을 보존합니다.
+- recoverable trash의 cross-volume publish 실패 시 원본을 유지하고 staging 파일을 정리합니다.
+
+## Changed
+- Intel Mac(x64)과 Apple Silicon(arm64)용 DMG를 각각 제공합니다.
+- 패키지 검사에서 앱 실행 파일과 native PTY 모듈의 아키텍처를 함께 검증합니다.
+- 공개 매뉴얼의 Download에서 Mac 유형을 직접 선택할 수 있습니다.
+
+## Upgrade notes
+- 배포 파일은 기존 릴리스와 동일하게 ad-hoc 서명되며 Apple 공증은 적용되지 않았습니다.
+- 사용 중인 Mac에 맞는 arm64 또는 x64 DMG를 선택하세요.`,
+    assets: [],
+    fallback: true,
+  },
+  {
     version: '2.0.1',
     title: 'DocPilot 2.0.1',
     date: '2026-07-16',
@@ -113,8 +135,22 @@ export function normalizeReleases(payload) {
     .filter(release => !release.draft && release.version !== 'unknown');
 }
 
-export function selectDmgAsset(assets = []) {
-  return assets.find(asset => /\.dmg$/i.test(asset.name) && !/\.blockmap$/i.test(asset.name) && asset.url) || null;
+export function selectDmgAssets(assets = []) {
+  return assets
+    .filter(asset => /\.dmg$/i.test(asset.name) && !/\.blockmap$/i.test(asset.name) && asset.url)
+    .map(asset => ({
+      ...asset,
+      arch: /-arm64\.dmg$/i.test(asset.name) ? 'arm64' : /-x64\.dmg$/i.test(asset.name) ? 'x64' : '',
+    }))
+    .sort((left, right) => ['arm64', 'x64', ''].indexOf(left.arch) - ['arm64', 'x64', ''].indexOf(right.arch));
+}
+
+export function selectDmgAsset(assets = [], preferredArch = 'x64') {
+  const dmgs = selectDmgAssets(assets);
+  return dmgs.find(asset => asset.arch === preferredArch)
+    || dmgs.find(asset => !asset.arch)
+    || dmgs[0]
+    || null;
 }
 
 export async function fetchReleases(fetcher = fetch) {
@@ -139,13 +175,19 @@ export async function fetchReleases(fetcher = fetch) {
   return [...known, ...releases.filter(release => !knownVersions.has(release.version))];
 }
 
-export async function resolveLatestDmg(fetcher = fetch) {
+export async function resolveLatestDmgs(fetcher = fetch) {
   const releases = await fetchReleases(fetcher);
   for (const release of releases) {
-    const asset = selectDmgAsset(release.assets);
-    if (asset) return { ...asset, version: release.version };
+    const assets = selectDmgAssets(release.assets);
+    if (assets.length) return { version: release.version, assets };
   }
   throw new Error('최신 macOS DMG를 찾지 못했습니다.');
+}
+
+export async function resolveLatestDmg(fetcher = fetch, preferredArch = 'x64') {
+  const release = await resolveLatestDmgs(fetcher);
+  const asset = selectDmgAsset(release.assets, preferredArch);
+  return { ...asset, version: release.version };
 }
 
 function firstReleaseParagraph(markdown) {
