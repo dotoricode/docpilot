@@ -22,6 +22,8 @@ async function main() {
     env: {
       ...process.env,
       DOCPILOT_USER_DATA_DIR: userData,
+      DOCPILOT_FAKE_AGENT: '1',
+      DOCPILOT_TEST_DISABLE_FISH: '1',
     },
   });
     const start = await app.firstWindow();
@@ -48,13 +50,97 @@ async function main() {
     await editor.waitForSelector('.terminal-pane');
     await editor.waitForSelector('.terminal-empty');
 
-    let createResponse;
-    editor.on('response', response => {
-    if (response.request().method() === 'POST' && new URL(response.url()).pathname === '/terminal-sessions') {
-      createResponse = response;
+    const chooser = editor.getByRole('button', { name: 'Choose terminal shell' });
+    const emptyChooser = editor.getByRole('button', { name: 'Choose shell…' });
+    await emptyChooser.waitFor();
+    await emptyChooser.click();
+    const terminalMenu = editor.getByRole('menu', { name: 'Terminal shells' });
+    await terminalMenu.waitFor();
+    assert.equal(await terminalMenu.getByRole('menuitem').count(), 4, 'terminal chooser must keep the fixed shell allowlist');
+    assert.equal(await terminalMenu.getByText('Runs inside DocPilot · Change the default in Settings').count(), 1, 'terminal chooser must explain that shells stay embedded');
+    for (const label of ['Default shell', 'fish', 'zsh', 'bash']) {
+      assert.equal(await terminalMenu.getByRole('menuitem', { name: new RegExp(label) }).count(), 1, `terminal chooser must include ${label}`);
     }
+    assert.equal(await terminalMenu.getByText(/Built-in autosuggestions · Ctrl\+F to accept/).count(), 1, 'fish must explain its Warp-like autosuggestion behavior');
+    if (process.env.DOCPILOT_TERMINAL_SCREENSHOT) {
+      await editor.screenshot({ path: process.env.DOCPILOT_TERMINAL_SCREENSHOT, scale: 'css' });
+    }
+    const settingsBeforeInstall = await editor.evaluate(async () => {
+      const params = new URLSearchParams(window.location.search);
+      const port = params.get('port') || '7474';
+      const token = params.get('token') || '';
+      const response = await fetch(`http://127.0.0.1:${port}/settings`, {
+        headers: token ? { 'X-DocPilot-Token': token } : {},
+      });
+      return (await response.json()).settings;
     });
-    await editor.locator('.terminal-empty').click();
+    let pretendFishInstalled = false;
+    await editor.route('**/terminal-shells/fish/install', async route => {
+      pretendFishInstalled = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          alreadyInstalled: false,
+          shell: { id: 'fish', label: 'fish', description: 'Built-in autosuggestions · Ctrl+F to accept', available: true, installable: false, path: '/test/bin/fish' },
+          settings: { ...settingsBeforeInstall, defaultTerminalShell: 'fish' },
+        }),
+      });
+    });
+    await editor.route('**/terminal-shells', async route => {
+      if (!pretendFishInstalled) {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ shells: [
+          { id: 'default', label: 'Default shell', description: 'Use your macOS login shell', available: true, installable: false, path: '/bin/zsh' },
+          { id: 'fish', label: 'fish', description: 'Built-in autosuggestions · Ctrl+F to accept', available: true, installable: false, path: '/test/bin/fish' },
+          { id: 'zsh', label: 'zsh', description: 'Load your interactive zsh configuration', available: true, installable: false, path: '/bin/zsh' },
+          { id: 'bash', label: 'bash', description: 'Load your interactive bash configuration', available: true, installable: false, path: '/bin/bash' },
+        ] }),
+      });
+    });
+    const fishInstaller = terminalMenu.getByRole('menuitem', { name: /fish Built-in autosuggestions .* Not installed Install/ });
+    assert.equal(await fishInstaller.isEnabled(), true, 'missing fish must expose a Homebrew install action');
+    editor.once('dialog', dialog => dialog.accept());
+    await fishInstaller.click();
+    await terminalMenu.getByText('fish installed · Select it to open a terminal').waitFor();
+    await editor.locator('.terminal-new-primary[aria-label="New terminal with fish"]').waitFor();
+    const installedFish = terminalMenu.getByRole('menuitem', { name: /^fish Built-in autosuggestions/ });
+    assert.equal(await installedFish.isEnabled(), true, 'fish must become selectable after installation');
+    await chooser.click();
+
+    const savedDefault = await editor.evaluate(async () => {
+      const params = new URLSearchParams(window.location.search);
+      const port = params.get('port') || '7474';
+      const token = params.get('token') || '';
+      const headers = { 'Content-Type': 'application/json', ...(token ? { 'X-DocPilot-Token': token } : {}) };
+      const current = await fetch(`http://127.0.0.1:${port}/settings`, { headers }).then(response => response.json());
+      const response = await fetch(`http://127.0.0.1:${port}/settings`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ settings: { ...current.settings, defaultTerminalShell: 'zsh' } }),
+      }).then(result => result.json());
+      window.dispatchEvent(new CustomEvent('docpilot-settings-saved', { detail: { settings: response.settings } }));
+      return response.settings.defaultTerminalShell;
+    });
+    assert.equal(savedDefault, 'zsh');
+    await editor.locator('.terminal-new-primary[aria-label="New terminal with zsh"]').waitFor();
+
+    let createResponse;
+    let deleteResponse;
+    editor.on('response', response => {
+      const method = response.request().method();
+      const pathname = new URL(response.url()).pathname;
+      if (method === 'POST' && pathname === '/terminal-sessions') createResponse = response;
+      if (method === 'DELETE' && pathname.startsWith('/terminal-sessions/')) deleteResponse = response;
+    });
+    await chooser.click();
+    await terminalMenu.getByRole('menuitem', { name: /^Default shell Use your macOS login shell$/ }).click();
     const outcome = await Promise.race([
     editor.waitForSelector('.terminal-tab.active', { timeout: 10_000 }).then(() => 'tab'),
     editor.waitForSelector('.terminal-error', { timeout: 10_000 }).then(() => 'error'),
@@ -68,6 +154,7 @@ async function main() {
 
     assert(createResponse, 'New terminal click must POST /terminal-sessions');
     assert.equal(createResponse.status(), 200, await createResponse.text());
+    assert.equal(createResponse.request().postDataJSON().shellId, 'default', 'one-time shell choice must be sent to the embedded terminal session API');
     const state = await editor.evaluate(async () => {
     const params = new URLSearchParams(window.location.search);
     const port = params.get('port') || '7474';
@@ -79,7 +166,29 @@ async function main() {
     });
     assert.equal(state.status, 200);
     assert.equal(state.body.sessions.length, 1, 'bridge must retain the created terminal session');
+    assert.equal(state.body.sessions[0].shellId, 'default', 'bridge must run the chosen shell inside the retained terminal session');
     assert.equal(await editor.locator('.terminal-tab.active').count(), 1, 'renderer must show the created terminal tab');
+    const persistedDefault = await editor.evaluate(async () => {
+      const params = new URLSearchParams(window.location.search);
+      const port = params.get('port') || '7474';
+      const token = params.get('token') || '';
+      const response = await fetch(`http://127.0.0.1:${port}/settings`, {
+        headers: token ? { 'X-DocPilot-Token': token } : {},
+      });
+      return (await response.json()).settings.defaultTerminalShell;
+    });
+    assert.equal(persistedDefault, 'zsh', 'a one-time shell choice must not replace the saved default');
+
+    await editor.locator('.terminal-tab.active svg').last().click();
+    await editor.waitForSelector('.terminal-tab.active', { state: 'detached' });
+    await editor.waitForTimeout(300);
+    assert(deleteResponse, 'closing a terminal tab must issue DELETE /terminal-sessions/:id');
+    assert.equal(deleteResponse.status(), 200, await deleteResponse.text());
+    assert.equal(
+      await editor.locator('.terminal-error').count(),
+      0,
+      `closing a terminal tab must not report a connection failure: ${await editor.locator('.terminal-error').allTextContents()}`,
+    );
 
     console.log(`${executablePath ? 'packaged ' : ''}react terminal creation regression passed`);
   } finally {

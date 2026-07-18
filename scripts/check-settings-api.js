@@ -71,6 +71,7 @@ async function main() {
       DOCPILOT_ALLOW_UNAUTHENTICATED: '1',
       DOCPILOT_STATE_DIR: stateDir,
       DOCPILOT_FAKE_AGENT: '1',
+      DOCPILOT_TEST_DISABLE_FISH: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -79,6 +80,7 @@ async function main() {
     await waitForBridge(proc);
     const initial = await requestJson(port, 'GET', '/settings');
     assert.strictEqual(initial.settings.theme, 'system');
+    assert.strictEqual(initial.settings.defaultTerminalShell, 'default');
     assert.strictEqual(initial.settings.agentCommandMode, 'auto');
     assert.strictEqual(initial.settings.claudeCommand, 'claude');
     assert.deepStrictEqual(initial.settings.recentWorkspaces, [canonicalRoot]);
@@ -87,6 +89,7 @@ async function main() {
       settings: {
         autosave: true,
         theme: 'system',
+        defaultTerminalShell: 'zsh',
         agentCommandMode: 'custom',
         claudeCommand: '/opt/bin/claude',
         codexCommand: '/opt/bin/codex',
@@ -96,12 +99,14 @@ async function main() {
     });
     assert.strictEqual(saved.ok, true);
     assert.strictEqual(saved.settings.autosave, true);
+    assert.strictEqual(saved.settings.defaultTerminalShell, 'zsh');
     assert.strictEqual(saved.settings.agentCommandMode, 'custom');
     assert.strictEqual(saved.settings.codexCommand, '/opt/bin/codex');
     assert.deepStrictEqual(saved.settings.recentWorkspaces, ['/tmp/other', root]);
 
     const reloaded = await requestJson(port, 'GET', '/settings');
     assert.strictEqual(reloaded.settings.theme, 'system');
+    assert.strictEqual(reloaded.settings.defaultTerminalShell, 'zsh');
     assert.strictEqual(reloaded.settings.fileWatcherIgnore, 'dist/**');
 
     const files = await requestJson(port, 'GET', '/files');
@@ -126,6 +131,15 @@ async function main() {
 
     const persisted = JSON.parse(fs.readFileSync(path.join(stateDir, 'settings.json'), 'utf8'));
     assert.strictEqual(persisted.claudeCommand, '/opt/bin/claude');
+
+    const terminalShells = await requestJson(port, 'GET', '/terminal-shells');
+    assert.deepStrictEqual(terminalShells.shells.map(shell => shell.id), ['default', 'fish', 'zsh', 'bash']);
+    assert.strictEqual(terminalShells.shells.find(shell => shell.id === 'zsh').available, true);
+
+    const rejectedTerminal = await requestJson(port, 'POST', '/settings', {
+      settings: { defaultTerminalShell: '../../arbitrary-command' },
+    });
+    assert.strictEqual(rejectedTerminal.settings.defaultTerminalShell, 'default');
     console.log('settings api check passed');
   } finally {
     proc.kill('SIGTERM');

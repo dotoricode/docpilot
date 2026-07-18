@@ -139,9 +139,10 @@ async function waitForProcessGroupGone(pid, deadline = Date.now() + 2500) {
   proc.stderr.on('data', chunk => { stderr += chunk.toString(); });
   try {
     await waitForPing(port);
-    const created = await requestJson(port, 'POST', '/terminal-sessions', { title: 'Terminal 1' });
+    const created = await requestJson(port, 'POST', '/terminal-sessions', { title: 'Terminal 1', shellId: 'zsh' });
     assert.strictEqual(created.session.agent, undefined, 'generic terminal must not expose an agent binding');
     assert.strictEqual(created.session.title, 'Terminal 1');
+    assert.strictEqual(created.session.shellId, 'zsh', 'terminal must preserve the selected embedded shell id');
     assert(created.session.shell, 'terminal should expose its login shell');
     assert.strictEqual(created.session.status, 'running');
     assert.strictEqual(created.session.mode, 'fake-interactive');

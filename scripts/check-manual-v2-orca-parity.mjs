@@ -57,8 +57,9 @@ assert.deepEqual(matchRoute('/changelog/2.0.0'), { kind: 'release', version: '2.
 assert.deepEqual(matchRoute('/changelog/2.0.1'), { kind: 'release', version: '2.0.1' });
 assert.deepEqual(matchRoute('/changelog/2.0.2'), { kind: 'release', version: '2.0.2' });
 assert.deepEqual(matchRoute('/changelog/2.0.3'), { kind: 'release', version: '2.0.3' });
+assert.deepEqual(matchRoute('/changelog/2.0.4'), { kind: 'release', version: '2.0.4' });
 assert.ok(routePaths().includes('/changelog'));
-assert.ok(routePaths(['2.0.3', '2.0.2', '2.0.1', '2.0.0']).includes('/changelog/2.0.3'), 'versioned release routes must be materialized for clean reloads');
+assert.ok(routePaths(['2.0.4', '2.0.3', '2.0.2', '2.0.1', '2.0.0']).includes('/changelog/2.0.4'), 'versioned release routes must be materialized for clean reloads');
 assert.deepEqual(matchRoute('/docpilot-manual-preview/docs/editing/markdown', '/docpilot-manual-preview/'), { kind: 'docs', slug: 'editing/markdown' });
 
 const fixtureRelease = normalizeRelease({

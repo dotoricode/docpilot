@@ -16,6 +16,14 @@ const { chooseContextMode } = require('./shared/core/context-policy');
 const { AgentProcessManager } = require('./shared/core/agent-process-manager');
 const { TerminalSessionModel } = require('./shared/core/terminal-session-model');
 const {
+  TERMINAL_SHELLS,
+  fishInstallSpec,
+  normalizeTerminalShellId,
+  preferredDefaultTerminalShellId,
+  settingsWithFishDefault,
+  terminalShellCommand,
+} = require('./shared/core/terminal-shells');
+const {
   canonicalizeRoot,
   isAllowedLoopbackHost,
   isAllowedRendererOrigin,
@@ -40,6 +48,7 @@ const TEST_TERMINAL_SEPARATE_GROUP = process.env.DOCPILOT_TEST_TERMINAL_SEPARATE
 let parentDisconnectRequested = false;
 let handleParentDisconnect = null;
 let bridgeShuttingDown = false;
+let fishInstallPromise = null;
 
 // Register before synchronous startup work so a parent crash during module load
 // cannot leave a detached bridge behind. The actual teardown function is wired
@@ -534,9 +543,11 @@ function readAgentRuntime() {
   };
 }
 
-function terminalSpawnSpec() {
+function terminalSpawnSpec(shellId = 'default') {
+  const normalizedShellId = normalizeTerminalShellId(shellId);
   if (shouldUseFakeAgent()) {
     return {
+      shellId: normalizedShellId,
       shell: process.execPath,
       spawnArgs: [
         process.execPath,
@@ -549,13 +560,67 @@ function terminalSpawnSpec() {
       mode: 'fake-interactive',
     };
   }
-  const shell = process.env.SHELL || '/bin/zsh';
+  const shell = terminalShellCommand(normalizedShellId);
   return {
+    shellId: normalizedShellId,
     shell,
     spawnArgs: [shell, '-l'],
     requiresCommand: shell,
     usePty: readAgentRuntime().ptyAvailable,
     mode: readAgentRuntime().ptyAvailable ? 'node-pty' : 'child-process-interactive',
+  };
+}
+
+function terminalShellStatuses() {
+  return TERMINAL_SHELLS.map(shell => {
+    const command = terminalShellCommand(shell.id);
+    const hideFishForTest = shell.id === 'fish'
+      && shouldUseFakeAgent()
+      && process.env.DOCPILOT_TEST_DISABLE_FISH === '1';
+    const resolvedPath = hideFishForTest ? null : findCommand(command);
+    const available = Boolean(resolvedPath);
+    return {
+      id: shell.id,
+      label: shell.label,
+      description: shell.description,
+      available,
+      installable: shell.id === 'fish'
+        && !available
+        && Boolean(fishInstallSpec())
+        && Boolean(findCommand('brew')),
+      path: resolvedPath || '',
+    };
+  });
+}
+
+async function installFishShell() {
+  const current = terminalShellStatuses().find(shell => shell.id === 'fish');
+  if (current?.available) {
+    return {
+      alreadyInstalled: true,
+      shell: current,
+      settings: writeSettingsStore(settingsWithFishDefault(readSettingsStore())),
+    };
+  }
+  const spec = fishInstallSpec();
+  if (!spec) throw Object.assign(new Error('fish 자동 설치는 macOS에서만 지원됩니다.'), { statusCode: 400 });
+  const brew = findCommand(spec.command);
+  if (!brew) {
+    throw Object.assign(new Error('Homebrew가 필요합니다. brew를 먼저 설치한 뒤 다시 시도해 주세요.'), { statusCode: 409 });
+  }
+  if (!fishInstallPromise) {
+    fishInstallPromise = (async () => {
+      await runDirectTextCommand(brew, spec.args, 10 * 60 * 1000);
+      if (!findCommand('fish')) throw new Error('설치는 완료됐지만 fish 실행 파일을 찾을 수 없습니다.');
+    })().finally(() => {
+      fishInstallPromise = null;
+    });
+  }
+  await fishInstallPromise;
+  return {
+    alreadyInstalled: false,
+    shell: terminalShellStatuses().find(shell => shell.id === 'fish'),
+    settings: writeSettingsStore(settingsWithFishDefault(readSettingsStore())),
   };
 }
 
@@ -582,6 +647,7 @@ function summarizeTerminalSession(session) {
   return {
     id: session.id,
     title: session.title,
+    shellId: session.shellId,
     shell: session.shell,
     status: session.status,
     mode: session.mode,
@@ -720,10 +786,13 @@ function stopTerminalSession(id, reason = 'stopped') {
 }
 
 function defaultSettingsStore() {
+  const fishAvailable = !(shouldUseFakeAgent() && process.env.DOCPILOT_TEST_DISABLE_FISH === '1')
+    && commandExists('fish');
   return {
     version: 1,
     autosave: false,
     theme: 'system',
+    defaultTerminalShell: preferredDefaultTerminalShellId(fishAvailable),
     agentCommandMode: 'auto',
     claudeCommand: 'claude',
     codexCommand: 'codex',
@@ -735,6 +804,7 @@ function defaultSettingsStore() {
 function normalizeSettingsInput(input = {}) {
   const previous = defaultSettingsStore();
   const theme = ['dark', 'light', 'system'].includes(input.theme) ? input.theme : previous.theme;
+  const defaultTerminalShell = normalizeTerminalShellId(input.defaultTerminalShell ?? previous.defaultTerminalShell);
   const agentCommandMode = input.agentCommandMode === 'custom' ? 'custom' : 'auto';
   const claudeCommand = String(input.claudeCommand || previous.claudeCommand).trim().slice(0, 240) || previous.claudeCommand;
   const codexCommand = String(input.codexCommand || previous.codexCommand).trim().slice(0, 240) || previous.codexCommand;
@@ -749,6 +819,7 @@ function normalizeSettingsInput(input = {}) {
     version: 1,
     autosave: input.autosave === true,
     theme,
+    defaultTerminalShell,
     agentCommandMode,
     claudeCommand,
     codexCommand,
@@ -1548,6 +1619,39 @@ function runTextCommand(command, args, timeoutMs = 45000) {
   });
 }
 
+function runDirectTextCommand(command, args, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(command, args, {
+      cwd: os.homedir(),
+      env: cliEnv(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    const maxOutputBytes = 512 * 1024;
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const appendBounded = (current, chunk) => (current + chunk.toString()).slice(-maxOutputBytes);
+    const finish = (callback) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      callback();
+    };
+    const timer = setTimeout(() => {
+      try { proc.kill(); } catch {}
+      finish(() => reject(new Error('fish 설치 시간이 초과되었습니다.')));
+    }, timeoutMs);
+    proc.stdout.on('data', chunk => { stdout = appendBounded(stdout, chunk); });
+    proc.stderr.on('data', chunk => { stderr = appendBounded(stderr, chunk); });
+    proc.on('error', error => finish(() => reject(error)));
+    proc.on('close', code => finish(() => {
+      if (code === 0) resolve(stdout.trim());
+      else reject(new Error(stderr.trim() || `Homebrew가 종료 코드 ${code}로 실패했습니다.`));
+    }));
+  });
+}
+
 function runCommandWithInput(command, args, input, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
     const resolved = resolveSpawn(command, args);
@@ -1944,6 +2048,25 @@ async function handleBridgeRequest(req, res) {
     return;
   }
 
+  if (req.method === 'GET' && url.pathname === '/terminal-shells') {
+    res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ shells: terminalShellStatuses() }));
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/terminal-shells/fish/install') {
+    try {
+      const result = await installFishShell();
+      res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, ...result }));
+    } catch (error) {
+      const statusCode = Number(error?.statusCode) || 500;
+      res.writeHead(statusCode, { ...CORS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: String(error?.message || error).slice(0, 1000) }));
+    }
+    return;
+  }
+
   if (req.method === 'POST' && url.pathname === '/terminal-sessions') {
     if (terminalSessions.size >= 8) {
       res.writeHead(429, { ...CORS, 'Content-Type': 'application/json' });
@@ -1952,7 +2075,7 @@ async function handleBridgeRequest(req, res) {
     }
     let payload;
     try { payload = JSON.parse(await readBody(req)); } catch (error) { respondInvalidRequestBody(res, error); return; }
-    const spec = terminalSpawnSpec();
+    const spec = terminalSpawnSpec(payload.shellId);
     const hasShell = fs.existsSync(spec.requiresCommand) || await commandExists(spec.requiresCommand);
     if (bridgeShuttingDown) {
       respondInvalidRequestBody(res, { code: 'BRIDGE_SHUTTING_DOWN' });
@@ -1999,6 +2122,7 @@ async function handleBridgeRequest(req, res) {
     const session = {
       id: crypto.randomUUID(),
       title: String(payload.title || `Terminal ${terminalSessions.size + 1}`).slice(0, 120),
+      shellId: spec.shellId,
       shell: spec.shell,
       status: 'running',
       mode: pty ? 'node-pty' : spec.mode,

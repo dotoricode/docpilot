@@ -179,11 +179,23 @@ export type AppSettings = {
   version: number;
   autosave: boolean;
   theme: 'dark' | 'light' | 'system';
+  defaultTerminalShell: TerminalShellId;
   agentCommandMode: 'auto' | 'custom';
   claudeCommand: string;
   codexCommand: string;
   fileWatcherIgnore: string;
   recentWorkspaces: string[];
+};
+
+export type TerminalShellId = 'default' | 'fish' | 'zsh' | 'bash';
+
+export type TerminalShell = {
+  id: TerminalShellId;
+  label: string;
+  description: string;
+  available: boolean;
+  installable: boolean;
+  path: string;
 };
 
 export type AppDiagnostics = {
@@ -212,6 +224,7 @@ export type AgentRuntime = {
 export type TerminalSessionSummary = {
   id: string;
   title: string;
+  shellId: TerminalShellId;
   shell: string;
   status: string;
   mode: string;
@@ -415,7 +428,17 @@ export function listTerminalSessions() {
   return bridgeJson<{ sessions: TerminalSessionSummary[] }>('/terminal-sessions');
 }
 
-export function startTerminalSession(options: { title?: string; cwd?: string; cols?: number; rows?: number } = {}) {
+export function getTerminalShells() {
+  return bridgeJson<{ shells: TerminalShell[] }>('/terminal-shells').then(response => response.shells);
+}
+
+export function installFishShell() {
+  return bridgeJson<{ ok: true; alreadyInstalled: boolean; shell: TerminalShell; settings: AppSettings }>('/terminal-shells/fish/install', {
+    method: 'POST',
+  });
+}
+
+export function startTerminalSession(options: { title?: string; shellId?: TerminalShellId; cwd?: string; cols?: number; rows?: number } = {}) {
   return bridgeJson<{ session: TerminalSessionSummary; runtime: AgentRuntime }>('/terminal-sessions', {
     method: 'POST',
     body: JSON.stringify(options),
@@ -455,13 +478,21 @@ export function acknowledgeTerminalFrame(sessionId: string, viewId: string, seq:
 
 export function watchTerminalSession(sessionId: string, onEvent: (event: TerminalSessionEvent) => void, onError?: (error: Event) => void, fromSeq = 0) {
   const source = new EventSource(bridgeEventUrl(`/terminal-sessions/${encodeURIComponent(sessionId)}/stream?fromSeq=${Math.max(0, fromSeq)}`));
+  let ended = false;
   source.onmessage = message => {
-    try { onEvent(JSON.parse(message.data) as TerminalSessionEvent); } catch {}
+    try {
+      const event = JSON.parse(message.data) as TerminalSessionEvent;
+      if (event.type === 'terminal.exit') ended = true;
+      onEvent(event);
+    } catch {}
   };
   source.onerror = event => {
-    onError?.(event);
+    if (!ended) onError?.(event);
   };
-  return () => source.close();
+  return () => {
+    ended = true;
+    source.close();
+  };
 }
 
 export function saveSettings(settings: Partial<AppSettings>) {

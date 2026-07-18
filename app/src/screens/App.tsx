@@ -54,6 +54,20 @@ type ReleaseNoteItem = {
 };
 
 const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
+  '2.0.4': [
+    {
+      title: '설치된 fish를 기본 터미널 셸로 사용합니다',
+      body: 'fish가 설치된 Mac에서는 새 내장 터미널이 fish로 열립니다. 설정에서 Default, fish, zsh, bash 중 원하는 셸을 선택할 수도 있습니다.',
+    },
+    {
+      title: '설정에서 fish를 바로 설치할 수 있습니다',
+      body: 'Homebrew가 있는 Mac에서는 Terminal 설정의 Install fish 버튼으로 설치하고, 완료되면 fish를 기본 셸로 바로 적용합니다.',
+    },
+    {
+      title: '닫은 터미널 탭을 연결 오류로 표시하지 않습니다',
+      body: '사용자가 탭을 닫아 종료한 세션은 정상 종료로 처리해 Terminal session connection lost 경고가 남지 않습니다.',
+    },
+  ],
   '2.0.3': [
     {
       title: '새 버전을 앱 안에서 안전하게 내려받습니다',
@@ -239,7 +253,7 @@ const DEFAULT_RELEASE_NOTES: ReleaseNoteItem[] = [
   { title: 'DocPilot이 업데이트되었습니다', body: '이번 버전의 변경사항을 확인한 뒤 문서 작업을 이어갈 수 있습니다.' },
 ];
 
-const RELEASE_NOTICE_REVISION = 'r2';
+const RELEASE_NOTICE_REVISION = 'r1';
 const RELEASE_NOTICE_SEEN_ID_KEY = 'docpilot:release-notice-seen-id';
 
 function releaseNoticeId(version: string) {
