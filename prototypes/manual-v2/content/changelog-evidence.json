@@ -2,11 +2,11 @@
   "generatedAt": "2026-07-19",
   "current": {
     "version": "2.0.4",
-    "state": "release-candidate",
+    "state": "release",
     "tag": "v2.0.4",
-    "implementationCommit": "2968e5767136b4138add44e35efb4e9fae451950",
+    "implementationCommit": "5f452d5d9ce5d67dfaefeef4b96fe8d29372b927",
     "implementationDate": "2026-07-19",
-    "note": "The v2.0.4 candidate is prepared in a PR; its tag, GitHub Latest Release, Pages finalization, and Vercel production deployment remain separate approval gates."
+    "note": "The v2.0.4 implementation PR is merged; this release finalization PR must merge before the tag, GitHub Release, Pages publication, and Vercel production deployment gates."
   },
   "fixes": [
     {

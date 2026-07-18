@@ -22,7 +22,6 @@ export const FALLBACK_RELEASES = Object.freeze([
 - fish 자동 설치는 Homebrew가 있는 macOS에서만 제공하며, 설치 전에 확인을 요청합니다.`,
     assets: [],
     fallback: true,
-    unreleased: true,
   },
   {
     version: '2.0.3',
