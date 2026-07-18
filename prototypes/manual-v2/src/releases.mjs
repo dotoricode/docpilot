@@ -2,6 +2,29 @@ export const RELEASES_ENDPOINT = 'https://api.github.com/repos/dotoricode/docpil
 
 export const FALLBACK_RELEASES = Object.freeze([
   {
+    version: '2.0.4',
+    title: 'DocPilot 2.0.4',
+    date: '2026-07-18',
+    summary: '내장 터미널에서 fish를 기본 셸로 선택하고 설치할 수 있게 하며, 사용자가 닫은 탭에 연결 오류가 남던 문제를 수정했습니다.',
+    body: `## Added
+- Terminal 설정에서 Default, fish, zsh, bash 중 내장 터미널 셸을 선택할 수 있습니다.
+- Homebrew가 설치된 Mac에서는 설정에서 fish 설치를 확인하고 실행할 수 있습니다.
+
+## Changed
+- fish가 설치되어 있으면 새 설치의 기본 터미널 셸로 fish를 사용합니다.
+- 설정에서 fish 설치가 완료되면 기존 설정을 보존하면서 기본 터미널 셸을 fish로 전환합니다.
+
+## Fixed
+- 사용자가 터미널 탭을 닫았을 때 정상 종료를 연결 끊김으로 오인해 경고가 남던 문제를 수정했습니다.
+
+## Upgrade notes
+- 셸 선택은 DocPilot 내장 터미널에 적용되며 Warp나 iTerm2 같은 외부 터미널 앱을 포함하지 않습니다.
+- fish 자동 설치는 Homebrew가 있는 macOS에서만 제공하며, 설치 전에 확인을 요청합니다.`,
+    assets: [],
+    fallback: true,
+    unreleased: true,
+  },
+  {
     version: '2.0.3',
     title: 'DocPilot 2.0.3',
     date: '2026-07-18',

@@ -1,6 +1,6 @@
 {
   "name": "docpilot",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Local-first document workbench with integrated terminal and review workflows",
   "main": "main.js",
   "scripts": {

@@ -1,14 +1,20 @@
 {
-  "generatedAt": "2026-07-18",
+  "generatedAt": "2026-07-19",
   "current": {
-    "version": "2.0.3",
-    "state": "release",
-    "tag": "v2.0.3",
-    "implementationCommit": "514638780ae9441227ce79e142541af89edee789",
-    "implementationDate": "2026-07-18",
-    "note": "The v2.0.3 implementation PR is merged; this release finalization PR must merge before the tag, GitHub Release, Pages publication, and Vercel production deployment gates."
+    "version": "2.0.4",
+    "state": "release-candidate",
+    "tag": "v2.0.4",
+    "implementationCommit": "2968e5767136b4138add44e35efb4e9fae451950",
+    "implementationDate": "2026-07-19",
+    "note": "The v2.0.4 candidate is prepared in a PR; its tag, GitHub Latest Release, Pages finalization, and Vercel production deployment remain separate approval gates."
   },
   "fixes": [
+    {
+      "id": "embedded-terminal-shells",
+      "claim": "The embedded terminal offers only fixed shell choices, defaults to fish when available, installs fish through a confirmed fixed Homebrew command, and treats user-closed tabs as normal termination.",
+      "implementation": ["bridge.js", "shared/core/terminal-shells.js", "app/src/features/settings/SettingsPanel.tsx", "app/src/features/terminal/TerminalPane.tsx"],
+      "verification": ["tests/terminal-shells.test.js", "scripts/check-terminal-session.js", "scripts/check-react-terminal-creation.js", "scripts/check-react-settings-panel.js"]
+    },
     {
       "id": "shutdown-lifecycle",
       "claim": "Application shutdown closes owned bridges, streams, watchers, workers, terminals, and agent child processes without accepting late resources.",

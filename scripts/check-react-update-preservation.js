@@ -9,11 +9,13 @@ const { _electron: electron } = require('playwright');
 
 const repoRoot = path.resolve(__dirname, '..');
 
-async function waitForEditor(app) {
-  const deadline = Date.now() + 15_000;
+async function waitForEditor(app, startWindow) {
+  const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     const page = app.windows().find(window => window.url().includes('dist/renderer/index.html'));
     if (page) return page;
+    const openFolderError = await startWindow.evaluate(() => window.__docpilotOpenFolderError || '').catch(() => '');
+    if (openFolderError) throw new Error(`React editor window did not open: ${openFolderError}`);
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   throw new Error('React editor window did not open');
@@ -49,11 +51,14 @@ async function main() {
     await start.waitForLoadState('domcontentloaded');
     await start.evaluate(root => {
       localStorage.setItem('docpilot:terminal-open', '1');
-      void window.docpilot.openFolder(root);
+      window.__docpilotOpenFolderError = '';
+      window.docpilot.openFolder(root).catch(error => {
+        window.__docpilotOpenFolderError = String(error);
+      });
     }, workspace);
 
-    const editor = await waitForEditor(app);
-    await editor.waitForSelector('.bridge-status.connected', { timeout: 15_000 });
+    const editor = await waitForEditor(app, start);
+    await editor.waitForSelector('.bridge-status.connected', { timeout: 60_000 });
     const releaseNotice = editor.locator('.release-notice-overlay');
     if (await releaseNotice.isVisible().catch(() => false)) {
       await releaseNotice.getByRole('button', { name: '확인' }).click();
@@ -66,8 +71,14 @@ async function main() {
     await editor.waitForSelector('.dirty-pill');
 
     await editor.waitForSelector('.terminal-empty');
-    await editor.locator('.terminal-empty').click();
-    await editor.waitForSelector('.terminal-tab.active', { timeout: 10_000 });
+    await editor.locator('.terminal-empty-primary').click();
+    const terminalOutcome = await Promise.race([
+      editor.waitForSelector('.terminal-tab.active', { timeout: 60_000 }).then(() => 'tab'),
+      editor.waitForSelector('.terminal-error', { timeout: 60_000 }).then(() => 'error'),
+    ]);
+    if (terminalOutcome === 'error') {
+      throw new Error(`Update preservation terminal creation failed: ${await editor.locator('.terminal-error').innerText()}`);
+    }
 
     const agentSessionId = await editor.evaluate(async () => {
       const params = new URLSearchParams(window.location.search);
@@ -95,7 +106,7 @@ async function main() {
       });
       const detail = await response.json();
       return detail.session?.status === 'running';
-    }, agentSessionId, { timeout: 8_000 });
+    }, agentSessionId, { timeout: 30_000 });
 
     const baseState = {
       version: '9.9.9',

@@ -1591,6 +1591,197 @@ body.dragging-workbench-pane * {
   box-shadow: none !important;
 }
 
+.terminal-new-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-right: 3px;
+}
+
+.terminal-pane.terminal-chooser-open {
+  z-index: 20;
+  overflow: visible;
+}
+
+.terminal-new-control .terminal-new-primary {
+  width: auto;
+  min-width: 76px;
+  max-width: 112px;
+  display: inline-flex;
+  grid-auto-flow: column;
+  gap: 5px;
+  justify-content: center;
+  border-radius: 5px 0 0 5px;
+  padding: 0 8px;
+}
+
+.terminal-new-primary span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 10px var(--dp-sans);
+  font-weight: 610;
+}
+
+.terminal-new-control .terminal-new-menu-button {
+  width: 18px;
+  border-left: 1px solid var(--workbench-border) !important;
+  border-radius: 0 5px 5px 0;
+}
+
+.terminal-new-control .terminal-icon-button:disabled,
+.terminal-empty-primary:disabled,
+.terminal-shell-menu button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
+.terminal-shell-menu {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  bottom: calc(100% + 4px);
+  width: 238px;
+  overflow: hidden;
+  border: 1px solid var(--workbench-border);
+  border-radius: 8px;
+  background: var(--workbench-raised);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  padding: 4px;
+}
+
+.terminal-shell-menu button {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--workbench-text);
+  padding: 6px 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.terminal-shell-menu button:hover:not(:disabled),
+.terminal-shell-menu button:focus-visible {
+  background: var(--workbench-hover);
+  outline: none;
+}
+
+.terminal-shell-menu button > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.terminal-shell-menu strong {
+  font: 11px var(--dp-sans);
+  font-weight: 620;
+}
+
+.terminal-shell-menu small {
+  color: var(--workbench-muted);
+  font: 10px var(--dp-sans);
+}
+
+.terminal-shell-menu .terminal-shell-action {
+  min-width: auto;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  border: 1px solid color-mix(in srgb, var(--workbench-focus) 45%, var(--workbench-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--workbench-focus) 10%, transparent);
+  color: var(--workbench-focus);
+  font: 9px var(--dp-sans);
+  font-weight: 650;
+  padding: 3px 7px;
+}
+
+.terminal-shell-menu-hint {
+  border-top: 1px solid var(--workbench-border);
+  color: var(--workbench-faint);
+  font: 9px/1.35 var(--dp-sans);
+  margin: 3px 4px 0;
+  padding: 7px 4px 4px;
+}
+
+.terminal-shell-menu-hint.active {
+  color: var(--workbench-focus);
+}
+
+.terminal-empty {
+  cursor: default;
+  gap: 8px;
+}
+
+.terminal-empty-primary,
+.terminal-empty-choose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  font: 11px var(--dp-sans);
+  cursor: pointer;
+}
+
+.terminal-empty-primary {
+  gap: 6px;
+  border: 1px solid var(--workbench-border);
+  background: var(--workbench-raised);
+  color: var(--workbench-text);
+  padding: 8px 12px;
+}
+
+.terminal-empty-primary:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--workbench-focus) 55%, var(--workbench-border));
+  background: var(--workbench-hover);
+}
+
+.terminal-empty-choose {
+  border: 0;
+  background: transparent;
+  color: var(--workbench-focus);
+  padding: 3px 7px;
+}
+
+.terminal-empty-choose:hover,
+.terminal-empty-choose:focus-visible {
+  background: color-mix(in srgb, var(--workbench-focus) 10%, transparent);
+  outline: none;
+}
+
+.settings-field-hint {
+  color: var(--workbench-faint);
+  font: 9px/1.45 var(--dp-sans);
+}
+
+.settings-form .settings-inline-action {
+  justify-self: start;
+  border: 1px solid color-mix(in srgb, var(--workbench-focus) 36%, var(--workbench-border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--workbench-focus) 8%, transparent);
+  color: var(--workbench-focus);
+  font: 9px var(--dp-sans);
+  padding: 4px 7px;
+  cursor: pointer;
+}
+
+.settings-form .settings-inline-action:hover:not(:disabled),
+.settings-form .settings-inline-action:focus-visible {
+  background: color-mix(in srgb, var(--workbench-focus) 14%, transparent);
+  outline: none;
+}
+
+.settings-form .settings-inline-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
 .workspace-title .panel-title-actions button,
 .workspace-tree-toolbar button {
   display: inline-grid;

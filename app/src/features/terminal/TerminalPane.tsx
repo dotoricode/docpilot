@@ -1,16 +1,21 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, DotsSixVertical, Plus, Trash, X } from '@phosphor-icons/react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CaretDown, Check, DotsSixVertical, Plus, Trash, X } from '@phosphor-icons/react';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import {
   acknowledgeTerminalFrame,
+  getSettings,
+  getTerminalShells,
   getTerminalSnapshot,
+  installFishShell,
   listTerminalSessions,
   resizeTerminalSession,
   sendTerminalInput,
   startTerminalSession,
   stopTerminalSession,
   watchTerminalSession,
+  type TerminalShell,
+  type TerminalShellId,
   type TerminalSessionSummary,
 } from '../../shared/bridge-client';
 
@@ -56,8 +61,18 @@ const TERMINAL_THEME = {
 
 const TERMINAL_FONT_FAMILY = '"MesloLGS NF", "JetBrainsMono Nerd Font", "Hack Nerd Font", "Symbols Nerd Font Mono", "Geist Mono", "SFMono-Regular", Menlo, monospace';
 
+const DEFAULT_TERMINAL_SHELL: TerminalShell = {
+  id: 'default',
+  label: 'Default shell',
+  description: 'Use your macOS login shell',
+  available: true,
+  installable: false,
+  path: '',
+};
+
 export function TerminalPane({ position, theme, onPositionChange, onPanePointerDown, onPaneKeyDown, onClose }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const chooserRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const stopWatchingRef = useRef<(() => void) | null>(null);
   const viewIdRef = useRef(crypto.randomUUID());
@@ -65,7 +80,13 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
   const [sessions, setSessions] = useState<TerminalSessionSummary[]>([]);
   const [activeId, setActiveId] = useState('');
   const [error, setError] = useState('');
+  const [defaultTerminalShell, setDefaultTerminalShell] = useState<TerminalShellId>('default');
+  const [terminalShells, setTerminalShells] = useState<TerminalShell[]>([DEFAULT_TERMINAL_SHELL]);
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const [installingFish, setInstallingFish] = useState(false);
+  const [installMessage, setInstallMessage] = useState('');
   const activeSession = sessions.find(session => session.id === activeId) || null;
+  const defaultShell = terminalShells.find(shell => shell.id === defaultTerminalShell) || DEFAULT_TERMINAL_SHELL;
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -116,6 +137,32 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    const refreshPreferences = () => {
+      Promise.all([getSettings(), getTerminalShells()])
+        .then(([settingsResponse, shells]) => {
+          if (cancelled) return;
+          setDefaultTerminalShell(settingsResponse.settings.defaultTerminalShell);
+          setTerminalShells(shells.length ? shells : [DEFAULT_TERMINAL_SHELL]);
+        })
+        .catch(() => {});
+    };
+    const onSettingsSaved = (event: Event) => {
+      const settings = (event as CustomEvent).detail?.settings;
+      if (settings?.defaultTerminalShell) setDefaultTerminalShell(settings.defaultTerminalShell);
+      void getTerminalShells().then(shells => {
+        if (!cancelled && shells.length) setTerminalShells(shells);
+      }).catch(() => {});
+    };
+    refreshPreferences();
+    window.addEventListener('docpilot-settings-saved', onSettingsSaved);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('docpilot-settings-saved', onSettingsSaved);
+    };
+  }, []);
+
+  useEffect(() => {
     stopWatchingRef.current?.();
     stopWatchingRef.current = null;
     lastSeqRef.current = 0;
@@ -145,10 +192,10 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
     };
   }, [activeId]);
 
-  async function createTerminal() {
+  async function createTerminal(shellId: TerminalShellId = defaultTerminalShell) {
     setError('');
     try {
-      const result = await startTerminalSession({ title: `Terminal ${sessions.length + 1}` });
+      const result = await startTerminalSession({ title: `Terminal ${sessions.length + 1}`, shellId });
       setSessions(current => [...current, result.session]);
       setActiveId(result.session.id);
     } catch (cause) {
@@ -156,7 +203,45 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
     }
   }
 
+  async function launchTerminal(shellId: TerminalShellId) {
+    setChooserOpen(false);
+    const shell = terminalShells.find(item => item.id === shellId);
+    if (!shell?.available) {
+      setError(`${shell?.label || 'Selected shell'} is not installed.`);
+      return;
+    }
+    await createTerminal(shellId);
+  }
+
+  async function installFish() {
+    if (!window.confirm('Homebrew로 fish 셸을 설치할까요?\n\n실행 명령: brew install fish')) return;
+    setInstallingFish(true);
+    setInstallMessage('Installing fish with Homebrew…');
+    setError('');
+    try {
+      const result = await installFishShell();
+      const shells = await getTerminalShells();
+      setTerminalShells(shells.length ? shells : [DEFAULT_TERMINAL_SHELL]);
+      setDefaultTerminalShell(result.settings.defaultTerminalShell);
+      window.dispatchEvent(new CustomEvent('docpilot-settings-saved', { detail: { settings: result.settings } }));
+      setInstallMessage('fish installed · Select it to open a terminal');
+    } catch (cause) {
+      setInstallMessage('');
+      reportError(cause);
+    } finally {
+      setInstallingFish(false);
+    }
+  }
+
+  function openTerminalChooser() {
+    setChooserOpen(true);
+    window.requestAnimationFrame(() => {
+      chooserRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
+    });
+  }
+
   async function closeTerminal(id: string) {
+    setError('');
     try {
       await stopTerminalSession(id);
     } catch {}
@@ -172,7 +257,7 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
   }
 
   return (
-    <section className="terminal-pane" aria-label="Terminal sessions">
+    <section className={`terminal-pane terminal-position-${position} ${chooserOpen ? 'terminal-chooser-open' : ''}`} aria-label="Terminal sessions">
       <header className="terminal-tabbar">
         <button
           className="terminal-pane-drag-handle"
@@ -199,9 +284,6 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
               <X size={12} weight="bold" onClick={event => { event.stopPropagation(); void closeTerminal(session.id); }} />
             </button>
           ))}
-          <button className="terminal-icon-button" type="button" aria-label="New terminal" title="New terminal" onClick={createTerminal}>
-            <Plus size={14} />
-          </button>
           <span
             className="terminal-tabbar-drag-surface"
             draggable={false}
@@ -215,6 +297,72 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
         </div>
         <div className="terminal-actions">
           {activeSession ? <span className="terminal-shell-label">{shellName(activeSession.shell)}</span> : null}
+          <div
+            className="terminal-new-control"
+            ref={chooserRef}
+            onBlur={event => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setChooserOpen(false);
+            }}
+            onKeyDown={event => {
+              if (event.key === 'Escape') {
+                setChooserOpen(false);
+                chooserRef.current?.querySelector<HTMLButtonElement>('.terminal-new-menu-button')?.focus();
+              }
+            }}
+          >
+            <button
+              className="terminal-icon-button terminal-new-primary"
+              type="button"
+              aria-label={`New terminal with ${defaultShell.label}`}
+              title={`New terminal with ${defaultShell.label}`}
+              disabled={!defaultShell.available}
+              onClick={() => void launchTerminal(defaultShell.id)}
+            >
+              <Plus size={14} />
+              <span>{terminalShellShortLabel(defaultShell)}</span>
+            </button>
+            <button
+              className="terminal-icon-button terminal-new-menu-button"
+              type="button"
+              aria-label="Choose terminal shell"
+              aria-haspopup="menu"
+              aria-expanded={chooserOpen}
+              title="Choose terminal shell"
+              onClick={() => {
+                if (chooserOpen) setChooserOpen(false);
+                else openTerminalChooser();
+              }}
+            >
+              <CaretDown size={10} weight="bold" />
+            </button>
+            {chooserOpen ? (
+              <div className="terminal-shell-menu" role="menu" aria-label="Terminal shells">
+                {terminalShells.map(shell => (
+                  <button
+                    key={shell.id}
+                    type="button"
+                    role="menuitem"
+                    disabled={installingFish || (!shell.available && !shell.installable)}
+                    onClick={() => {
+                      if (shell.available) void launchTerminal(shell.id);
+                      else if (shell.id === 'fish' && shell.installable) void installFish();
+                    }}
+                  >
+                    <span>
+                      <strong>{shell.label}</strong>
+                      <small>{shell.description}{shell.available ? '' : ' · Not installed'}</small>
+                    </span>
+                    {shell.id === 'fish' && !shell.available && shell.installable
+                      ? <span className="terminal-shell-action">{installingFish ? 'Installing…' : 'Install'}</span>
+                      : shell.id === defaultTerminalShell ? <Check size={14} aria-label="Default shell" /> : null}
+                  </button>
+                ))}
+                <div className={`terminal-shell-menu-hint ${installMessage ? 'active' : ''}`}>
+                  {installMessage || 'Runs inside DocPilot · Change the default in Settings'}
+                </div>
+              </div>
+            ) : null}
+          </div>
           <button className={`terminal-icon-button ${position === 'left' ? 'active' : ''}`} type="button" aria-label="Dock terminal left" title="Dock terminal left" onClick={() => onPositionChange('left')}>
             <ArrowLeft size={15} weight={position === 'left' ? 'bold' : 'regular'} />
           </button>
@@ -239,11 +387,14 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
       </header>
       {error ? <div className="terminal-error">{error}</div> : null}
       {!sessions.length ? (
-        <button className="terminal-empty" type="button" onClick={createTerminal}>
-          <Plus size={16} />
-          <span>New terminal</span>
-          <small>Opens your default login shell</small>
-        </button>
+        <div className="terminal-empty">
+          <button className="terminal-empty-primary" type="button" disabled={!defaultShell.available} onClick={() => void launchTerminal(defaultShell.id)}>
+            <Plus size={16} />
+            <span>New terminal with {defaultShell.label}</span>
+          </button>
+          <button className="terminal-empty-choose" type="button" onClick={openTerminalChooser}>Choose shell…</button>
+          <small>{defaultShell.available ? 'Opens inside DocPilot' : 'The default shell is not installed'}</small>
+        </div>
       ) : null}
       <div className="terminal-xterm-host" ref={hostRef} />
     </section>
@@ -277,4 +428,8 @@ function resizeTerminalToHost(terminal: Terminal, host: HTMLDivElement | null, s
 
 function shellName(shell: string) {
   return shell.split('/').filter(Boolean).pop() || 'shell';
+}
+
+function terminalShellShortLabel(shell: TerminalShell) {
+  return shell.id === 'default' ? 'Default' : shell.label;
 }

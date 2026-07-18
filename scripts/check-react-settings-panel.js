@@ -24,12 +24,17 @@ assert(bridge.includes("settings.agentCommandMode === 'custom'"), 'agent spawn m
 assert(bridge.includes('codexExecArgs(codexCommand)'), 'codex command must be configurable');
 assert(bridge.includes('claudePrintArgs(claudeCommand)'), 'claude command must be configurable');
 assert(bridge.includes('stdinText: prompt'), 'agent prompts must be sent through stdin');
+assert(bridge.includes('normalizeTerminalShellId'), 'settings must normalize terminal shell ids through the fixed allowlist');
+assert(bridge.includes('runDirectTextCommand(brew, spec.args'), 'fish installation must bypass workspace shell and direnv evaluation');
+assert(bridge.includes("url.pathname === '/terminal-shells'"), 'bridge must expose installed terminal shells');
 
 assert(client.includes('export type AppSettings'), 'bridge client must export AppSettings');
 assert(client.includes('getSettings'), 'bridge client must expose getSettings');
 assert(client.includes('getDiagnostics'), 'bridge client must expose getDiagnostics');
 assert(client.includes('openLocalPath'), 'bridge client must expose openLocalPath');
 assert(client.includes('saveSettings'), 'bridge client must expose saveSettings');
+assert(client.includes('getTerminalShells'), 'bridge client must expose terminal shell availability');
+assert(client.includes('installFishShell'), 'bridge client must expose the fixed fish installer');
 assert(main.includes("handleTrustedIpc('open-local-path'"), 'main process must expose trusted open-local-path IPC');
 assert(main.includes('shell.showItemInFolder'), 'main process must reveal files in Finder');
 assert(preload.includes('openLocalPath'), 'preload must expose openLocalPath');
@@ -42,6 +47,9 @@ assert(app.includes('docpilot-settings-saved'), 'app shell must react to setting
 assert(theme.includes('resolveThemePreference'), 'theme helper must resolve system theme preference');
 assert(theme.includes('document.documentElement.dataset.theme'), 'theme helper must write effective theme to the document root');
 assert(panel.includes('Agent 실행'), 'settings panel must expose agent command mode');
+assert(panel.includes('기본 터미널 셸'), 'settings panel must expose the default terminal shell');
+assert(panel.includes('fish는 내장 터미널에서 자동 제안'), 'settings panel must explain fish autosuggestions');
+assert(panel.includes('Homebrew로 fish 설치'), 'settings panel must expose fish installation when available');
 assert(panel.includes('Claude 명령'), 'settings panel must expose Claude command');
 assert(panel.includes('Codex 명령'), 'settings panel must expose Codex command');
 assert(panel.includes('파일 감시 제외'), 'settings panel must expose watcher ignore field');
