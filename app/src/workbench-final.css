@@ -1959,3 +1959,22 @@ body.dragging-workbench-pane * {
 :root[data-theme] .markdown-preview .admonitionblock td.content code {
   display: inline !important;
 }
+
+/* Keep AsciiDoc information-panel labels in normal flow. The earlier floating
+   badge used an absolutely positioned title inside a zero-height icon cell,
+   so the following content painted over the lower half of NOTE/IMPORTANT. */
+:root[data-theme] .markdown-preview .admonitionblock td.icon {
+  display: block !important;
+  width: 100% !important;
+  min-height: 22px !important;
+  margin: 0 0 8px !important;
+}
+
+:root[data-theme] .markdown-preview .admonitionblock td.icon .title {
+  position: static !important;
+  inset: auto !important;
+  z-index: auto !important;
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  white-space: nowrap !important;
+}

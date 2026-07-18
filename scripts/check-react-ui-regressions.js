@@ -4,8 +4,6 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { _electron: electron } = require('playwright');
 
-const DEFAULT_WIDTH_OFFSET = 20;
-
 async function waitForEditor(app) {
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
@@ -36,6 +34,30 @@ async function headingShape(page) {
   });
 }
 
+async function admonitionLabelShapes(page) {
+  return page.locator('.markdown-preview .admonitionblock').evaluateAll(notes => notes.map(note => {
+    const title = note.querySelector('td.icon .title');
+    const icon = note.querySelector('td.icon');
+    const content = note.querySelector('td.content');
+    const titleRect = title?.getBoundingClientRect();
+    const iconRect = icon?.getBoundingClientRect();
+    const contentRect = content?.getBoundingClientRect();
+    const noteStyle = getComputedStyle(note);
+    const titleStyle = title ? getComputedStyle(title) : null;
+    return {
+      kind: note.className,
+      title: title?.textContent?.trim() || '',
+      titleBottom: titleRect?.bottom || 0,
+      contentTop: contentRect?.top || 0,
+      overlap: titleRect && contentRect ? Math.max(0, titleRect.bottom - contentRect.top) : -1,
+      panelPaddingTop: noteStyle.paddingTop,
+      iconHeight: iconRect?.height || 0,
+      titlePosition: titleStyle?.position || '',
+      titleZIndex: titleStyle?.zIndex || '',
+    };
+  }));
+}
+
 async function main() {
   const repoRoot = path.resolve(__dirname, '..');
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-ui-regressions-'));
@@ -44,7 +66,7 @@ async function main() {
   fs.writeFileSync(path.join(fixtureRoot, 'README.md'), '# Markdown 제목\n\n## Markdown 섹션\n\n### Markdown 세부 제목\n\n본문입니다.\n');
   fs.writeFileSync(
     path.join(fixtureRoot, 'manual.adoc'),
-    `= AsciiDoc 매뉴얼\n\n== 1. Eversafe Android 개요\n\n=== 1.1. Eversafe Android 소개\n\n==== 1.1.1. Endpoint 보안\n\nNOTE: ${noteSentence} ${noteSentence} ${noteSentence}\n`,
+    `= AsciiDoc 매뉴얼\n\n== 1. Eversafe Android 개요\n\n=== 1.1. Eversafe Android 소개\n\n==== 1.1.1. Endpoint 보안\n\nNOTE: ${noteSentence} ${noteSentence} ${noteSentence}\n\nIMPORTANT: Agent Copy is session-only and starts off after DocPilot restarts.\n`,
   );
 
   const failures = [];
@@ -132,14 +154,24 @@ async function main() {
       return {
         width: Math.round(stage?.getBoundingClientRect().width || 0),
         maximum: Number(slider?.max || 0),
-        stored: Number(localStorage.getItem('docpilot:preview-width')),
+        explicit: localStorage.getItem('docpilot:preview-width-explicit-v1'),
       };
     });
-    check(widthState.width === widthState.maximum - DEFAULT_WIDTH_OFFSET, `fresh preview width must be maximum - ${DEFAULT_WIDTH_OFFSET}px: ${JSON.stringify(widthState)}`);
-    check(widthState.stored === widthState.maximum - DEFAULT_WIDTH_OFFSET, `fresh preview width must persist only after resolving the maximum: ${JSON.stringify(widthState)}`);
+    check(widthState.width === widthState.maximum, `fresh preview width must use the available maximum: ${JSON.stringify(widthState)}`);
+    check(widthState.explicit === null, `fresh preview width must not become an explicit user reduction: ${JSON.stringify(widthState)}`);
 
     await page.locator('.workspace-file-row').filter({ hasText: 'manual.adoc' }).click();
     await page.waitForSelector('.markdown-preview .admonitionblock');
+    await page.locator('.theme-toggle button').filter({ hasText: 'Dark' }).click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+    const darkAdmonitionLabels = await admonitionLabelShapes(page);
+    check(darkAdmonitionLabels.length === 2, `NOTE and IMPORTANT fixtures must both render: ${JSON.stringify(darkAdmonitionLabels)}`);
+    check(darkAdmonitionLabels.every(item => item.title && item.overlap === 0), `Dark AsciiDoc information-panel labels must not overlap their content: ${JSON.stringify(darkAdmonitionLabels)}`);
+    await page.locator('.preview-document-stage').screenshot({ path: path.join(artifactRoot, 'asciidoc-admonition-labels-dark.png'), scale: 'css' });
+    await page.locator('.theme-toggle button').filter({ hasText: 'Light' }).click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+    const lightAdmonitionLabels = await admonitionLabelShapes(page);
+    check(lightAdmonitionLabels.every(item => item.title && item.overlap === 0), `Light AsciiDoc information-panel labels must not overlap their content: ${JSON.stringify(lightAdmonitionLabels)}`);
     const adocHeadings = await headingShape(page);
     check(adocHeadings.h2?.size === 36 && adocHeadings.h3?.size === 28 && adocHeadings.h4?.size === 22, `AsciiDoc heading scale is wrong: ${JSON.stringify(adocHeadings)}`);
     check(adocHeadings.h2?.weight <= 590 && adocHeadings.h3?.weight <= 580 && adocHeadings.h4?.weight <= 570, `AsciiDoc headings are too heavy: ${JSON.stringify(adocHeadings)}`);
@@ -149,7 +181,7 @@ async function main() {
     }));
     check(koreanFont.family.includes('Noto Sans KR Variable') && koreanFont.loaded, `Korean preview font is not bundled and loaded: ${JSON.stringify(koreanFont)}`);
 
-    const noteShape = await page.locator('.markdown-preview .admonitionblock').evaluate(note => {
+    const noteShape = await page.locator('.markdown-preview .admonitionblock.note').evaluate(note => {
       const content = note.querySelector('td.content');
       const code = content?.querySelector('code');
       const noteRect = note.getBoundingClientRect();
