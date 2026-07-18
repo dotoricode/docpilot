@@ -21,7 +21,6 @@ export const FALLBACK_RELEASES = Object.freeze([
 - 다운로드 중 terminal·agent 세션과 미저장 문서는 유지됩니다. 교체할 때는 작업을 저장하고 사용자가 앱을 종료하세요.`,
     assets: [],
     fallback: true,
-    unreleased: true,
   },
   {
     version: '2.0.2',
