@@ -433,7 +433,7 @@ function getBridgeStatus(port = bridgePort, token = '') {
   });
 }
 
-function waitForBridgeRoot(root, port = bridgePort, token = '', timeoutMs = 2500) {
+function waitForBridgeRoot(root, port = bridgePort, token = '', timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
   return new Promise(resolve => {
     const check = async () => {

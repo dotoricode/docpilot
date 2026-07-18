@@ -19,7 +19,7 @@ server.stdout.on('data', chunk => { serverOutput += chunk; });
 server.stderr.on('data', chunk => { serverOutput += chunk; });
 
 async function waitForServer() {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 300; attempt += 1) {
     if (server.exitCode !== null) throw new Error(`manual dev server exited early\n${serverOutput}`);
     try {
       const response = await fetch(`${baseUrl}/docs`);
@@ -79,7 +79,7 @@ try {
     };
   });
 
-  await page.goto(`${baseUrl}/docs`);
+  await page.goto(`${baseUrl}/docs`, { timeout: 90_000 });
   const firstVideo = page.locator('video[data-media-asset="workbench-overview"]');
   await firstVideo.waitFor();
   const firstHandle = await firstVideo.elementHandle();

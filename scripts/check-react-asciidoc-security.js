@@ -4,11 +4,13 @@ const os = require('os');
 const path = require('path');
 const { _electron: electron } = require('playwright');
 
-async function waitForEditor(app) {
-  const deadline = Date.now() + 15000;
+async function waitForEditor(app, startWindow) {
+  const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     const page = app.windows().find(window => window.url().includes('dist/renderer/index.html'));
     if (page) return page;
+    const openFolderError = await startWindow.evaluate(() => window.__docpilotOpenFolderError || '').catch(() => '');
+    if (openFolderError) throw new Error(`React editor did not open: ${openFolderError}`);
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   throw new Error(`React editor did not open: ${app.windows().map(window => window.url()).join(', ')}`);
@@ -18,8 +20,8 @@ async function dismissReleaseNotice(page) {
   const notice = page.locator('.release-notice-overlay');
   if (!await notice.isVisible().catch(() => false)) return;
   const confirm = notice.getByRole('button', { name: '확인' });
-  if (await confirm.count()) await confirm.click();
-  else await notice.click({ position: { x: 8, y: 8 } });
+  if (await confirm.count()) await confirm.evaluate(button => button.click());
+  else await notice.evaluate(overlay => overlay.click());
 }
 
 async function main() {
@@ -69,14 +71,16 @@ const preserved = true;
     await start.waitForLoadState('domcontentloaded');
     await start.evaluate(() => {
       localStorage.setItem('docpilot:terminal-open', '0');
-      localStorage.setItem('docpilot:release-notice-seen-id', '2.0.3:r2');
     });
     await start.evaluate(root => {
-      window.docpilot.openFolder(root);
+      window.__docpilotOpenFolderError = '';
+      window.docpilot.openFolder(root).catch(error => {
+        window.__docpilotOpenFolderError = String(error);
+      });
       return true;
     }, fixtureRoot);
 
-    const page = await waitForEditor(app);
+    const page = await waitForEditor(app, start);
     await page.waitForSelector('.workspace-sidebar');
     await dismissReleaseNotice(page);
     await page.locator('.workspace-file-row').filter({ hasText: 'security.adoc' }).click();

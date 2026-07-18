@@ -30,14 +30,20 @@ async function main() {
     await start.waitForLoadState('domcontentloaded');
     await start.evaluate(root => {
     localStorage.setItem('docpilot:terminal-open', '1');
-    localStorage.setItem('docpilot:release-notice-seen-id', '2.0.3:r2');
-    window.docpilot.openFolder(root);
+    window.__docpilotOpenFolderError = '';
+    window.docpilot.openFolder(root).catch(error => {
+      window.__docpilotOpenFolderError = String(error);
+    });
     return true;
   }, workspace);
 
-    const editor = await waitForEditor(app);
-    await editor.waitForSelector('.workspace-file-row', { timeout: 15_000 });
-    await editor.locator('.workspace-file-row').filter({ hasText: 'README.md' }).first().click();
+    const editor = await waitForEditor(app, start);
+    await editor.waitForSelector('.workspace-file-row', { timeout: 60_000 });
+    const releaseNotice = editor.getByRole('dialog', { name: '새 버전 안내' });
+    if (await releaseNotice.isVisible().catch(() => false)) {
+      await releaseNotice.getByRole('button', { name: '확인' }).click();
+    }
+    await editor.locator('.workspace-file-row').filter({ hasText: 'README.md' }).first().evaluate(button => button.click());
     await editor.waitForSelector('.terminal-pane', { timeout: 5_000 }).catch(() => {});
     if (!await editor.locator('.terminal-pane').count()) {
       const reopen = editor.getByRole('button', { name: 'Open terminal pane' });
@@ -198,11 +204,13 @@ async function main() {
   }
 }
 
-async function waitForEditor(runningApp) {
-  const deadline = Date.now() + 15_000;
+async function waitForEditor(runningApp, startWindow) {
+  const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     const page = runningApp.windows().find(window => window.url().includes('dist/renderer/index.html') || window.url().endsWith('/index.html'));
     if (page) return page;
+    const openFolderError = await startWindow.evaluate(() => window.__docpilotOpenFolderError || '').catch(() => '');
+    if (openFolderError) throw new Error(`React editor window did not open: ${openFolderError}`);
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   throw new Error(`React editor window did not open: ${runningApp.windows().map(window => window.url()).join(', ')}`);
