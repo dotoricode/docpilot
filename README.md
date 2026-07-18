@@ -36,6 +36,20 @@ dist/package/DocPilot-2.0.2-arm64.dmg
 dist/package/DocPilot-2.0.2-x64.dmg
 ```
 
+## Public Manual Release
+
+공개 매뉴얼 원본은 `prototypes/manual-v2`입니다. 릴리즈마다 GitHub Pages와 Vercel 두 경로를 함께 배포하고 검증합니다.
+
+```bash
+npm run manual:verify
+npm run manual:pages:stage
+npm run manual:vercel:preview
+npm run manual:vercel:production
+npm run manual:verify:public
+```
+
+전체 순서, 승인 지점과 롤백 절차는 [`docs/release-process.md`](docs/release-process.md)를 따릅니다.
+
 ## Main Workflow
 
 1. 왼쪽 파일 트리에서 마크다운 파일을 엽니다.
@@ -60,6 +74,7 @@ node scripts/check-agent-session-bridge.js
 node scripts/check-fake-agent-session.js
 node scripts/check-project-chat-wrapper.js
 node scripts/check-terminal-session.js
+node scripts/check-react-terminal-creation.js
 node scripts/check-react-renderer-smoke.js
 node scripts/check-react-editor-workflow.js
 node scripts/check-react-external-conflict.js

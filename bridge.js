@@ -471,12 +471,25 @@ function textFromClaudeContent(content) {
 }
 
 const optionalModuleCache = new Map();
+const optionalModulePathCache = new Map();
 function loadOptionalModule(name) {
   if (optionalModuleCache.has(name)) return optionalModuleCache.get(name);
   let loaded = null;
-  try {
-    loaded = require(name);
-  } catch {}
+  // The bridge itself runs from app.asar.unpacked. node-pty must still load its
+  // JavaScript through app.asar so its built-in helper-path rewrite maps once
+  // to app.asar.unpacked instead of producing app.asar.unpacked.unpacked.
+  const packedRoot = __dirname.replace(/app\.asar\.unpacked(?=$|[\\/])/, 'app.asar');
+  const candidates = packedRoot === __dirname
+    ? [name]
+    : [path.join(packedRoot, 'node_modules', name), name];
+  for (const candidate of candidates) {
+    try {
+      const resolved = require.resolve(candidate);
+      loaded = require(resolved);
+      optionalModulePathCache.set(name, resolved);
+      break;
+    } catch {}
+  }
   optionalModuleCache.set(name, loaded);
   return loaded;
 }
@@ -487,7 +500,8 @@ function detectOptionalModule(name) {
 
 function prepareNodePtyRuntime() {
   try {
-    const packageRoot = path.resolve(path.dirname(require.resolve('node-pty')), '..');
+    const resolvedModule = optionalModulePathCache.get('node-pty') || require.resolve('node-pty');
+    const packageRoot = path.resolve(path.dirname(resolvedModule), '..').replace(/app\.asar(?=$|[\\/])/, 'app.asar.unpacked');
     const candidates = [
       path.join(packageRoot, 'build', 'Release', 'spawn-helper'),
       path.join(packageRoot, 'prebuilds', `darwin-${process.arch}`, 'spawn-helper'),
