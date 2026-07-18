@@ -62,8 +62,17 @@ async function main() {
     assert.equal(menuLabel, '업데이트 확인…');
 
     await sendMenuCommand(app, 'check-update');
-    await sendUpdateState(app, { status: 'checking' });
     await editor.waitForSelector('.update-card');
+    await editor.waitForTimeout(800);
+    await sendUpdateState(app, {
+      status: 'available',
+      version: '9.9.9',
+      releaseUrl: 'https://github.com/dotoricode/docpilot/releases/tag/v9.9.9',
+      fileName: 'DocPilot-9.9.9-arm64.dmg',
+    });
+    await editor.waitForFunction(() => document.querySelector('.update-card')?.textContent?.includes('v9.9.9'));
+    await sendUpdateState(app, { status: 'checking' });
+    await editor.waitForFunction(() => document.querySelector('.update-card')?.textContent?.includes('공식 릴리즈와 현재 버전'));
     assert.match(await editor.locator('.update-card').innerText(), /공식 릴리즈와 현재 버전/);
 
     await sendUpdateState(app, { status: 'latest', version: '2.0.3' });

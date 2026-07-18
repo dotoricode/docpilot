@@ -47,7 +47,7 @@ async function main() {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-preview-workflows-user-'));
   const markdownPath = path.join(workspace, 'README.md');
   const asciidocPath = path.join(workspace, 'guide.adoc');
-  fs.writeFileSync(markdownPath, '# Markdown workflow\n\nParagraph with **bold** source.\n\n' + 'Scrollable body.\n\n'.repeat(80), 'utf8');
+  fs.writeFileSync(markdownPath, '# Markdown workflow\n\nParagraph with **bold** source.\n\n[Native link](https://example.com)\n\n' + 'Scrollable body.\n\n'.repeat(80), 'utf8');
   fs.writeFileSync(asciidocPath, '= AsciiDoc workflow\n\nA source-faithful paragraph.\n', 'utf8');
 
   const launch = () => electron.launch({
@@ -82,7 +82,7 @@ async function main() {
       color: getComputedStyle(node).scrollbarColor,
     }));
     assert.doesNotMatch(idleScrollbar.className, /is-scrolling/);
-    assert.match(idleScrollbar.color, /transparent/);
+    assert.match(idleScrollbar.color, /transparent|rgba\(0, 0, 0, 0\)/);
     await preview.evaluate(node => { node.scrollTop = 320; node.dispatchEvent(new Event('scroll')); });
     await editor.waitForFunction(() => document.querySelector('.markdown-preview')?.classList.contains('is-scrolling'));
     await editor.waitForTimeout(520);
@@ -92,9 +92,17 @@ async function main() {
     const inline = editor.locator('.preview-inline-editor');
     await inline.waitFor();
     assert.equal(await inline.locator('textarea').inputValue(), '# Markdown workflow\n');
+    await inline.locator('textarea').press('Meta+Shift+C');
+    assert.equal(await editor.getByRole('button', { name: 'Agent Copy' }).getAttribute('aria-pressed'), 'false', 'Preview inputs must retain Cmd+Shift+C');
     await inline.locator('textarea').press('Escape');
     assert.equal(await inline.count(), 0, 'Escape must discard the edit');
     assert.equal(await editor.locator('.dirty-pill').count(), 0, 'cancel must not dirty the document');
+
+    await editor.locator('.markdown-preview a').first().evaluate(link => {
+      link.addEventListener('click', event => event.preventDefault(), { once: true });
+      link.click();
+    });
+    assert.equal(await inline.count(), 0, 'native Preview links must not open the source editor');
 
     await editor.locator('.markdown-preview p').first().click();
     await inline.locator('textarea').fill('Paragraph with **preserved Markdown** source.\n');
