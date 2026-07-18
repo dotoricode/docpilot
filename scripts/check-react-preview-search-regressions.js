@@ -94,6 +94,7 @@ async function main() {
     if (await page.locator('.editor-more-menu[open]').count()) throw new Error('editor menu must close on outside click');
 
     await page.locator('.editor-more-menu summary').click();
+    await page.evaluate(() => localStorage.setItem('docpilot:preview-width-explicit-v1', '1'));
     const widthInput = page.locator('.preview-width-control input');
     await widthInput.evaluate(input => {
       input.value = '480';

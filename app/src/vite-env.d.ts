@@ -5,7 +5,7 @@ declare module '@fontsource-variable/geist-mono';
 declare module '@fontsource-variable/noto-sans-kr';
 
 type DocPilotUpdateState = {
-  status: 'idle' | 'available' | 'downloading' | 'downloaded' | 'error';
+  status: 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'error';
   version?: string;
   releaseUrl?: string;
   fileName?: string;
@@ -33,6 +33,7 @@ interface Window {
     copyText?: (text: string) => Promise<boolean>;
     setWindowTheme?: (theme: 'light' | 'dark' | 'system') => Promise<boolean>;
     getUpdateState?: () => Promise<DocPilotUpdateState>;
+    checkForUpdates?: () => Promise<DocPilotUpdateState>;
     downloadUpdate?: () => Promise<DocPilotUpdateState>;
     openDownloadedUpdate?: () => Promise<boolean>;
     onMenuCommand?: (callback: (command: string) => void) => () => void;

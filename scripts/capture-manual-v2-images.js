@@ -108,6 +108,7 @@ async function main() {
       localStorage.setItem('docpilot:release-notice-seen-id', '2.0.3:r2');
       localStorage.setItem('docpilot:terminal-open', '0');
       localStorage.setItem('docpilot:preview-width', '760');
+      localStorage.setItem('docpilot:preview-width-explicit-v1', '1');
     });
     await page.reload();
     await page.waitForSelector('.home-screen');
