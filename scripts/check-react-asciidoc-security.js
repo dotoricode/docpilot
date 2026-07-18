@@ -66,11 +66,15 @@ const preserved = true;
 
   try {
     const start = await app.firstWindow();
+    await start.waitForLoadState('domcontentloaded');
     await start.evaluate(() => {
       localStorage.setItem('docpilot:terminal-open', '0');
       localStorage.setItem('docpilot:release-notice-seen-id', '2.0.1:r2');
     });
-    await start.evaluate(root => window.docpilot.openFolder(root), fixtureRoot);
+    await start.evaluate(root => {
+      window.docpilot.openFolder(root);
+      return true;
+    }, fixtureRoot);
 
     const page = await waitForEditor(app);
     await page.waitForSelector('.workspace-sidebar');
@@ -121,7 +125,7 @@ const preserved = true;
     assert.match(result.note, /Preserved note content/);
     assert.match(result.table, /Key Value safe content/);
     assert.match(result.code, /const preserved = true/);
-    assert.match(result.details, /Preserved details Preserved details body/);
+    assert.match(result.details, /Preserved details\s*Preserved details body/);
     assert.match(result.policy, /script-src 'self'/);
     assert.doesNotMatch(result.policy, /script-src[^;]*'unsafe-inline'/);
 

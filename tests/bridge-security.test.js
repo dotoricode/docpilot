@@ -45,9 +45,10 @@ test('workspace resolver rejects traversal and symlink escapes', t => {
   fs.symlinkSync(outside, path.join(root, 'linked'));
   t.after(() => fs.rmSync(sandbox, { recursive: true, force: true }));
 
-  assert.equal(resolveInsideRoot(root, 'docs/ok.md'), path.join(root, 'docs', 'ok.md'));
+  const canonicalRoot = fs.realpathSync.native(root);
+  assert.equal(resolveInsideRoot(root, 'docs/ok.md'), path.join(canonicalRoot, 'docs', 'ok.md'));
   assert.equal(resolveInsideRoot(root, '../outside/secret.md'), null);
   assert.equal(resolveInsideRoot(root, 'linked/secret.md'), null);
-  assert.equal(resolveInsideRoot(root, 'docs/new.md', { allowMissingLeaf: true }), path.join(root, 'docs', 'new.md'));
+  assert.equal(resolveInsideRoot(root, 'docs/new.md', { allowMissingLeaf: true }), path.join(canonicalRoot, 'docs', 'new.md'));
   assert.equal(resolveInsideRoot(root, 'missing/new.md', { allowMissingLeaf: true }), null);
 });

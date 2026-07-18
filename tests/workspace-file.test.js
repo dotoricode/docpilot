@@ -38,3 +38,24 @@ test('workspace save rejects a disk change made after the temp file is flushed',
   assert.equal(fs.readFileSync(filePath, 'utf8'), 'external edit');
   assert.deepEqual(fs.readdirSync(root), ['note.md']);
 });
+
+test('workspace save rejects a symlink swap without touching the outside file', { skip: process.platform === 'win32' }, t => {
+  const root = sandbox(t);
+  const filePath = path.join(root, 'note.md');
+  const outsidePath = path.join(root, 'outside.md');
+  fs.writeFileSync(filePath, 'before', 'utf8');
+  fs.writeFileSync(outsidePath, 'outside', 'utf8');
+
+  assert.throws(
+    () => writeExistingWorkspaceFileAtomic(filePath, 'local edit', fileRevision('before'), {
+      beforeCommit: () => {
+        fs.unlinkSync(filePath);
+        fs.symlinkSync(outsidePath, filePath);
+      },
+    }),
+    /target is no longer a regular file/,
+  );
+  assert.equal(fs.readFileSync(outsidePath, 'utf8'), 'outside');
+  assert.equal(fs.lstatSync(filePath).isSymbolicLink(), true);
+  assert.deepEqual(fs.readdirSync(root).sort(), ['note.md', 'outside.md']);
+});

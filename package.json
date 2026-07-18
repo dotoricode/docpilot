@@ -12,11 +12,12 @@
     "test": "node --test tests/*.test.js",
     "check:shutdown": "node scripts/check-shutdown-lifecycle.js",
     "check:renderer-security": "npm run renderer:build && node scripts/check-react-asciidoc-security.js",
-    "build": "npm run renderer:build && electron-builder --mac dmg"
+    "build": "npm run renderer:build && electron-builder --mac"
   },
   "build": {
     "appId": "com.docpilot.app",
     "productName": "DocPilot",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
     "directories": {
       "output": "dist/package"
     },

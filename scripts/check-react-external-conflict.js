@@ -50,7 +50,7 @@ async function main() {
     }
     await editor.waitForSelector('.file-row', { timeout: 15000 });
     await editor.locator('.file-row').filter({ hasText: 'conflict.md' }).first().click({ timeout: 15000 });
-    await editor.locator('.editor-mode-toggle button').filter({ hasText: '편집' }).click();
+    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Source' }).click();
     await editor.waitForSelector('.cm-editor');
 
     await editor.locator('.cm-content').click();
@@ -62,15 +62,24 @@ async function main() {
 
     await editor.waitForSelector('.conflict-pill', { timeout: 8000 });
     const conflictText = await editor.locator('.conflict-pill').innerText();
-    assert(conflictText.includes('external-conflict'), `expected external conflict, got ${conflictText}`);
+    assert(conflictText.includes('외부 변경 충돌'), `expected external conflict, got ${conflictText}`);
 
-    await editor.locator('.editor-mode-toggle button').filter({ hasText: '프리뷰' }).click();
+    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Preview' }).click();
     await editor.waitForSelector('.markdown-preview h1');
     const previewTitleBeforeAccept = await editor.locator('.markdown-preview h1').innerText();
     assert.strictEqual(previewTitleBeforeAccept.trim(), 'User Draft', 'dirty editor content must not be overwritten by external disk write');
 
     const diskContent = fs.readFileSync(filePath, 'utf8');
     assert(diskContent.includes('External Change'), 'external change should remain on disk while dirty editor content is protected');
+
+    editor.once('dialog', dialog => dialog.accept());
+    await editor.locator('.editor-conflict-bar button').filter({ hasText: '내 버전으로 덮어쓰기' }).click();
+    await editor.waitForSelector('.conflict-pill', { state: 'detached', timeout: 8000 });
+    await editor.waitForSelector('.dirty-pill', { state: 'detached', timeout: 8000 });
+    assert(
+      fs.readFileSync(filePath, 'utf8').includes('Keep this unsaved editor text.'),
+      'confirmed local overwrite should persist the protected user draft',
+    );
 
     await editor.locator('.file-row').filter({ hasText: 'clean.md' }).first().click({ timeout: 15000 });
     await editor.waitForFunction(() => {
@@ -87,7 +96,7 @@ async function main() {
       return heading?.textContent?.trim() === 'Clean External Change';
     }, null, { timeout: 8000 });
     const cleanConflictText = await editor.locator('.conflict-pill').innerText();
-    assert(cleanConflictText.includes('external-change'), `expected clean external-change marker, got ${cleanConflictText}`);
+    assert(cleanConflictText.includes('외부 변경'), `expected clean external-change marker, got ${cleanConflictText}`);
 
     console.log('react external conflict checks passed');
   } finally {

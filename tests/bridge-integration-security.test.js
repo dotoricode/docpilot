@@ -137,6 +137,20 @@ test('bridge requires its capability token and confines workspace files', { time
   });
   assert.equal(preflight.status, 204);
   assert.match(preflight.headers['access-control-allow-headers'], /X-DocPilot-Token/i);
+  assert.equal((await request(port, '/file', {
+    method: 'OPTIONS',
+    origin: 'https://attacker.example',
+    headers: { 'Access-Control-Request-Headers': 'x-docpilot-token' },
+  })).status, 403);
+
+  const malformedSave = await request(port, '/save', {
+    method: 'POST',
+    token,
+    rawBody: '{',
+  });
+  assert.equal(malformedSave.status, 400);
+  assert.equal(fs.readFileSync(path.join(workspace, 'safe.md'), 'utf8'), 'original');
+  assert.equal((await request(port, '/file?id=..%2Fsecret.md', { token })).status, 403);
 
   assert.equal((await request(port, '/workspace-asset?id=pixel.png')).status, 403);
   assert.equal((await request(port, `/workspace-asset?id=pixel.png&token=${encodeURIComponent(token)}`)).status, 200);

@@ -75,3 +75,23 @@ test('async recoverable trash keeps cross-volume copies off the event loop path'
   assert.equal(fs.existsSync(source), false);
   assert.equal(fs.readFileSync(target, 'utf8'), 'async cross-volume');
 });
+
+test('failed cross-volume publish removes staging while preserving the source', async t => {
+  const root = sandbox(t);
+  const source = path.join(root, 'workspace', 'note.md');
+  const target = path.join(root, 'state', 'trash', 'note.md');
+  fs.mkdirSync(path.dirname(source), { recursive: true });
+  fs.writeFileSync(source, 'must survive', 'utf8');
+  let renameCalls = 0;
+  const rename = async () => {
+    renameCalls += 1;
+    const error = new Error(renameCalls === 1 ? 'cross-device' : 'publish failed');
+    error.code = renameCalls === 1 ? 'EXDEV' : 'EIO';
+    throw error;
+  };
+
+  await assert.rejects(movePathToRecoverableTrashAsync(source, target, { rename }), /publish failed/);
+  assert.equal(fs.readFileSync(source, 'utf8'), 'must survive');
+  assert.equal(fs.existsSync(target), false);
+  assert.equal(fs.readdirSync(path.dirname(target)).some(name => name.endsWith('.copying')), false);
+});

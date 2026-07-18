@@ -57,6 +57,7 @@ function waitForBridge(proc) {
 async function main() {
   const repoRoot = path.resolve(__dirname, '..');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-settings-'));
+  const canonicalRoot = fs.realpathSync.native(root);
   const stateDir = path.join(root, '.test-docpilot-state');
   fs.writeFileSync(path.join(root, 'README.md'), '# Root\n', 'utf8');
   fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
@@ -80,7 +81,7 @@ async function main() {
     assert.strictEqual(initial.settings.theme, 'system');
     assert.strictEqual(initial.settings.agentCommandMode, 'auto');
     assert.strictEqual(initial.settings.claudeCommand, 'claude');
-    assert.deepStrictEqual(initial.settings.recentWorkspaces, [root]);
+    assert.deepStrictEqual(initial.settings.recentWorkspaces, [canonicalRoot]);
 
     const saved = await requestJson(port, 'POST', '/settings', {
       settings: {
@@ -108,7 +109,7 @@ async function main() {
     assert(!files.files.includes('dist/ignored.md'), 'fileWatcherIgnore should exclude matching markdown files');
 
     const diagnostics = await requestJson(port, 'GET', '/diagnostics');
-    assert.strictEqual(diagnostics.diagnostics.root, root);
+    assert.strictEqual(diagnostics.diagnostics.root, canonicalRoot);
     assert.strictEqual(diagnostics.diagnostics.docpilotDir, stateDir);
     assert.strictEqual(diagnostics.diagnostics.settingsFile, path.join(stateDir, 'settings.json'));
     assert.strictEqual(diagnostics.diagnostics.sessionLogsDir, path.join(stateDir, 'session-logs'));

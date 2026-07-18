@@ -47,6 +47,19 @@ test('save result refreshes another clean view of the same file', () => {
   assert.equal(saved.conflictState, 'clean');
 });
 
+test('peer save preserves unsaved edits in another view of the same file', () => {
+  const dirtyPeer = updateEditorContent(
+    createFileBuffer({ path: 'guide.md', content: 'before', revision: 'rev-1' }),
+    'independent peer draft',
+  );
+  const saved = applyPeerSaveResult(dirtyPeer, 'guide.md', 'saved elsewhere', 'rev-2');
+
+  assert.equal(saved.editorContent, 'independent peer draft');
+  assert.equal(saved.lastSavedContent, 'saved elsewhere');
+  assert.equal(saved.lastSavedRevision, 'rev-2');
+  assert.equal(saved.dirtyByUser, true);
+});
+
 test('save result preserves edits made while the save was in flight', () => {
   const editedAgain = updateEditorContent(
     updateEditorContent(createFileBuffer({ path: 'a.md', content: 'old' }), 'submitted'),
