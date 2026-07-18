@@ -57,6 +57,36 @@ function readAsarJson(filePath) {
   return JSON.parse(asar.extractFile(asarPath, filePath).toString('utf8'));
 }
 
+function assertIconHasAlpha(iconPath, label) {
+  assert(fs.existsSync(iconPath), `${label} missing: ${iconPath}`);
+  const output = execFileSync('sips', ['-g', 'hasAlpha', iconPath], { encoding: 'utf8' });
+  assert.match(output, /hasAlpha:\s*yes/i, `${label} must retain transparent outer pixels`);
+}
+
+function assertMountedDmgIcon(dmgPath, arch) {
+  const mountPoint = fs.mkdtempSync(path.join(os.tmpdir(), `docpilot-${arch}-dmg-`));
+  let mounted = false;
+  try {
+    execFileSync('hdiutil', ['attach', '-readonly', '-nobrowse', '-mountpoint', mountPoint, dmgPath], {
+      stdio: 'ignore',
+    });
+    mounted = true;
+    const mountedApp = path.join(mountPoint, 'DocPilot.app');
+    const mountedIcon = path.join(mountedApp, 'Contents', 'Resources', 'icon.icns');
+    assertIconHasAlpha(mountedIcon, `${arch} mounted DMG app icon`);
+    assertIconHasAlpha(path.join(mountPoint, '.VolumeIcon.icns'), `${arch} DMG volume icon`);
+    const mountedVersion = execFileSync('/usr/libexec/PlistBuddy', [
+      '-c',
+      'Print :CFBundleShortVersionString',
+      path.join(mountedApp, 'Contents', 'Info.plist'),
+    ], { encoding: 'utf8' }).trim();
+    assert.strictEqual(mountedVersion, pkg.version, `${arch} mounted DMG app version must match package.json`);
+  } finally {
+    if (mounted) execFileSync('hdiutil', ['detach', mountPoint], { stdio: 'ignore' });
+    fs.rmSync(mountPoint, { recursive: true, force: true });
+  }
+}
+
 function freePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -113,6 +143,8 @@ async function assertPackagedBridgeStarts() {
 }
 
 (async () => {
+  assertIconHasAlpha(path.join(root, 'assets', 'icon.png'), 'source PNG icon');
+  assertIconHasAlpha(path.join(root, 'assets', 'docpilot.icns'), 'source ICNS icon');
   for (const target of packagedArchitectures) {
     const targetAppPath = path.join(packageOutput, target.dir, 'DocPilot.app');
     const targetDmgPath = path.join(packageOutput, `DocPilot-${pkg.version}-${target.arch}.dmg`);
@@ -130,11 +162,13 @@ async function assertPackagedBridgeStarts() {
     assert(fs.existsSync(targetDmgPath), `DMG missing: ${targetDmgPath}`);
     assert(fs.statSync(targetDmgPath).size > 50 * 1024 * 1024, `${target.arch} DMG looks too small to contain the Electron app`);
     assert(fs.existsSync(targetAppPath), `packaged app missing: ${targetAppPath}`);
+    assertIconHasAlpha(path.join(targetAppPath, 'Contents', 'Resources', 'icon.icns'), `${target.arch} packaged app icon`);
     assert.match(execFileSync('file', [path.join(targetAppPath, 'Contents', 'MacOS', 'DocPilot')], { encoding: 'utf8' }), new RegExp(`\\b${target.fileArch}\\b`));
     assert.match(execFileSync('file', [targetPtyPath], { encoding: 'utf8' }), new RegExp(`\\b${target.fileArch}\\b`));
     execFileSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', targetAppPath], {
       stdio: 'inherit',
     });
+    assertMountedDmgIcon(targetDmgPath, target.arch);
   }
   assert(fs.existsSync(asarPath), `app.asar missing: ${asarPath}`);
   assert(fs.existsSync(ptyPath), `node-pty native module missing: ${ptyPath}`);
@@ -162,6 +196,9 @@ async function assertPackagedBridgeStarts() {
     '/shared/core/context-policy.js',
     '/shared/core/file-buffer.js',
     '/shared/core/agent-process-manager.js',
+    '/shared/core/update-controller.js',
+    '/shared/core/update-download.js',
+    '/shared/core/update-release.js',
     '/scripts/fake-agent.js',
     '/package.json',
   ].forEach(file => assert(files.has(file), `packaged file missing: ${file}`));

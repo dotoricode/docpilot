@@ -1,12 +1,12 @@
 {
   "generatedAt": "2026-07-18",
   "current": {
-    "version": "2.0.2",
-    "state": "release",
-    "tag": "v2.0.2",
-    "implementationCommit": "d67997fc86b69d04781afc88749cfef3b3388d22",
+    "version": "2.0.3",
+    "state": "release-candidate",
+    "tag": "v2.0.3",
+    "implementationCommit": "a3d8e0294ed0aaf02719da6f10d90639beb2acbe",
     "implementationDate": "2026-07-18",
-    "note": "Release source is prepared through PR #24; public deployment is gated on the v2.0.2 tag and GitHub Release."
+    "note": "The v2.0.3 candidate is prepared in a PR; its tag, GitHub Latest Release, Pages finalization, and Vercel production deployment remain separate approval gates."
   },
   "fixes": [
     {
@@ -32,6 +32,18 @@
       "claim": "Release builds produce distinct x64 and arm64 DMGs whose app and native PTY binaries match the declared architecture.",
       "implementation": ["package.json", "scripts/check-packaged-app.js"],
       "verification": ["scripts/check-packaged-app.js", "scripts/check-react-recent-folder-stability.js"]
+    },
+    {
+      "id": "unsigned-update-flow",
+      "claim": "The app selects and downloads only a newer stable release's exact architecture DMG, verifies its size and GitHub SHA-256 digest, and never quits or replaces the app automatically.",
+      "implementation": ["shared/core/update-release.js", "shared/core/update-download.js", "shared/core/update-controller.js", "main.js", "app/src/screens/App.tsx"],
+      "verification": ["tests/update-release.test.js", "tests/update-download.test.js", "tests/update-controller.test.js", "scripts/check-react-update-preservation.js"]
+    },
+    {
+      "id": "packaged-icon",
+      "claim": "Source, packaged app, and mounted x64/arm64 DMG icons retain transparent outer pixels instead of an opaque black square.",
+      "implementation": ["assets/icon.png", "assets/docpilot.icns", "package.json"],
+      "verification": ["scripts/check-packaged-app.js"]
     }
   ],
   "features": [
@@ -140,6 +152,25 @@
     }
   ],
   "history": [
+    {
+      "version": "2.0.2",
+      "tag": "v2.0.2",
+      "date": "2026-07-18",
+      "releasePublishedAt": "2026-07-18T01:58:47Z",
+      "releaseCreatedAt": "2026-07-18T01:57:11Z",
+      "releaseTarget": "main",
+      "tagDate": "2026-07-18",
+      "commit": "ba7d9b6f965317e4be0ab04600574c1fa3fb07e1",
+      "baselineOnly": false,
+      "claims": [
+        {
+          "title": "Shutdown, security, save integrity, and multi-architecture packaging",
+          "claim": "Hardened owned-process shutdown, workspace request boundaries, concurrent save integrity, and distinct x64/arm64 release packages.",
+          "sourceCommit": "ba7d9b6f965317e4be0ab04600574c1fa3fb07e1"
+        }
+      ],
+      "note": "This is the verified public baseline immediately before the v2.0.3 update and icon corrections."
+    },
     {
       "version": "2.0.1",
       "tag": "v2.0.1",

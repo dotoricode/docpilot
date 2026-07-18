@@ -28,7 +28,7 @@ async function main() {
     await start.waitForLoadState('domcontentloaded');
     await start.evaluate(root => {
     localStorage.setItem('docpilot:terminal-open', '1');
-    localStorage.setItem('docpilot:release-notice-seen-id', '2.0.2:r2');
+    localStorage.setItem('docpilot:release-notice-seen-id', '2.0.3:r2');
     window.docpilot.openFolder(root);
     return true;
   }, workspace);

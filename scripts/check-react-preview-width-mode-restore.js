@@ -39,7 +39,7 @@ async function main() {
       localStorage.setItem('docpilot:left-panel-collapsed', '0');
       localStorage.setItem('docpilot:terminal-open', '0');
       localStorage.setItem('docpilot:preview-width', String(width));
-      localStorage.setItem('docpilot:release-notice-seen-id', '2.0.2:r2');
+      localStorage.setItem('docpilot:release-notice-seen-id', '2.0.3:r2');
     }, EXPECTED_WIDTH);
     await start.evaluate(root => { window.docpilot.openFolder(root); }, fixtureRoot);
 

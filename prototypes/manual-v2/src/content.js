@@ -31,7 +31,7 @@ const guidePages = {
     before: ['macOS에서 앱을 설치할 권한이 필요합니다.', '기존 버전을 사용 중이면 열려 있는 문서를 저장하세요.'],
     steps: ['상단 Download를 누르고 사용 중인 Mac의 칩 또는 프로세서를 선택합니다.', 'DMG를 열고 DocPilot을 Applications 폴더로 옮깁니다.', 'Applications에서 DocPilot을 실행합니다.', '폴더 접근 요청이 나오면 작업할 위치에 필요한 권한을 허용합니다.'],
     verify: ['macOS 메뉴 막대에 앱 이름이 DocPilot로 표시됩니다.', '시작 화면에서 프로젝트 폴더를 선택할 수 있습니다.'],
-    notes: ['macOS가 실행을 막으면 설치 파일의 릴리스 버전과 출처를 먼저 확인하세요.', '업데이트 후 이전 창이 남아 있으면 모든 DocPilot 창을 닫고 다시 실행하세요.'],
+    notes: ['이 공개 빌드는 Developer ID 서명과 Apple 공증이 없습니다. macOS가 실행을 막으면 설치 파일의 릴리스 버전과 GitHub Release 출처를 먼저 확인하세요.', '업데이트 후 이전 창이 남아 있으면 모든 DocPilot 창을 닫고 다시 실행하세요.'],
     related: ['first-workspace', 'install/updates', 'troubleshooting'],
   }),
   'first-workspace': guide({
@@ -211,12 +211,12 @@ const guidePages = {
     related: ['settings/appearance', 'troubleshooting'],
   }),
   'install/updates': guide({
-    description: 'DocPilot은 최신 릴리스를 확인해 새 버전 안내와 변경 항목을 표시합니다. 공개 사이트의 Download에서는 Mac 아키텍처에 맞는 최신 DMG를 선택합니다.',
+    description: 'DocPilot은 최신 GitHub Release를 확인해 현재 Mac에 맞는 DMG를 앱 안에서 내려받고 SHA-256을 검증합니다. 서명 없는 공개 빌드에서는 설치와 앱 교체를 자동화하지 않습니다.',
     outcome: '버전 변경을 확인하고 안전하게 새 DMG로 교체합니다.',
-    before: ['업데이트 전에 열려 있는 문서를 저장하세요.', '릴리스 변경사항에서 알려진 제한과 호환성 항목을 먼저 확인하세요.'],
-    steps: ['새 버전 안내에서 버전과 주요 변경을 확인합니다.', '이 사이트의 Changelog에서 전체 릴리스 내용을 읽습니다.', 'Download를 누르고 Apple Silicon 또는 Intel Mac용 DMG를 선택합니다.', 'DocPilot을 종료하고 Applications의 기존 앱을 새 버전으로 교체합니다.'],
-    verify: ['About DocPilot에 설치한 버전이 표시됩니다.', '처음 실행 시 업데이트 항목이 마지막 테마로 표시됩니다.'],
-    notes: ['Download가 실패하면 잠시 뒤 다시 시도하세요. 릴리스 API 또는 자산 게시가 지연될 수 있습니다.', '이 사이트는 릴리스 정보를 자체 UI로 표시하며 외부 저장소 화면으로 이동하지 않습니다.'],
+    before: ['DMG 다운로드는 작업을 중단하지 않지만 실제 앱 교체 전에는 열려 있는 문서를 저장하세요.', '릴리스 변경사항에서 알려진 제한과 호환성 항목을 먼저 확인하세요.'],
+    steps: ['업데이트 카드에서 버전과 세션 보존 안내를 확인합니다.', '릴리즈 노트를 읽고 업데이트 다운로드를 누릅니다.', 'SHA-256 검증이 끝나면 DMG 열기를 누릅니다.', '작업을 저장하고 DocPilot을 직접 종료한 뒤 Applications의 기존 앱을 새 버전으로 교체합니다.'],
+    verify: ['About DocPilot에 설치한 버전이 표시됩니다.', '설치한 버전과 GitHub Latest Release 버전이 같습니다.', '설치 이미지와 Dock 아이콘 바깥쪽에 검은 사각 배경이 없습니다.'],
+    notes: ['공개 매뉴얼의 Download는 GitHub Latest Release의 자산을 선택합니다. 매뉴얼 자체의 배포 버전만 보고 앱 배포가 끝났다고 판단하지 마세요.', 'Developer ID 서명과 공증이 없으므로 자동 설치·자동 재시작은 지원하지 않습니다.'],
     related: ['install', 'troubleshooting'],
   }),
   'reference/shortcuts': {
