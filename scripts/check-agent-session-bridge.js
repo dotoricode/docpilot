@@ -26,6 +26,9 @@ assert(bridge.includes('/stream'), 'bridge must expose terminal session stream e
 assert(bridge.includes('terminalSpawnSpec'), 'bridge must define terminal spawn specs');
 assert(bridge.includes('terminalSessions'), 'bridge must track active terminal sessions');
 assert(bridge.includes("loadOptionalModule('node-pty')"), 'bridge must load node-pty for terminal sessions');
+assert(bridge.includes("'app.asar.unpacked'"), 'packaged bridge must recognize its unpacked execution path');
+assert(bridge.includes("'app.asar'"), 'packaged bridge must load node-pty JavaScript through its packed path');
+assert(bridge.includes("optionalModulePathCache.get('node-pty')"), 'node-pty runtime preparation must use the loaded module path');
 assert(bridge.includes("mode: pty ? 'node-pty'"), 'terminal sessions must use node-pty mode when available');
 assert(bridge.includes('/resize'), 'bridge must expose terminal resize endpoint');
 assert(bridge.includes("fallbackMode: 'child_process-sse'"), 'bridge must document child_process SSE fallback mode');

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manual = path.join(root, 'prototypes/manual-v2');
+const rootPackage = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const vercelConfigPath = path.join(root, 'vercel.json');
 const vercelIgnorePath = path.join(root, '.vercelignore');
 const manualNpmrcPath = path.join(manual, '.npmrc');
@@ -20,6 +21,17 @@ assert.equal(vercelConfig.outputDirectory, 'prototypes/manual-v2/dist');
 assert.match(vercelIgnore, /^\/\*$/m, 'Vercel upload must deny root files by default');
 assert.match(vercelIgnore, /^!prototypes\/manual-v2$/m, 'Vercel upload must include the manual source');
 assert.doesNotMatch(manualNpmrc, /^cache=\//m, 'Manual npm config must not depend on a developer-specific absolute cache path');
+for (const script of [
+  'manual:verify',
+  'manual:pages:stage',
+  'manual:vercel:preview',
+  'manual:vercel:production',
+  'manual:verify:public',
+]) {
+  assert.ok(rootPackage.scripts?.[script], `release process script is missing: ${script}`);
+}
+assert.match(rootPackage.scripts['manual:vercel:production'], /--prod\b/, 'Vercel production command must explicitly target production');
+assert.match(rootPackage.scripts['manual:vercel:production'], /docpilot-manual/, 'Vercel production command must name the public manual project');
 
 const requiredFiles = [
   'src/App.jsx',
