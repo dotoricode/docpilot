@@ -4,7 +4,7 @@
     "version": "2.0.3",
     "state": "release-candidate",
     "tag": "v2.0.3",
-    "implementationCommit": "27c51de22391ddaae4f83556f3dcd11c720db361",
+    "implementationCommit": "a3d8e0294ed0aaf02719da6f10d90639beb2acbe",
     "implementationDate": "2026-07-18",
     "note": "The v2.0.3 candidate is prepared in a PR; its tag, GitHub Latest Release, Pages finalization, and Vercel production deployment remain separate approval gates."
   },
