@@ -791,6 +791,7 @@ function defaultSettingsStore() {
   return {
     version: 1,
     autosave: false,
+    suppressMarkdownVisualReadonlyNotice: false,
     theme: 'system',
     defaultTerminalShell: preferredDefaultTerminalShellId(fishAvailable),
     agentCommandMode: 'auto',
@@ -818,6 +819,7 @@ function normalizeSettingsInput(input = {}) {
   return {
     version: 1,
     autosave: input.autosave === true,
+    suppressMarkdownVisualReadonlyNotice: input.suppressMarkdownVisualReadonlyNotice === true,
     theme,
     defaultTerminalShell,
     agentCommandMode,

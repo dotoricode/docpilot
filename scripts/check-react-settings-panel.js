@@ -53,6 +53,7 @@ assert(panel.includes('Homebrew로 fish 설치'), 'settings panel must expose fi
 assert(panel.includes('Claude 명령'), 'settings panel must expose Claude command');
 assert(panel.includes('Codex 명령'), 'settings panel must expose Codex command');
 assert(panel.includes('파일 감시 제외'), 'settings panel must expose watcher ignore field');
+assert(panel.includes('Visual 읽기 전용 안내 모달 표시'), 'settings panel must expose the Visual read-only notice preference');
 assert(panel.includes('최근 작업공간'), 'settings panel must show recent workspaces');
 assert(panel.includes('진단 및 로그'), 'settings panel must show diagnostics and logs');
 assert(panel.includes('revealPath'), 'settings panel must be able to reveal diagnostic paths');

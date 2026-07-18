@@ -1960,21 +1960,239 @@ body.dragging-workbench-pane * {
   display: inline !important;
 }
 
-/* Keep AsciiDoc information-panel labels in normal flow. The earlier floating
-   badge used an absolutely positioned title inside a zero-height icon cell,
-   so the following content painted over the lower half of NOTE/IMPORTANT. */
+/* Information-panel labels straddle the top border while reserved top padding
+   keeps the document content below them. */
+:root[data-theme] .markdown-preview .admonitionblock {
+  --admonition-border: rgba(124, 159, 202, 0.58);
+  position: relative !important;
+  overflow: visible !important;
+  margin-top: 28px !important;
+  padding-top: 30px !important;
+  border: 1px solid var(--admonition-border) !important;
+}
+
+:root[data-theme] .markdown-preview .admonitionblock table,
+:root[data-theme] .markdown-preview .admonitionblock tbody,
+:root[data-theme] .markdown-preview .admonitionblock tr {
+  position: static !important;
+}
+
+:root[data-theme] .markdown-preview .admonitionblock.tip { --admonition-border: rgba(65, 171, 120, 0.58); }
+:root[data-theme] .markdown-preview .admonitionblock.note { --admonition-border: rgba(124, 159, 202, 0.58); }
+:root[data-theme] .markdown-preview .admonitionblock.important { --admonition-border: rgba(224, 104, 104, 0.62); }
+:root[data-theme] .markdown-preview .admonitionblock.warning { --admonition-border: rgba(218, 158, 82, 0.62); }
+:root[data-theme] .markdown-preview .admonitionblock.caution { --admonition-border: rgba(220, 188, 93, 0.62); }
+
 :root[data-theme] .markdown-preview .admonitionblock td.icon {
+  position: absolute !important;
+  top: 0 !important;
+  left: 28px !important;
+  z-index: 2 !important;
   display: block !important;
-  width: 100% !important;
-  min-height: 22px !important;
-  margin: 0 0 8px !important;
+  width: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  transform: translateY(-50%) !important;
 }
 
 :root[data-theme] .markdown-preview .admonitionblock td.icon .title {
   position: static !important;
   inset: auto !important;
-  z-index: auto !important;
+  z-index: 2 !important;
   box-sizing: border-box !important;
   max-width: 100% !important;
   white-space: nowrap !important;
+}
+
+:root[data-theme="light"] .markdown-preview .admonitionblock.tip { --admonition-border: rgba(35, 130, 82, 0.56); }
+:root[data-theme="light"] .markdown-preview .admonitionblock.note { --admonition-border: rgba(54, 99, 154, 0.56); }
+:root[data-theme="light"] .markdown-preview .admonitionblock.important { --admonition-border: rgba(180, 55, 65, 0.58); }
+:root[data-theme="light"] .markdown-preview .admonitionblock.warning { --admonition-border: rgba(165, 104, 24, 0.58); }
+:root[data-theme="light"] .markdown-preview .admonitionblock.caution { --admonition-border: rgba(151, 118, 22, 0.58); }
+
+/* Markdown Visual uses Preview's document geometry and typography while TipTap
+   remains the only editable surface. */
+.editor-workspace.visual {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.editor-workspace.visual .editor-host,
+.editor-workspace.visual.visual-editable .preview-shell {
+  display: none !important;
+}
+
+.visual-editor-shell {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--workbench-editor);
+  padding: 0 24px 80px;
+}
+
+.visual-editor-shell > .frontmatter-card,
+.visual-markdown-editor {
+  width: min(100%, var(--preview-width, 2400px));
+  margin-inline: auto;
+}
+
+.visual-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-bottom: 1px solid var(--workbench-border);
+  background: color-mix(in srgb, var(--workbench-editor) 94%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.visual-toolbar > span {
+  width: 1px;
+  height: 18px;
+  background: var(--workbench-border);
+  margin: 0 5px;
+}
+
+.visual-toolbar button {
+  min-width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--workbench-muted);
+  font: 600 12px var(--dp-sans);
+  cursor: pointer;
+}
+
+.visual-toolbar button:hover,
+.visual-toolbar button:focus-visible {
+  background: var(--workbench-hover);
+  color: var(--workbench-text);
+  outline: none;
+}
+
+.visual-markdown-document {
+  min-height: 60vh;
+  padding-top: 48px;
+}
+
+.visual-markdown-content.markdown-preview {
+  width: 100%;
+  min-height: 60vh;
+  max-width: none;
+  margin: 0;
+  padding: 0 0 80px;
+  overflow: visible;
+  outline: none;
+}
+
+.visual-markdown-content.markdown-preview:focus-visible {
+  outline: none;
+}
+
+.visual-markdown-content .ProseMirror-selectednode {
+  outline: 2px solid var(--workbench-accent);
+  outline-offset: 3px;
+}
+
+.visual-readonly-banner {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid rgba(218, 158, 82, 0.42);
+  border-radius: 7px;
+  background: rgba(218, 158, 82, 0.1);
+  color: var(--workbench-text);
+  margin: 16px 0;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+.visual-readonly-banner button {
+  border: 0;
+  background: transparent;
+  color: var(--workbench-accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+}
+
+.visual-readonly-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgba(3, 5, 8, 0.58);
+  backdrop-filter: blur(4px);
+  padding: 24px;
+}
+
+.visual-readonly-dialog {
+  width: min(100%, 460px);
+  border: 1px solid var(--workbench-border-strong);
+  border-radius: 12px;
+  background: var(--workbench-raised);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  color: var(--workbench-text);
+  padding: 22px;
+}
+
+.visual-readonly-dialog h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.visual-readonly-dialog p {
+  color: var(--workbench-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 18px;
+}
+
+.visual-readonly-dialog > label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--workbench-muted);
+  font-size: 12px;
+}
+
+.visual-readonly-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.visual-readonly-dialog footer button {
+  min-height: 34px;
+  border: 1px solid var(--workbench-border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--workbench-text);
+  padding: 0 13px;
+  cursor: pointer;
+}
+
+.visual-readonly-dialog footer button:last-child {
+  border-color: var(--workbench-accent);
+  background: var(--workbench-accent);
+  color: #fff;
+}
+
+@media (max-width: 820px) {
+  .visual-editor-shell {
+    padding-inline: 22px;
+  }
+
+  .visual-toolbar {
+    overflow-x: auto;
+  }
 }

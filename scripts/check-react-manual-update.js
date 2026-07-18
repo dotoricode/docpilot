@@ -80,6 +80,7 @@ async function main() {
     assert.match(await editor.locator('.update-card').innerText(), /v2\.0\.3.*최신 버전/);
 
     await sendMenuCommand(app, 'check-update');
+    await editor.waitForTimeout(800);
     await sendUpdateState(app, { status: 'error', error: '테스트 네트워크 오류' });
     await editor.waitForFunction(() => document.querySelector('.update-card')?.textContent?.includes('테스트 네트워크 오류'));
     assert.match(await editor.locator('.update-primary-action').innerText(), /다시 확인/);

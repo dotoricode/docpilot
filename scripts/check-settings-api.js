@@ -82,12 +82,14 @@ async function main() {
     assert.strictEqual(initial.settings.theme, 'system');
     assert.strictEqual(initial.settings.defaultTerminalShell, 'default');
     assert.strictEqual(initial.settings.agentCommandMode, 'auto');
+    assert.strictEqual(initial.settings.suppressMarkdownVisualReadonlyNotice, false);
     assert.strictEqual(initial.settings.claudeCommand, 'claude');
     assert.deepStrictEqual(initial.settings.recentWorkspaces, [canonicalRoot]);
 
     const saved = await requestJson(port, 'POST', '/settings', {
       settings: {
         autosave: true,
+        suppressMarkdownVisualReadonlyNotice: true,
         theme: 'system',
         defaultTerminalShell: 'zsh',
         agentCommandMode: 'custom',
@@ -100,6 +102,7 @@ async function main() {
     assert.strictEqual(saved.ok, true);
     assert.strictEqual(saved.settings.autosave, true);
     assert.strictEqual(saved.settings.defaultTerminalShell, 'zsh');
+    assert.strictEqual(saved.settings.suppressMarkdownVisualReadonlyNotice, true);
     assert.strictEqual(saved.settings.agentCommandMode, 'custom');
     assert.strictEqual(saved.settings.codexCommand, '/opt/bin/codex');
     assert.deepStrictEqual(saved.settings.recentWorkspaces, ['/tmp/other', root]);
@@ -108,6 +111,7 @@ async function main() {
     assert.strictEqual(reloaded.settings.theme, 'system');
     assert.strictEqual(reloaded.settings.defaultTerminalShell, 'zsh');
     assert.strictEqual(reloaded.settings.fileWatcherIgnore, 'dist/**');
+    assert.strictEqual(reloaded.settings.suppressMarkdownVisualReadonlyNotice, true);
 
     const files = await requestJson(port, 'GET', '/files');
     assert(files.files.includes('README.md'), 'workspace file collection should include normal markdown files');

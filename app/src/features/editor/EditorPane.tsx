@@ -34,12 +34,12 @@ import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
 import { DotsThreeVertical } from '@phosphor-icons/react';
 import { markdownBlockDiffRows, markdownPreviewBlocks } from '../../../../shared/core/markdown-block-diff';
-import { markdownRichSafety } from '../../../../shared/core/document-adapters';
+import { getMarkdownVisualEligibility } from '../../../../shared/core/document-adapters';
 import { convertAsciidoc, copyText, readWorkspaceFileBase, workspaceAssetUrl } from '../../shared/bridge-client';
 import { sanitizeRenderedDocumentHtml } from '../../shared/sanitize-rendered-html';
 import { copyTextWithActiveInstructions } from '../../shared/copy-with-instructions';
 import { formatContextLocation } from '../../shared/context-format';
-import { RichMarkdownEditor } from './RichMarkdownEditor';
+import { VisualMarkdownEditor, type VisualMarkdownEditorHandle } from './VisualMarkdownEditor';
 import { JsonTreeView } from './JsonTreeView';
 
 type FileBuffer = {
@@ -67,7 +67,10 @@ type EditorPaneProps = {
   onClearContextChips: () => void;
   onChange: (content: string) => void;
   onApplySourceEdit: (request: { fileId: string; expectedContent: string; nextContent: string; saveAfter: boolean }) => Promise<boolean>;
-  onSave: () => void;
+  onSave: (contentOverride?: string) => void;
+  suppressMarkdownVisualReadonlyNotice: boolean;
+  onSuppressMarkdownVisualReadonlyNotice: () => void;
+  onRegisterVisualFlush: (flush: (() => string | null) | null) => void;
   onReloadConflict: () => void;
   onOverwriteConflict: () => void;
   onCloseSecondary: (activePane?: 'primary' | 'secondary') => void;
@@ -118,7 +121,7 @@ type SemanticRule = {
 
 type IndentMode = 'spaces' | 'tabs';
 type CommandPaletteMode = 'commands' | 'tab-size';
-type BodyMode = 'preview' | 'rich' | 'tree' | 'edit';
+type BodyMode = 'preview' | 'visual' | 'tree' | 'edit';
 
 type CopyFeedback = {
   text: string;
@@ -462,6 +465,9 @@ export function EditorPane({
   onChange,
   onApplySourceEdit,
   onSave,
+  suppressMarkdownVisualReadonlyNotice,
+  onSuppressMarkdownVisualReadonlyNotice,
+  onRegisterVisualFlush,
   onReloadConflict,
   onOverwriteConflict,
   onCloseSecondary,
@@ -473,6 +479,8 @@ export function EditorPane({
   const previewRef = useRef<HTMLElement | null>(null);
   const secondaryPreviewRef = useRef<HTMLElement | null>(null);
   const previewShellRef = useRef<HTMLDivElement | null>(null);
+  const visualShellRef = useRef<HTMLDivElement | null>(null);
+  const visualEditorRef = useRef<VisualMarkdownEditorHandle | null>(null);
   const tocRef = useRef<HTMLElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const activePreviewPaneRef = useRef<'primary' | 'secondary'>(activePreviewPane);
@@ -485,6 +493,7 @@ export function EditorPane({
   const headingOffsetsRef = useRef<number[]>([]);
   const rangeSelectionHandledRef = useRef(false);
   const previewSelectionBookmarkRef = useRef<PreviewSelectionBookmark | null>(null);
+  const readonlyNoticeShownRef = useRef(new Set<string>());
   const lastExternalDocRef = useRef('');
   const pathRef = useRef(buffer.path);
   const findInputRef = useRef<HTMLInputElement | null>(null);
@@ -500,7 +509,7 @@ export function EditorPane({
   const [commandPaletteMode, setCommandPaletteMode] = useState<CommandPaletteMode>('commands');
   const [commandQuery, setCommandQuery] = useState('');
   const [commandIndex, setCommandIndex] = useState(0);
-  const [mode, setMode] = useState<BodyMode>(() => isPreviewableFile(buffer.path) ? 'preview' : 'edit');
+  const [mode, setMode] = useState<BodyMode>(() => defaultBodyModeForPath(buffer.path));
   const [diffOn, setDiffOn] = useState(false);
   const [diffSplit, setDiffSplit] = useState(false);
   const [baseContent, setBaseContent] = useState('');
@@ -518,6 +527,9 @@ export function EditorPane({
   const [previewCopyTarget, setPreviewCopyTarget] = useState<PreviewCopyTarget | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<CopyFeedback | null>(null);
   const [agentCopyEnabled, setAgentCopyEnabled] = useState(false);
+  const [visualSafetyFailure, setVisualSafetyFailure] = useState('');
+  const [visualCommitPending, setVisualCommitPending] = useState(false);
+  const [readonlyNotice, setReadonlyNotice] = useState<{ path: string; reason: string; suppress: boolean } | null>(null);
   const [inlinePreviewEdit, setInlinePreviewEdit] = useState<InlinePreviewEdit | null>(null);
   const [previewFindOpen, setPreviewFindOpen] = useState(false);
   const [previewFindQuery, setPreviewFindQuery] = useState('');
@@ -547,7 +559,7 @@ export function EditorPane({
 
   const frontmatter = useMemo(() => markdownPreviewBody ? parseFrontmatter(visibleContent) : { entries: [], body: visibleContent }, [markdownPreviewBody, visibleContent]);
   const frontmatterPrefix = visibleContent.slice(0, Math.max(0, visibleContent.length - frontmatter.body.length));
-  const richSafety = useMemo(() => markdownRichSafety(frontmatter.body), [frontmatter.body]);
+  const visualEligibility = useMemo(() => getMarkdownVisualEligibility(frontmatter.body), [frontmatter.body]);
   const secondaryFrontmatter = useMemo(
     () => isMarkdownPreviewFile(secondaryBuffer?.path || '') ? parseFrontmatter(secondaryVisibleContent) : { entries: [], body: secondaryVisibleContent },
     [secondaryBuffer?.path, secondaryVisibleContent],
@@ -651,11 +663,22 @@ export function EditorPane({
     return [];
   }, [markdownPreviewBody, previewSource, primaryIsAsciidoc, previewHtml]);
   const diffRows = useMemo(() => markdownBlockDiffRows(baseContent, visibleContent), [baseContent, visibleContent]);
-  const compareOn = Boolean(secondaryBuffer?.path) && canPreviewBody && canPreviewSecondaryBody && !diffOn && mode === 'preview';
+  const compareOn = Boolean(secondaryBuffer?.path)
+    && canPreviewBody
+    && canPreviewSecondaryBody
+    && !diffOn
+    && (mode === 'preview' || mode === 'visual');
+  const visualEditable = mode === 'visual'
+    && markdownPreviewBody
+    && visualEligibility.editable
+    && !visualSafetyFailure
+    && !agentCopyEnabled
+    && !diffOn
+    && !secondaryBuffer?.path;
 
   useEffect(() => {
-    const shell = previewShellRef.current;
-    if (!shell || compareOn || diffOn || mode !== 'preview') return;
+    const shell = previewShellRef.current || visualShellRef.current;
+    if (!shell || compareOn || diffOn || (mode !== 'preview' && mode !== 'visual')) return;
 
     let frame = 0;
     const updateMaximum = () => {
@@ -683,7 +706,7 @@ export function EditorPane({
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [compareOn, diffOn, headings.length, contextChips.length, mode]);
+  }, [agentCopyEnabled, compareOn, diffOn, headings.length, contextChips.length, mode, visualEditable]);
 
   const previewCompareStyle = {
     '--preview-split-primary-size': `${Math.round(previewSplitRatio * 100)}%`,
@@ -724,15 +747,26 @@ export function EditorPane({
   }, [buffer.path]);
 
   useEffect(() => {
-    setMode(jsonDocument ? 'tree' : canPreviewBody ? 'preview' : 'edit');
+    setMode(defaultBodyModeForPath(buffer.path));
+    setVisualSafetyFailure('');
+    setVisualCommitPending(false);
     setPreviewFindOpen(false);
     setPreviewFindQuery('');
     if (!canPreviewBody) setDiffOn(false);
   }, [canPreviewBody, jsonDocument, buffer.path]);
 
   useEffect(() => {
-    if (mode === 'rich' && (!markdownPreviewBody || !richSafety.safe)) setMode('edit');
-  }, [mode, markdownPreviewBody, richSafety.safe]);
+    if (
+      mode !== 'visual'
+      || !markdownPreviewBody
+      || visualEligibility.editable
+      || suppressMarkdownVisualReadonlyNotice
+      || !buffer.path
+      || readonlyNoticeShownRef.current.has(buffer.path)
+    ) return;
+    readonlyNoticeShownRef.current.add(buffer.path);
+    setReadonlyNotice({ path: buffer.path, reason: String(visualEligibility.reason), suppress: false });
+  }, [buffer.path, markdownPreviewBody, mode, suppressMarkdownVisualReadonlyNotice, visualEligibility.editable, visualEligibility.reason]);
 
   useEffect(() => {
     window.localStorage.setItem(PREVIEW_LINE_NUMBERS_STORAGE_KEY, showPreviewLineNumbers ? '1' : '0');
@@ -941,13 +975,15 @@ export function EditorPane({
   useEffect(() => {
     const saveWithShortcut = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's') return;
-      if (mode !== 'edit' || !buffer.path || !buffer.dirtyByUser || saving) return;
+      if ((mode !== 'edit' && mode !== 'visual') || !buffer.path || saving) return;
+      if (mode === 'edit' && !buffer.dirtyByUser) return;
+      if (mode === 'visual' && !buffer.dirtyByUser && !visualCommitPending) return;
       event.preventDefault();
-      onSave();
+      saveCurrentDocument();
     };
     window.addEventListener('keydown', saveWithShortcut);
     return () => window.removeEventListener('keydown', saveWithShortcut);
-  }, [buffer.dirtyByUser, buffer.path, mode, onSave, saving]);
+  }, [buffer.dirtyByUser, buffer.path, mode, onSave, saving, visualCommitPending]);
 
   useEffect(() => {
     const openFindWithShortcut = (event: KeyboardEvent) => {
@@ -1050,28 +1086,27 @@ export function EditorPane({
   }, [buffer.path]);
 
   useEffect(() => {
-    const toggleAgentCopy = (event: KeyboardEvent) => {
+    const handleAgentCopyShortcut = (event: KeyboardEvent) => {
+      const visualTarget = event.target instanceof HTMLElement && Boolean(event.target.closest('.visual-markdown-content'));
       if (
-        mode !== 'preview'
+        (mode !== 'preview' && mode !== 'visual')
         || diffOn
         || (!markdownPreviewBody && !primaryIsAsciidoc)
         || !(event.metaKey || event.ctrlKey)
         || !event.shiftKey
         || event.key.toLowerCase() !== 'c'
-        || isEditableShortcutTarget(event.target)
+        || (isEditableShortcutTarget(event.target) && !visualTarget)
       ) return;
       event.preventDefault();
       event.stopPropagation();
+      if (!agentCopyEnabled) flushVisualContent();
       setInlinePreviewEdit(null);
-      setAgentCopyEnabled(current => {
-        const next = !current;
-        setCopyFeedback(feedbackNearRect(next ? 'Agent Copy 켜짐' : 'Agent Copy 꺼짐', null));
-        return next;
-      });
+      setAgentCopyEnabled(current => !current);
+      setCopyFeedback(feedbackNearRect(agentCopyEnabled ? 'Agent Copy 꺼짐' : 'Agent Copy 켜짐', null));
     };
-    window.addEventListener('keydown', toggleAgentCopy, true);
-    return () => window.removeEventListener('keydown', toggleAgentCopy, true);
-  }, [diffOn, markdownPreviewBody, mode, primaryIsAsciidoc]);
+    window.addEventListener('keydown', handleAgentCopyShortcut, true);
+    return () => window.removeEventListener('keydown', handleAgentCopyShortcut, true);
+  }, [agentCopyEnabled, diffOn, markdownPreviewBody, mode, primaryIsAsciidoc]);
 
   useEffect(() => {
     if (!shouldScrollTocActiveRef.current) return;
@@ -1531,7 +1566,7 @@ export function EditorPane({
   }
 
   function toggleDiff(next: boolean) {
-    if (next && mode === 'rich') setMode('preview');
+    if (next) flushVisualContent();
     setDiffOn(next);
   }
 
@@ -1543,7 +1578,7 @@ export function EditorPane({
   function togglePreviewSplit(next: boolean) {
     if (!canPreviewBody) return;
     if (next) {
-      setMode('preview');
+      flushVisualContent();
       setDiffOn(false);
       if (!secondaryBuffer?.path) onOpenCurrentInSplit();
       return;
@@ -1566,12 +1601,42 @@ export function EditorPane({
 
   function switchBodyMode(nextMode: BodyMode) {
     if (nextMode === 'preview' && !canPreviewBody) return;
-    if (nextMode === 'rich' && (!markdownPreviewBody || !richSafety.safe)) return;
+    if (nextMode === 'visual' && !markdownPreviewBody) return;
     if (nextMode === 'tree' && !jsonDocument) return;
     if (nextMode === mode) return;
+    if (mode === 'visual') flushVisualContent();
     pendingModeLineRef.current = mode === 'edit' ? currentEditorLine() : currentPreviewLine();
     setMode(nextMode);
   }
+
+  function flushVisualContent() {
+    if (mode !== 'visual' || !markdownPreviewBody) return null;
+    const body = visualEditorRef.current?.flush();
+    if (body === undefined || body === null) return null;
+    const fullSource = `${frontmatterPrefix}${body}`;
+    if (fullSource !== visibleContent) onChange(fullSource);
+    return fullSource;
+  }
+
+  function saveCurrentDocument() {
+    const flushed = flushVisualContent();
+    onSave(flushed ?? undefined);
+  }
+
+  function toggleAgentCopy() {
+    if (!agentCopyEnabled) flushVisualContent();
+    setInlinePreviewEdit(null);
+    setAgentCopyEnabled(current => !current);
+  }
+
+  useEffect(() => {
+    if (mode !== 'visual') {
+      onRegisterVisualFlush(null);
+      return;
+    }
+    onRegisterVisualFlush(flushVisualContent);
+    return () => onRegisterVisualFlush(null);
+  }, [buffer.path, frontmatterPrefix, markdownPreviewBody, mode, onRegisterVisualFlush, visibleContent]);
 
   function formatJsonDocument() {
     if (!jsonDocument) return;
@@ -1767,6 +1832,61 @@ export function EditorPane({
 
   return (
     <section className="editor-pane">
+      {readonlyNotice ? (
+        <div
+          className="visual-readonly-dialog-overlay"
+          role="presentation"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) setReadonlyNotice(null);
+          }}
+        >
+          <section
+            className="visual-readonly-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="visual-readonly-title"
+            onKeyDown={event => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setReadonlyNotice(null);
+              }
+            }}
+          >
+            <h2 id="visual-readonly-title">Visual에서 읽기 전용으로 열었습니다</h2>
+            <p>“{readonlyNotice.path}”에는 {visualEligibilityMessage(readonlyNotice.reason)}이(가) 있어 소스를 안전하게 보존하려면 Visual 편집을 사용할 수 없습니다.</p>
+            <label>
+              <input
+                type="checkbox"
+                checked={readonlyNotice.suppress}
+                onChange={event => setReadonlyNotice(current => current ? { ...current, suppress: event.currentTarget.checked } : current)}
+              />
+              <span>다시 알리지 않음</span>
+            </label>
+            <footer>
+              <button
+                type="button"
+                onClick={() => {
+                  if (readonlyNotice.suppress) onSuppressMarkdownVisualReadonlyNotice();
+                  setReadonlyNotice(null);
+                }}
+              >
+                계속 보기
+              </button>
+              <button
+                autoFocus
+                type="button"
+                onClick={() => {
+                  if (readonlyNotice.suppress) onSuppressMarkdownVisualReadonlyNotice();
+                  setReadonlyNotice(null);
+                  switchBodyMode('edit');
+                }}
+              >
+                Source에서 편집
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
       {commandPaletteOpen ? (
         <div className="command-palette-overlay" role="dialog" aria-modal="true" aria-label="명령 팔레트" onClick={closeCommandPalette}>
           <div className="command-palette-panel" onClick={event => event.stopPropagation()}>
@@ -1827,28 +1947,18 @@ export function EditorPane({
             {jsonDocument ? (
               <button className={mode === 'tree' ? 'active' : ''} type="button" onClick={() => switchBodyMode('tree')}>Tree</button>
             ) : markdownPreviewBody ? (
-              <button
-                className={mode === 'rich' ? 'active' : ''}
-                type="button"
-                disabled={!richSafety.safe}
-                title={richSafety.safe ? 'Rich Markdown editor' : 'Unsupported syntax stays in Source mode'}
-                onClick={() => switchBodyMode('rich')}
-              >
-                Rich
-              </button>
-            ) : null}
-            {!jsonDocument ? <button className={mode === 'preview' ? 'active' : ''} type="button" onClick={() => switchBodyMode('preview')}>Preview</button> : null}
-            {mode === 'preview' && !jsonDocument ? (
+              <button className={mode === 'visual' ? 'active' : ''} type="button" onClick={() => switchBodyMode('visual')}>Visual</button>
+            ) : (
+              <button className={mode === 'preview' ? 'active' : ''} type="button" onClick={() => switchBodyMode('preview')}>Preview</button>
+            )}
+            {(mode === 'preview' || mode === 'visual') && !jsonDocument ? (
               <button
                 className={`agent-copy-toggle ${agentCopyEnabled ? 'active' : ''}`}
                 type="button"
                 aria-pressed={agentCopyEnabled}
                 aria-keyshortcuts="Meta+Shift+C Control+Shift+C"
                 title="Agent Copy · ⌘/Ctrl+Shift+C"
-                onClick={() => {
-                  setInlinePreviewEdit(null);
-                  setAgentCopyEnabled(current => !current);
-                }}
+                onClick={toggleAgentCopy}
               >
                 Agent Copy
               </button>
@@ -1896,7 +2006,7 @@ export function EditorPane({
             <button type="button" onClick={() => onCloseSecondary(activePreviewPaneRef.current)}>문서 분할 닫기</button>
           </div>
         ) : null}
-        {canPreviewBody ? (
+        {canPreviewBody && !visualEditable ? (
           <label
             className={`line-number-toggle diff-toggle ${showPreviewLineNumbers ? 'active' : ''}`}
             title="Preview line numbers"
@@ -1953,7 +2063,7 @@ export function EditorPane({
             </label>
           </div>
         </details>
-        <button className="save-button" type="button" disabled={!buffer.path || !buffer.dirtyByUser || saving} onClick={onSave}>
+        <button className="save-button" type="button" disabled={!buffer.path || (!buffer.dirtyByUser && !visualCommitPending) || saving} onClick={saveCurrentDocument}>
           {saving ? '저장 중' : '저장'}
         </button>
       </div>
@@ -1967,12 +2077,19 @@ export function EditorPane({
           </div>
         </div>
       ) : null}
-      <div className={`editor-workspace ${mode} ${diffOn ? 'diffing' : ''}`}>
+      <div className={`editor-workspace ${mode} ${visualEditable ? 'visual-editable' : 'visual-readonly'} ${diffOn ? 'diffing' : ''}`}>
         <div className="editor-host" ref={hostRef} />
-        {mode === 'rich' ? (
-          <div className="rich-editor-shell">
+        {mode === 'visual' && visualEditable ? (
+          <div ref={visualShellRef} className="visual-editor-shell" style={{ '--preview-width': `${effectivePreviewWidth}px` } as CSSProperties}>
             {frontmatter.entries.length ? <FrontmatterCard entries={frontmatter.entries} /> : null}
-            <RichMarkdownEditor source={frontmatter.body} onChange={source => onChange(`${frontmatterPrefix}${source}`)} />
+            <VisualMarkdownEditor
+              ref={visualEditorRef}
+              source={frontmatter.body}
+              editable
+              onChange={source => onChange(`${frontmatterPrefix}${source}`)}
+              onSafetyFailure={setVisualSafetyFailure}
+              onPendingChange={setVisualCommitPending}
+            />
           </div>
         ) : null}
         {mode === 'tree' ? (
@@ -1980,7 +2097,7 @@ export function EditorPane({
             <JsonTreeView source={visibleContent} />
           </div>
         ) : null}
-        <div
+        {!visualEditable ? <div
           ref={previewShellRef}
           className={`preview-shell ${showPreviewLineNumbers ? 'show-line-numbers' : 'hide-line-numbers'} ${mode !== 'edit' && contextChips.length ? 'with-context-rail' : ''} ${compareOn ? `preview-compare-active split-${splitOrientation}` : ''} ${diffOn ? 'diff-review-shell' : ''}`}
           onWheel={handlePreviewShellWheel}
@@ -2091,6 +2208,12 @@ export function EditorPane({
                 </nav>
               ) : null}
               <div className="preview-document-stage" style={{ '--preview-width': `${effectivePreviewWidth}px` } as CSSProperties}>
+                {mode === 'visual' && !visualEligibility.editable ? (
+                  <div className="visual-readonly-banner" role="status">
+                    이 문서는 {visualEligibilityMessage(String(visualEligibility.reason))} 때문에 Visual에서 읽기 전용입니다.
+                    <button type="button" onClick={() => switchBodyMode('edit')}>Source에서 편집</button>
+                  </div>
+                ) : null}
                 <article
                   className={`markdown-preview ${primaryIsAsciidoc ? 'adoc-preview' : ''} ${diffOn ? 'diff-preview-mode' : ''} ${agentCopyEnabled ? 'agent-copy-active' : ''}`}
                   ref={previewRef}
@@ -2130,7 +2253,7 @@ export function EditorPane({
               {diffOn ? (
                 <DiffChangesRail
                   rows={diffRows as DiffRow[]}
-                  onAccept={() => void onSave()}
+                  onAccept={() => saveCurrentDocument()}
                   onExit={() => setDiffOn(false)}
                 />
               ) : renderDocumentContextRail()}
@@ -2158,7 +2281,7 @@ export function EditorPane({
               <button type="button" onClick={copyAllSelectedContext}>선택 내용 전체 복사</button>
             </div>
           ) : null}
-        </div>
+        </div> : null}
       </div>
     </section>
   );
@@ -2760,6 +2883,27 @@ function isAsciidocPreviewFile(filePath: string) {
 function isPreviewableFile(filePath: string) {
   const value = String(filePath || '');
   return isMarkdownPreviewFile(value) || isAsciidocPreviewFile(value) || /\.json$/i.test(value);
+}
+
+function defaultBodyModeForPath(filePath: string): BodyMode {
+  if (/\.json$/i.test(filePath)) return 'tree';
+  if (isMarkdownPreviewFile(filePath)) return 'visual';
+  if (isAsciidocPreviewFile(filePath)) return 'preview';
+  return 'edit';
+}
+
+function visualEligibilityMessage(reason: string) {
+  switch (reason) {
+    case 'document-too-large': return '50,000자를 넘는 문서';
+    case 'mdx': return 'MDX import/export 구문';
+    case 'raw-html': return '지원하지 않는 HTML 또는 JSX';
+    case 'directive': return 'Markdown directive 구문';
+    case 'footnote': return '각주 구문';
+    case 'reference-definition': return '참조 링크 정의';
+    case 'wiki-link': return '위키 링크 구문';
+    case 'math': return '수학 블록';
+    default: return '안전하게 변환할 수 없는 구문';
+  }
 }
 
 function formatSourcePreviewContent(source: string, language: string) {
