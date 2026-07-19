@@ -35,6 +35,9 @@ async function main() {
   const paragraphs = Array.from({ length: 30 }, (_, index) => `Paragraph ${index + 1}`).join('\n\n');
   fs.writeFileSync(path.join(workspace, 'layout.md'), `# Layout\n\n${paragraphs}\n`, 'utf8');
   fs.writeFileSync(path.join(workspace, 'keyboard.md'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'bullet.md'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'ordered.md'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'syntax.md'), '', 'utf8');
 
   const app = await electron.launch({
     args: ['.'],
@@ -98,6 +101,26 @@ async function main() {
 
     await page.locator('.workspace-file-row').filter({ hasText: 'keyboard.md' }).click();
     await document.waitFor();
+    assert.equal(
+      await document.locator('[data-placeholder]').count(),
+      0,
+      'Document mode must not render the Agent Copy-style blue empty-block prompt',
+    );
+    for (const label of ['본문', '제목 1', '제목 2', '제목 3', '글머리 목록', '번호 목록', '체크리스트', '인용', '링크', '이미지']) {
+      assert.equal(
+        await page.getByRole('button', { name: label, exact: true }).locator('svg.lucide').count(),
+        1,
+        `${label} must use the same Lucide icon as Orca`,
+      );
+    }
+    const documentEmptyBlock = document.locator('p').first();
+    await documentEmptyBlock.hover();
+    assert.equal(
+      await documentEmptyBlock.evaluate(node => getComputedStyle(node).backgroundColor),
+      'rgba(0, 0, 0, 0)',
+      'Document mode must not show Agent Copy block highlighting',
+    );
+    await page.screenshot({ path: path.join(artifactRoot, 'markdown-document-orca-toolbar.png'), scale: 'css' });
     await document.click();
     for (let level = 1; level <= 3; level += 1) {
       await page.keyboard.type(`${'#'.repeat(level)} `);
@@ -106,17 +129,57 @@ async function main() {
       await page.keyboard.press('Enter');
     }
 
+    await page.locator('.workspace-file-row').filter({ hasText: 'bullet.md' }).click();
+    await document.waitFor();
+    await document.click();
     await page.keyboard.type('- ');
     await page.keyboard.type('Parent');
     await page.keyboard.press('Enter');
-    await page.keyboard.type('Child');
     await page.keyboard.press('Tab');
+    await page.keyboard.type('Child');
     assert.equal(await document.locator('ul > li > ul > li').count(), 1, 'Tab must indent the current bullet item');
     await page.keyboard.press('Shift+Tab');
     assert.equal(await document.locator('ul > li > ul > li').count(), 0, 'Shift+Tab must outdent the current bullet item');
     assert.equal(await document.locator('ul > li').count(), 2, 'outdented bullet items must remain siblings');
 
-    console.log('react Markdown Document keyboard and terminal-boundary checks passed');
+    await page.locator('.workspace-file-row').filter({ hasText: 'ordered.md' }).click();
+    await document.waitFor();
+    await document.click();
+    await page.keyboard.type('1. ');
+    await page.keyboard.type('Parent');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Tab');
+    await page.keyboard.type('Child');
+    assert.equal(await document.locator('ol > li > ol > li').count(), 1, 'Tab must indent the current numbered item');
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await document.locator('ol > li > ol > li').count(), 0, 'Shift+Tab must outdent the current numbered item');
+    assert.equal(await document.locator('ol > li').count(), 2, 'outdented numbered items must remain siblings');
+
+    await page.locator('.workspace-file-row').filter({ hasText: 'syntax.md' }).click();
+    await document.waitFor();
+    await document.click();
+    await page.keyboard.type('> ');
+    await page.keyboard.type('Quoted');
+    assert.equal(await document.locator('blockquote').last().textContent(), 'Quoted', '`> ` must create a quote block');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('| ');
+    assert.equal(await document.locator('table').count(), 1, '`| ` must create a Markdown table');
+    await page.waitForTimeout(400);
+    assert.equal(await page.locator('.document-readonly-banner').count(), 0, 'pipe-created table must remain safely editable');
+
+    await page.locator('.agent-copy-toggle').click();
+    const agentCopyPreview = page.locator('.markdown-preview.agent-copy-active');
+    await agentCopyPreview.waitFor();
+    const agentCopyBlock = agentCopyPreview.locator('blockquote').first();
+    await agentCopyBlock.hover();
+    assert.notEqual(
+      await agentCopyBlock.evaluate(node => getComputedStyle(node).backgroundColor),
+      'rgba(0, 0, 0, 0)',
+      'blue block highlighting must be reserved for Agent Copy mode',
+    );
+
+    console.log('react Markdown Document keyboard, syntax, icon, and terminal-boundary checks passed');
   } finally {
     await app.close().catch(() => {});
     try { execFileSync('pkill', ['-f', `bridge.js --root ${workspace}`]); } catch {}

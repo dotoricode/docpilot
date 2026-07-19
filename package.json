@@ -95,7 +95,6 @@
     "@tiptap/extension-link": "3.27.4",
     "@tiptap/extension-list": "3.27.4",
     "@tiptap/extension-mathematics": "3.27.4",
-    "@tiptap/extension-placeholder": "3.27.4",
     "@tiptap/extension-table": "3.27.4",
     "@tiptap/markdown": "3.27.4",
     "@tiptap/react": "3.27.4",
@@ -106,6 +105,7 @@
     "highlight.js": "^11.11.1",
     "katex": "^0.16.45",
     "lowlight": "^3.3.0",
+    "lucide-react": "^0.577.0",
     "node-pty": "^1.1.0"
   },
   "devDependencies": {

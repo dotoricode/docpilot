@@ -1037,10 +1037,10 @@ export function EditorPane({
     const preview = previewRef.current;
     if (!preview) return;
     preview.querySelectorAll('.preview-picked').forEach(node => node.classList.remove('preview-picked'));
-    if (selectedPreviewIndex === null) return;
+    if (!agentCopyEnabled || selectedPreviewIndex === null) return;
     const block = preview.querySelectorAll('p,li,table,pre,blockquote,h1,h2,h3,h4,h5,h6')[selectedPreviewIndex];
     block?.classList.add('preview-picked');
-  }, [previewHtml, selectedPreviewIndex]);
+  }, [agentCopyEnabled, previewHtml, selectedPreviewIndex]);
 
   useEffect(() => {
     return schedulePreviewLineNumbers(previewRef.current, previewSource);
@@ -1308,7 +1308,7 @@ export function EditorPane({
       lineStart: lines.start,
       lineEnd: lines.end,
     };
-    setSelectedPreviewIndex(pane === 'primary' ? index : null);
+    setSelectedPreviewIndex(agentCopyEnabled && pane === 'primary' ? index : null);
     setWholeDocumentSelected(false);
     onSelectionChange(null);
     if (agentCopyEnabled) {

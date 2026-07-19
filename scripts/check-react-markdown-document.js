@@ -115,6 +115,7 @@ async function main() {
       })))}`,
     );
 
+    await page.locator('summary[aria-label="더 많은 블록"]').click();
     await page.getByRole('button', { name: '표 삽입' }).click();
     await document.locator('table').waitFor();
     await page.getByRole('button', { name: '열 추가' }).waitFor();

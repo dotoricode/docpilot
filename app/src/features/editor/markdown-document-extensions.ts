@@ -3,7 +3,6 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import { BlockMath, InlineMath } from '@tiptap/extension-mathematics';
-import Placeholder from '@tiptap/extension-placeholder';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { TableKit } from '@tiptap/extension-table';
 import { Markdown } from '@tiptap/markdown';
@@ -24,10 +23,6 @@ export function createMarkdownDocumentExtensions(filePath = ''): AnyExtension[] 
     TaskItem.configure({ nested: true }),
     InlineMath.configure({ katexOptions: { throwOnError: false } }),
     BlockMath.configure({ katexOptions: { displayMode: true, throwOnError: false } }),
-    Placeholder.configure({
-      includeChildren: true,
-      placeholder: ({ node }) => node.type.name === 'heading' ? '제목' : "'/'를 입력해 블록을 추가하세요",
-    }),
     Markdown.configure({ markedOptions: { gfm: true } }),
   ];
 }

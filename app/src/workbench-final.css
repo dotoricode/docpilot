@@ -2071,6 +2071,13 @@ body.dragging-workbench-pane * {
   cursor: pointer;
 }
 
+.document-toolbar button > svg,
+.document-toolbar summary > svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
+}
+
 .document-toolbar button:hover,
 .document-toolbar button:focus-visible,
 .document-toolbar button.active,
@@ -2116,9 +2123,18 @@ body.dragging-workbench-pane * {
 
 .document-toolbar-more > div button {
   width: 100%;
+  display: flex;
+  align-items: center;
   justify-content: flex-start;
+  gap: 8px;
   padding-inline: 10px;
   text-align: left;
+}
+
+.document-toolbar-more > div button svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
 }
 
 .document-table-toolbar {
@@ -2205,15 +2221,6 @@ body.dragging-workbench-pane * {
 .document-markdown-content .ProseMirror-selectednode {
   outline: 2px solid var(--workbench-accent);
   outline-offset: 3px;
-}
-
-.document-markdown-content p.is-editor-empty:first-child::before,
-.document-markdown-content .is-empty::before {
-  content: attr(data-placeholder);
-  float: left;
-  height: 0;
-  color: var(--workbench-faint);
-  pointer-events: none;
 }
 
 .document-markdown-content ul[data-type="taskList"] {

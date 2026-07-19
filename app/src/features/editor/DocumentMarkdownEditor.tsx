@@ -240,6 +240,7 @@ export const DocumentMarkdownEditor = forwardRef<DocumentMarkdownEditorHandle, D
         handleKeyDown: (_view, event) => {
           const currentEditor = editorRef.current;
           if (currentEditor && convertBulletTaskShortcut(currentEditor, event)) return true;
+          if (currentEditor && convertPipeTableShortcut(currentEditor, event)) return true;
           const menu = slashMenuRef.current;
           if (menu) {
             const commands = filteredCommandsRef.current;
@@ -263,6 +264,20 @@ export const DocumentMarkdownEditor = forwardRef<DocumentMarkdownEditorHandle, D
               setSlashMenu(null);
               return true;
             }
+          }
+          if (event.key === 'Tab') {
+            event.preventDefault();
+            if (!currentEditor) return true;
+            if (event.shiftKey) {
+              if (!currentEditor.commands.liftListItem('listItem')) currentEditor.commands.liftListItem('taskItem');
+              return true;
+            }
+            if (currentEditor.isActive('codeBlock')) {
+              currentEditor.commands.insertContent('  ');
+              return true;
+            }
+            if (!currentEditor.commands.sinkListItem('listItem')) currentEditor.commands.sinkListItem('taskItem');
+            return true;
           }
           const modifier = event.metaKey || event.ctrlKey;
           if (modifier && event.key.toLocaleLowerCase() === 'k') {
@@ -553,4 +568,18 @@ function convertBulletTaskShortcut(editor: Editor, event: KeyboardEvent) {
     .run();
   if (converted && checked) editor.commands.updateAttributes('taskItem', { checked: true });
   return converted;
+}
+
+function convertPipeTableShortcut(editor: Editor, event: KeyboardEvent) {
+  if (event.key !== ' ' || event.isComposing || editor.isActive('table')) return false;
+  const { selection } = editor.state;
+  if (!selection.empty || selection.$from.parent.type.name !== 'paragraph') return false;
+  const before = selection.$from.parent.textBetween(0, selection.$from.parentOffset, '\n', '\n');
+  if (before !== '|') return false;
+  event.preventDefault();
+  return editor.chain()
+    .focus()
+    .deleteRange({ from: selection.$from.start(), to: selection.from })
+    .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+    .run();
 }
