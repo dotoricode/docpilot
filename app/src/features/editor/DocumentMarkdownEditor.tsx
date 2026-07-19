@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type FormEvent } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Editor } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import 'katex/dist/katex.min.css';
@@ -34,6 +34,10 @@ type SlashMenuState = {
   query: string;
   left: number;
   top: number;
+  anchorTop: number;
+  anchorBottom: number;
+  maxHeight: number;
+  placement: 'up' | 'down';
 };
 
 type InlineInputState = {
@@ -104,6 +108,7 @@ export const DocumentMarkdownEditor = forwardRef<DocumentMarkdownEditorHandle, D
     onPendingChange,
   }, forwardedRef) {
     const rootRef = useRef<HTMLElement | null>(null);
+    const slashMenuElementRef = useRef<HTMLDivElement | null>(null);
     const editorRef = useRef<Editor | null>(null);
     const originalSourceRef = useRef(source);
     const baseCanonicalRef = useRef('');
@@ -137,6 +142,49 @@ export const DocumentMarkdownEditor = forwardRef<DocumentMarkdownEditorHandle, D
       [slashMenu?.query],
     );
     filteredCommandsRef.current = filteredCommands;
+
+    useLayoutEffect(() => {
+      const root = rootRef.current;
+      const menu = slashMenuElementRef.current;
+      const shell = root?.closest<HTMLElement>('.document-editor-shell');
+      if (!root || !menu || !shell || !slashMenu) return;
+      const rootRect = root.getBoundingClientRect();
+      const shellRect = shell.getBoundingClientRect();
+      const toolbarRect = root.querySelector<HTMLElement>('.document-toolbar')?.getBoundingClientRect();
+      const topBoundary = Math.max(shellRect.top, toolbarRect?.bottom || shellRect.top) + 8;
+      const bottomBoundary = shellRect.bottom - 8;
+      const anchorTop = rootRect.top + slashMenu.anchorTop;
+      const anchorBottom = rootRect.top + slashMenu.anchorBottom;
+      const naturalHeight = Math.min(320, menu.scrollHeight);
+      const spaceAbove = Math.max(0, anchorTop - topBoundary - 8);
+      const spaceBelow = Math.max(0, bottomBoundary - anchorBottom - 8);
+      const placement = naturalHeight > spaceBelow && spaceAbove > spaceBelow ? 'up' : 'down';
+      const availableHeight = Math.max(48, placement === 'up' ? spaceAbove : spaceBelow);
+      const maxHeight = Math.min(320, availableHeight);
+      const menuHeight = Math.min(naturalHeight, maxHeight);
+      const desiredTop = placement === 'up'
+        ? anchorTop - menuHeight - 8
+        : anchorBottom + 8;
+      const clampedTop = Math.min(
+        Math.max(desiredTop, topBoundary),
+        Math.max(topBoundary, bottomBoundary - menuHeight),
+      );
+      const menuWidth = Math.min(menu.offsetWidth, Math.max(0, shellRect.width - 16));
+      const desiredLeft = rootRect.left + slashMenu.left;
+      const clampedLeft = Math.min(
+        Math.max(desiredLeft, shellRect.left + 8),
+        Math.max(shellRect.left + 8, shellRect.right - menuWidth - 8),
+      );
+      const nextTop = clampedTop - rootRect.top;
+      const nextLeft = clampedLeft - rootRect.left;
+      setSlashMenu(current => current
+        && current.top === nextTop
+        && current.left === nextLeft
+        && current.maxHeight === maxHeight
+        && current.placement === placement
+        ? current
+        : current ? { ...current, top: nextTop, left: nextLeft, maxHeight, placement } : current);
+    }, [filteredCommands.length, slashMenu]);
 
     function commitEditor(currentEditor: Editor, publish: boolean) {
       if (safetyLockedRef.current || !readyRef.current) return lastCommittedRef.current;
@@ -332,6 +380,10 @@ export const DocumentMarkdownEditor = forwardRef<DocumentMarkdownEditorHandle, D
         query: match[1],
         left: Math.max(12, coords.left - (rootRect?.left || 0)),
         top: coords.bottom - (rootRect?.top || 0) + 8,
+        anchorTop: coords.top - (rootRect?.top || 0),
+        anchorBottom: coords.bottom - (rootRect?.top || 0),
+        maxHeight: 320,
+        placement: 'down' as const,
       };
       setSlashMenu(current => current
         && current.from === next.from
@@ -339,6 +391,8 @@ export const DocumentMarkdownEditor = forwardRef<DocumentMarkdownEditorHandle, D
         && current.query === next.query
         && current.left === next.left
         && current.top === next.top
+        && current.anchorTop === next.anchorTop
+        && current.anchorBottom === next.anchorBottom
         ? current
         : next);
       setSelectedCommandIndex(0);
@@ -436,7 +490,14 @@ export const DocumentMarkdownEditor = forwardRef<DocumentMarkdownEditorHandle, D
         ) : null}
         <EditorContent className="document-markdown-surface" editor={editor} />
         {slashMenu && editable && !safetyReason ? (
-          <div className="document-slash-menu" role="listbox" aria-label="블록 추가" style={{ left: slashMenu.left, top: slashMenu.top }}>
+          <div
+            ref={slashMenuElementRef}
+            className="document-slash-menu"
+            role="listbox"
+            aria-label="블록 추가"
+            data-placement={slashMenu.placement}
+            style={{ left: slashMenu.left, top: slashMenu.top, maxHeight: slashMenu.maxHeight }}
+          >
             {filteredCommands.length ? filteredCommands.map((command, index) => (
               <button
                 className={index === selectedCommandIndex ? 'active' : ''}
