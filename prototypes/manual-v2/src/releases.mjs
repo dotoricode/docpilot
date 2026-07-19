@@ -26,7 +26,6 @@ export const FALLBACK_RELEASES = Object.freeze([
 - 이 공개 빌드는 Developer ID 서명과 Apple 공증이 없는 ad-hoc 배포입니다. DocPilot은 검증된 DMG를 열지만 앱을 자동 종료하거나 Applications의 앱을 자동 교체하지 않습니다.`,
     assets: [],
     fallback: true,
-    unreleased: true,
   },
   {
     version: '2.0.4',
