@@ -40,14 +40,29 @@ function createUpdateController(options = {}) {
   }
 
   async function check() {
-    const payload = await fetchRelease();
-    const nextRelease = selectUpdateRelease(payload, { repository, currentVersion, arch });
-    if (!nextRelease) return { ...state };
-    if (selectedRelease?.version === nextRelease.version && (downloadPromise || downloadedPath)) {
-      return { ...state };
+    publish(selectedRelease
+      ? publicReleaseState('checking')
+      : { status: 'checking', version: currentVersion });
+    try {
+      const payload = await fetchRelease();
+      const nextRelease = selectUpdateRelease(payload, { repository, currentVersion, arch });
+      if (!nextRelease) {
+        selectedRelease = null;
+        downloadedPath = '';
+        return publish({ status: 'latest', version: currentVersion });
+      }
+      if (selectedRelease?.version === nextRelease.version && (downloadPromise || downloadedPath)) {
+        return publish(publicReleaseState(downloadedPath ? 'downloaded' : 'available'));
+      }
+      selectedRelease = nextRelease;
+      return publish(publicReleaseState('available'));
+    } catch (error) {
+      publish({
+        status: 'error',
+        error: error instanceof Error ? error.message : '업데이트 확인에 실패했습니다.',
+      });
+      throw error;
     }
-    selectedRelease = nextRelease;
-    return publish(publicReleaseState('available'));
   }
 
   async function download() {

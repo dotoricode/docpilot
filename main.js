@@ -864,6 +864,11 @@ handleTrustedIpc('get-update-state', () => {
   return getUpdateController().getState();
 });
 
+handleTrustedIpc('check-for-updates', async (_event, win) => {
+  if (win._docpilotWindowKind !== 'editor') throw new Error('업데이트는 작업 화면에서 확인할 수 있습니다.');
+  return getUpdateController().check();
+});
+
 handleTrustedIpc('download-update', async (_event, win) => {
   if (win._docpilotWindowKind !== 'editor') throw new Error('업데이트는 작업 화면에서 내려받을 수 있습니다.');
   return getUpdateController().download();
@@ -921,6 +926,8 @@ function buildAppMenu() {
       label: 'DocPilot',
       submenu: [
         { role: 'about' },
+        { type: 'separator' },
+        { label: '업데이트 확인…', click: () => sendEditorCommand('check-update') },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },

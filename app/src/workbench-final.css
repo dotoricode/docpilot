@@ -104,6 +104,31 @@
   color: var(--workbench-text) !important;
 }
 
+.editor-mode-toggle .agent-copy-toggle {
+  min-width: 86px;
+}
+
+.editor-mode-toggle .agent-copy-toggle::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  display: inline-block;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--workbench-faint);
+  vertical-align: 1px;
+}
+
+.editor-mode-toggle .agent-copy-toggle.active {
+  background: color-mix(in srgb, var(--workbench-focus) 18%, var(--workbench-raised)) !important;
+  color: var(--workbench-text) !important;
+}
+
+.editor-mode-toggle .agent-copy-toggle.active::before {
+  background: var(--workbench-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--workbench-focus) 18%, transparent);
+}
+
 .diff-toggle,
 .preview-split-toggle,
 .editor-action,
@@ -723,9 +748,99 @@
 }
 
 .markdown-preview {
+  position: relative;
   box-sizing: border-box;
   width: min(100%, var(--preview-width, 1200px)) !important;
   max-width: none !important;
+}
+
+.markdown-preview.agent-copy-active p,
+.markdown-preview.agent-copy-active li,
+.markdown-preview.agent-copy-active table,
+.markdown-preview.agent-copy-active pre,
+.markdown-preview.agent-copy-active blockquote,
+.markdown-preview.agent-copy-active h1,
+.markdown-preview.agent-copy-active h2,
+.markdown-preview.agent-copy-active h3,
+.markdown-preview.agent-copy-active h4,
+.markdown-preview.agent-copy-active h5,
+.markdown-preview.agent-copy-active h6 {
+  cursor: copy;
+}
+
+.preview-inline-editor {
+  position: absolute;
+  z-index: 30;
+  min-width: 260px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--workbench-focus) 62%, var(--workbench-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--workbench-editor) 96%, black);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.38), 0 0 0 3px color-mix(in srgb, var(--workbench-focus) 12%, transparent);
+  color: var(--workbench-text);
+}
+
+.preview-inline-editor > header {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--workbench-border);
+  background: var(--workbench-raised);
+  padding-left: 10px;
+  color: var(--workbench-muted);
+  font: 10px/1 var(--dp-mono);
+}
+
+.preview-inline-editor > header div {
+  height: 100%;
+  display: flex;
+}
+
+.preview-inline-editor button {
+  min-width: 48px;
+  border: 0;
+  border-left: 1px solid var(--workbench-border);
+  background: transparent;
+  color: var(--workbench-muted);
+  font: 11px var(--dp-sans);
+}
+
+.preview-inline-editor button:hover,
+.preview-inline-editor button:focus-visible {
+  background: var(--workbench-hover);
+  color: var(--workbench-text);
+}
+
+.preview-inline-editor textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 112px;
+  max-height: 340px;
+  display: block;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  background: var(--workbench-editor);
+  color: var(--workbench-text);
+  padding: 12px 14px;
+  tab-size: 2;
+  font: 12.5px/1.58 var(--dp-mono);
+}
+
+.preview-inline-editor > footer {
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  border-top: 1px solid var(--workbench-border);
+  padding: 4px 10px;
+  color: var(--workbench-faint);
+  font: 9px/1.4 var(--dp-mono);
+}
+
+.preview-inline-editor > footer [role="alert"] {
+  color: var(--workbench-del-text);
 }
 
 .preview-shell > .preview-document-stage {
@@ -1843,4 +1958,23 @@ body.dragging-workbench-pane * {
 
 :root[data-theme] .markdown-preview .admonitionblock td.content code {
   display: inline !important;
+}
+
+/* Keep AsciiDoc information-panel labels in normal flow. The earlier floating
+   badge used an absolutely positioned title inside a zero-height icon cell,
+   so the following content painted over the lower half of NOTE/IMPORTANT. */
+:root[data-theme] .markdown-preview .admonitionblock td.icon {
+  display: block !important;
+  width: 100% !important;
+  min-height: 22px !important;
+  margin: 0 0 8px !important;
+}
+
+:root[data-theme] .markdown-preview .admonitionblock td.icon .title {
+  position: static !important;
+  inset: auto !important;
+  z-index: auto !important;
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  white-space: nowrap !important;
 }

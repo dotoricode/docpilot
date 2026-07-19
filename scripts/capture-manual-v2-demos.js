@@ -179,6 +179,7 @@ async function initializeScenario(page, name) {
     localStorage.setItem('docpilot:release-notice-seen-id', '2.0.3:r2');
     localStorage.setItem('docpilot:terminal-open', terminalOpen ? '1' : '0');
     localStorage.setItem('docpilot:preview-width', '760');
+    localStorage.setItem('docpilot:preview-width-explicit-v1', '1');
     localStorage.setItem('docpilot:workbench-pane-layout', JSON.stringify({
       type: 'split', id: 'workbench-root', orientation: 'vertical', ratio: 0.68,
       children: [{ type: 'leaf', id: 'document', kind: 'document' }, { type: 'leaf', id: 'terminal', kind: 'terminal' }],

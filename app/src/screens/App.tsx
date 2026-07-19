@@ -320,6 +320,8 @@ export function App() {
   const draggedDocumentTabRef = useRef<{ id: string; pane: 'primary' | 'secondary' } | null>(null);
   const savingRef = useRef(false);
   const menuSaveRef = useRef<() => void>(() => {});
+  const menuUpdateCheckRef = useRef<() => void>(() => {});
+  const manualUpdateCheckVisibleRef = useRef(false);
   const bufferRef = useRef(buffer);
   const bufferEditGenerationRef = useRef(0);
   const primaryOpenRequestRef = useRef(0);
@@ -410,6 +412,10 @@ export function App() {
     void saveFile();
   };
 
+  menuUpdateCheckRef.current = () => {
+    void runManualUpdateCheck();
+  };
+
   useEffect(() => {
     if (!autosaveEnabled || !buffer.path || !buffer.dirtyByUser || buffer.conflictState.includes('conflict')) return;
     const timer = window.setTimeout(() => menuSaveRef.current(), 750);
@@ -421,6 +427,7 @@ export function App() {
     if (!bridge?.onMenuCommand) return;
     return bridge.onMenuCommand(command => {
       if (command === 'save') menuSaveRef.current();
+      if (command === 'check-update') menuUpdateCheckRef.current();
     });
   }, []);
 
@@ -431,7 +438,15 @@ export function App() {
     const applyUpdateState = (nextState: DocPilotUpdateState) => {
       if (disposed || !nextState || nextState.status === 'idle') return;
       setUpdateState(nextState);
-      if (dismissedUpdateVersionRef.current !== nextState.version) setUpdateCardVisible(true);
+      const updateAvailable = ['available', 'downloading', 'downloaded'].includes(nextState.status);
+      const downloadError = nextState.status === 'error' && Boolean(nextState.version);
+      if (
+        manualUpdateCheckVisibleRef.current
+        || downloadError
+        || (updateAvailable && dismissedUpdateVersionRef.current !== nextState.version)
+      ) {
+        setUpdateCardVisible(true);
+      }
     };
     void bridge.getUpdateState?.().then(applyUpdateState).catch(() => {});
     const disposeListener = bridge.onUpdateState?.(applyUpdateState);
@@ -991,6 +1006,40 @@ export function App() {
     }
   }
 
+  async function applyPreviewSourceEdit(request: { fileId: string; expectedContent: string; nextContent: string; saveAfter: boolean }) {
+    const current = bufferRef.current;
+    if (
+      current.path !== request.fileId
+      || current.editorContent !== request.expectedContent
+      || savingRef.current
+    ) {
+      return false;
+    }
+
+    const nextBuffer = updateEditorContent(current, request.nextContent);
+    bufferEditGenerationRef.current += 1;
+    bufferRef.current = nextBuffer;
+    setBuffer(nextBuffer);
+    if (!request.saveAfter) return true;
+
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const result = await saveWorkspaceFile(request.fileId, request.nextContent, current.lastSavedRevision);
+      setBuffer(active => applySaveResult(active, request.fileId, request.nextContent, result.revision));
+      setSecondaryBuffer(active => applyPeerSaveResult(active, request.fileId, request.nextContent, result.revision));
+      setOpenTabs(active => updateOpenTabsForSave(active, request.fileId, request.nextContent, result.revision));
+      setSecondaryOpenTabs(active => updateOpenTabsForSave(active, request.fileId, request.nextContent, result.revision, true));
+      setOpenError('');
+    } catch (error) {
+      setOpenError(error instanceof Error ? error.message : String(error));
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+    return true;
+  }
+
   async function reloadConflictFromDisk() {
     const filePath = buffer.path;
     if (!filePath) return;
@@ -1106,6 +1155,25 @@ export function App() {
         status: 'error',
         error: error instanceof Error ? error.message : '업데이트 다운로드에 실패했습니다.',
       }));
+    }
+  }
+
+  async function runManualUpdateCheck() {
+    const bridge = window.docpilot;
+    if (!bridge?.checkForUpdates) return;
+    manualUpdateCheckVisibleRef.current = true;
+    setUpdateState({ status: 'checking' });
+    setUpdateCardVisible(true);
+    try {
+      const nextState = await bridge.checkForUpdates();
+      if (nextState) setUpdateState(nextState);
+    } catch (error) {
+      setUpdateState({
+        status: 'error',
+        error: error instanceof Error ? error.message : '업데이트 확인에 실패했습니다.',
+      });
+    } finally {
+      manualUpdateCheckVisibleRef.current = false;
     }
   }
 
@@ -1501,12 +1569,18 @@ export function App() {
           </section>
         </div>
       ) : null}
-      {updateCardVisible && updateState.version ? (
-        <aside className="update-card" role="dialog" aria-label="업데이트 가능" aria-live="polite">
+      {updateCardVisible ? (
+        <aside className="update-card" role="dialog" aria-label="업데이트 확인" aria-live="polite">
           <header>
             <div>
               <span className="update-card-icon" aria-hidden="true"><DownloadSimple size={16} weight="bold" /></span>
-              <strong>업데이트 가능</strong>
+              <strong>{updateState.status === 'checking'
+                ? '업데이트 확인 중'
+                : updateState.status === 'latest'
+                  ? '최신 버전'
+                  : updateState.status === 'error' && !updateState.version
+                    ? '확인 실패'
+                    : '업데이트 가능'}</strong>
             </div>
             <button
               type="button"
@@ -1518,8 +1592,16 @@ export function App() {
             ><X size={17} /></button>
           </header>
           <div className="update-card-body">
-            <p className="update-card-version">DocPilot v{updateState.version}이(가) 준비되었습니다.</p>
-            <p className="update-card-preservation">다운로드 중에도 terminal·agent 세션과 편집 중인 문서는 유지됩니다.</p>
+            {updateState.status === 'checking' ? (
+              <p className="update-card-version" role="status">공식 릴리즈와 현재 버전을 비교하고 있습니다…</p>
+            ) : updateState.status === 'latest' ? (
+              <p className="update-card-version">DocPilot v{updateState.version}은(는) 최신 버전입니다.</p>
+            ) : updateState.version ? (
+              <p className="update-card-version">DocPilot v{updateState.version}이(가) 준비되었습니다.</p>
+            ) : null}
+            {['available', 'downloading', 'downloaded'].includes(updateState.status) ? (
+              <p className="update-card-preservation">다운로드 중에도 terminal·agent 세션과 편집 중인 문서는 유지됩니다.</p>
+            ) : null}
             {updateState.status === 'downloading' ? (
               <div className="update-card-progress" role="status" aria-label={`업데이트 ${updateState.percent || 0}% 다운로드됨`}>
                 <span style={{ width: `${updateState.percent || 0}%` }} />
@@ -1529,28 +1611,36 @@ export function App() {
               <p className="update-card-status">SHA-256 검증을 마쳤습니다. DMG를 열어 Applications의 앱을 직접 교체하세요.</p>
             ) : null}
             {updateState.status === 'error' ? (
-              <p className="update-card-error" role="alert">{updateState.error || '업데이트 다운로드에 실패했습니다.'}</p>
+              <p className="update-card-error" role="alert">{updateState.error || (updateState.version ? '업데이트 다운로드에 실패했습니다.' : '업데이트 확인에 실패했습니다.')}</p>
             ) : null}
-            <button className="update-release-link" type="button" onClick={openUpdateReleaseNotes}>
-              릴리즈 노트 <ArrowSquareOut size={13} />
-            </button>
+            {updateState.releaseUrl ? (
+              <button className="update-release-link" type="button" onClick={openUpdateReleaseNotes}>
+                릴리즈 노트 <ArrowSquareOut size={13} />
+              </button>
+            ) : null}
           </div>
-          <footer>
+          {updateState.status === 'latest' ? null : <footer>
             <button
               className="update-primary-action"
               type="button"
-              disabled={updateState.status === 'downloading'}
-              onClick={() => void runUpdateAction()}
+              disabled={updateState.status === 'checking' || updateState.status === 'downloading'}
+              onClick={() => updateState.status === 'error' && !updateState.version
+                ? void runManualUpdateCheck()
+                : void runUpdateAction()}
             >
-              {updateState.status === 'downloading'
+              {updateState.status === 'checking'
+                ? '확인 중…'
+                : updateState.status === 'downloading'
                 ? `다운로드 중 ${updateState.percent || 0}%`
                 : updateState.status === 'downloaded'
                   ? 'DMG 열기'
-                  : updateState.status === 'error'
+                  : updateState.status === 'error' && !updateState.version
+                    ? '다시 확인'
+                    : updateState.status === 'error'
                     ? '다시 다운로드'
                     : '업데이트 다운로드'}
             </button>
-          </footer>
+          </footer>}
         </aside>
       ) : null}
       <section
@@ -1617,6 +1707,7 @@ export function App() {
               bufferEditGenerationRef.current += 1;
               setBuffer(current => updateEditorContent(current, content));
             }}
+            onApplySourceEdit={applyPreviewSourceEdit}
             onSave={saveFile}
             onReloadConflict={reloadConflictFromDisk}
             onOverwriteConflict={overwriteConflictWithLocal}

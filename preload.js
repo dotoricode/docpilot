@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('docpilot', {
   toggleMaximize:   ()       => ipcRenderer.invoke('window-toggle-maximize'),
   setWindowTheme:   (theme)  => ipcRenderer.invoke('set-window-theme', theme),
   getUpdateState:   ()       => ipcRenderer.invoke('get-update-state'),
+  checkForUpdates:  ()       => ipcRenderer.invoke('check-for-updates'),
   downloadUpdate:   ()       => ipcRenderer.invoke('download-update'),
   openDownloadedUpdate: ()   => ipcRenderer.invoke('open-downloaded-update'),
   onMenuCommand:    (cb)     => {

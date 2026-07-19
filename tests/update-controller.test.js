@@ -46,6 +46,7 @@ test('check, download, and open use main-owned release state without a quit life
     });
 
     assert.equal((await controller.check()).status, 'available');
+    assert.equal(states[0].status, 'checking');
     assert.equal(controller.getState().version, '2.0.3');
     const downloaded = await controller.download();
     assert.equal(downloaded.status, 'downloaded');
@@ -74,4 +75,39 @@ test('download is unavailable before a trusted newer release has been checked', 
 
   await assert.rejects(controller.download(), /사용 가능한 업데이트/);
   await assert.rejects(controller.openDownloaded(), /다운로드된 업데이트/);
+});
+
+test('check publishes latest when the installed version matches the release', async () => {
+  const states = [];
+  const controller = createUpdateController({
+    repository: 'dotoricode/docpilot',
+    currentVersion: '2.0.3',
+    arch: 'arm64',
+    downloadsDirectory: () => os.tmpdir(),
+    fetchRelease: async () => releaseFixture(Buffer.alloc(50 * 1024 * 1024, 7)),
+    fetchAsset: async () => { throw new Error('must not run'); },
+    openPath: async () => '',
+    onState: state => states.push(state),
+  });
+
+  assert.equal((await controller.check()).status, 'latest');
+  assert.deepEqual(states.map(state => state.status), ['checking', 'latest']);
+});
+
+test('check publishes a visible error state and preserves the failure', async () => {
+  const states = [];
+  const controller = createUpdateController({
+    repository: 'dotoricode/docpilot',
+    currentVersion: '2.0.3',
+    arch: 'arm64',
+    downloadsDirectory: () => os.tmpdir(),
+    fetchRelease: async () => { throw new Error('network unavailable'); },
+    fetchAsset: async () => { throw new Error('must not run'); },
+    openPath: async () => '',
+    onState: state => states.push(state),
+  });
+
+  await assert.rejects(controller.check(), /network unavailable/);
+  assert.deepEqual(states.map(state => state.status), ['checking', 'error']);
+  assert.match(controller.getState().error, /network unavailable/);
 });

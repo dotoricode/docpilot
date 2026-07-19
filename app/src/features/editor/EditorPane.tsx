@@ -66,6 +66,7 @@ type EditorPaneProps = {
   onCopyContextChips: () => void;
   onClearContextChips: () => void;
   onChange: (content: string) => void;
+  onApplySourceEdit: (request: { fileId: string; expectedContent: string; nextContent: string; saveAfter: boolean }) => Promise<boolean>;
   onSave: () => void;
   onReloadConflict: () => void;
   onOverwriteConflict: () => void;
@@ -132,6 +133,21 @@ type PreviewSelectionBookmark = {
   end: number;
 };
 
+type InlinePreviewEdit = {
+  fileId: string;
+  from: number;
+  to: number;
+  lineStart: number;
+  lineEnd: number;
+  originalDocument: string;
+  originalSlice: string;
+  value: string;
+  top: number;
+  left: number;
+  width: number;
+  error: string;
+};
+
 type CommandItem = {
   id: string;
   label: string;
@@ -177,6 +193,7 @@ const PREVIEW_WIDTH_MIN = 480;
 const PREVIEW_WIDTH_MAX = 2400;
 const PREVIEW_WIDTH_STEP = 20;
 const PREVIEW_WIDTH_STORAGE_KEY = 'docpilot:preview-width';
+const PREVIEW_WIDTH_EXPLICIT_STORAGE_KEY = 'docpilot:preview-width-explicit-v1';
 const PREVIEW_LINE_NUMBERS_STORAGE_KEY = 'docpilot:preview-line-numbers-v2';
 
 const RenderedPreviewHtml = memo(function RenderedPreviewHtml({ html }: { html: string }) {
@@ -184,6 +201,7 @@ const RenderedPreviewHtml = memo(function RenderedPreviewHtml({ html }: { html: 
 });
 
 function readStoredPreviewWidth() {
+  if (window.localStorage.getItem(PREVIEW_WIDTH_EXPLICIT_STORAGE_KEY) !== '1') return null;
   const raw = window.localStorage.getItem(PREVIEW_WIDTH_STORAGE_KEY);
   if (raw === null) return null;
   const stored = Number(raw);
@@ -442,6 +460,7 @@ export function EditorPane({
   onCopyContextChips,
   onClearContextChips,
   onChange,
+  onApplySourceEdit,
   onSave,
   onReloadConflict,
   onOverwriteConflict,
@@ -460,6 +479,7 @@ export function EditorPane({
   const activeHeadingFrameRef = useRef<number | null>(null);
   const activeHeadingScrollFrameRef = useRef<number | null>(null);
   const activeHeadingScrollIdleRef = useRef<number | null>(null);
+  const previewScrollbarIdleTimersRef = useRef(new Map<HTMLElement, number>());
   const activeHeadingLastUpdateRef = useRef(0);
   const shouldScrollTocActiveRef = useRef(false);
   const headingOffsetsRef = useRef<number[]>([]);
@@ -486,9 +506,9 @@ export function EditorPane({
   const [baseContent, setBaseContent] = useState('');
   const [storedPreviewWidth] = useState(readStoredPreviewWidth);
   const [previewWidth, setPreviewWidth] = useState(() => storedPreviewWidth ?? PREVIEW_WIDTH_MAX);
-  const [previewWidthResolved, setPreviewWidthResolved] = useState(() => storedPreviewWidth !== null);
-  const needsDefaultPreviewWidthRef = useRef(storedPreviewWidth === null);
+  const previewWidthExplicitRef = useRef(storedPreviewWidth !== null);
   const [previewMaxWidth, setPreviewMaxWidth] = useState(PREVIEW_WIDTH_MAX);
+  const effectivePreviewWidth = Math.min(previewWidth, previewMaxWidth);
   const [selectedPreviewIndex, setSelectedPreviewIndex] = useState<number | null>(null);
   const [activeHeadingIndex, setActiveHeadingIndex] = useState(0);
   const [wholeDocumentSelected, setWholeDocumentSelected] = useState(false);
@@ -497,6 +517,8 @@ export function EditorPane({
   );
   const [previewCopyTarget, setPreviewCopyTarget] = useState<PreviewCopyTarget | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<CopyFeedback | null>(null);
+  const [agentCopyEnabled, setAgentCopyEnabled] = useState(false);
+  const [inlinePreviewEdit, setInlinePreviewEdit] = useState<InlinePreviewEdit | null>(null);
   const [previewFindOpen, setPreviewFindOpen] = useState(false);
   const [previewFindQuery, setPreviewFindQuery] = useState('');
   const [previewFindIndex, setPreviewFindIndex] = useState(0);
@@ -507,8 +529,10 @@ export function EditorPane({
   const [secondaryAsciidocResult, setSecondaryAsciidocResult] = useState<{ key: string; html: string } | null>(null);
 
   useEffect(() => {
-    if (previewWidthResolved) window.localStorage.setItem(PREVIEW_WIDTH_STORAGE_KEY, String(previewWidth));
-  }, [previewWidth, previewWidthResolved]);
+    if (!previewWidthExplicitRef.current) return;
+    window.localStorage.setItem(PREVIEW_WIDTH_STORAGE_KEY, String(previewWidth));
+    window.localStorage.setItem(PREVIEW_WIDTH_EXPLICIT_STORAGE_KEY, '1');
+  }, [previewWidth]);
 
   const visibleContent = buffer.path ? buffer.editorContent : emptyDocument;
   const secondaryVisibleContent = secondaryBuffer?.path ? secondaryBuffer.editorContent : '';
@@ -647,13 +671,7 @@ export function EditorPane({
           PREVIEW_WIDTH_MIN,
           PREVIEW_WIDTH_MAX,
         );
-        const needsDefault = needsDefaultPreviewWidthRef.current;
-        if (needsDefault) needsDefaultPreviewWidthRef.current = false;
         setPreviewMaxWidth(nextMaximum);
-        setPreviewWidth(current => needsDefault
-          ? Math.max(PREVIEW_WIDTH_MIN, nextMaximum - PREVIEW_WIDTH_STEP)
-          : Math.min(current, nextMaximum));
-        if (needsDefault) setPreviewWidthResolved(true);
       });
     };
 
@@ -768,6 +786,8 @@ export function EditorPane({
         window.clearTimeout(activeHeadingScrollIdleRef.current);
         activeHeadingScrollIdleRef.current = null;
       }
+      for (const timer of previewScrollbarIdleTimersRef.current.values()) window.clearTimeout(timer);
+      previewScrollbarIdleTimersRef.current.clear();
     };
   }, []);
 
@@ -1026,6 +1046,34 @@ export function EditorPane({
   }, [buffer.path, previewHtml]);
 
   useEffect(() => {
+    setInlinePreviewEdit(null);
+  }, [buffer.path]);
+
+  useEffect(() => {
+    const toggleAgentCopy = (event: KeyboardEvent) => {
+      if (
+        mode !== 'preview'
+        || diffOn
+        || (!markdownPreviewBody && !primaryIsAsciidoc)
+        || !(event.metaKey || event.ctrlKey)
+        || !event.shiftKey
+        || event.key.toLowerCase() !== 'c'
+        || isEditableShortcutTarget(event.target)
+      ) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setInlinePreviewEdit(null);
+      setAgentCopyEnabled(current => {
+        const next = !current;
+        setCopyFeedback(feedbackNearRect(next ? 'Agent Copy 켜짐' : 'Agent Copy 꺼짐', null));
+        return next;
+      });
+    };
+    window.addEventListener('keydown', toggleAgentCopy, true);
+    return () => window.removeEventListener('keydown', toggleAgentCopy, true);
+  }, [diffOn, markdownPreviewBody, mode, primaryIsAsciidoc]);
+
+  useEffect(() => {
     if (!shouldScrollTocActiveRef.current) return;
     shouldScrollTocActiveRef.current = false;
     const activeItem = tocRef.current?.querySelector<HTMLElement>('.toc-item[data-active="true"]');
@@ -1089,13 +1137,12 @@ export function EditorPane({
   function syncActiveHeading() {
     if (diffOn) return;
     const preview = previewRef.current;
-    preview?.classList.add('is-scrolling');
+    if (preview) markPreviewScrollbarActive(preview);
     if (activeHeadingScrollIdleRef.current !== null) {
       window.clearTimeout(activeHeadingScrollIdleRef.current);
     }
     activeHeadingScrollIdleRef.current = window.setTimeout(() => {
       activeHeadingScrollIdleRef.current = null;
-      previewRef.current?.classList.remove('is-scrolling');
       activeHeadingLastUpdateRef.current = performance.now();
       updateActiveHeading();
     }, 120);
@@ -1107,6 +1154,17 @@ export function EditorPane({
       activeHeadingLastUpdateRef.current = now;
       updateActiveHeading();
     });
+  }
+
+  function markPreviewScrollbarActive(preview: HTMLElement) {
+    preview.classList.add('is-scrolling');
+    const previous = previewScrollbarIdleTimersRef.current.get(preview);
+    if (previous) window.clearTimeout(previous);
+    const timer = window.setTimeout(() => {
+      preview.classList.remove('is-scrolling');
+      previewScrollbarIdleTimersRef.current.delete(preview);
+    }, 420);
+    previewScrollbarIdleTimersRef.current.set(preview, timer);
   }
 
   function cachePreviewHeadingOffsets() {
@@ -1189,29 +1247,109 @@ export function EditorPane({
     const paneState = previewPaneState(pane);
     if (!paneState.path) return;
     if (diffOn) return;
+    if (isNativePreviewControl(event.target)) return;
     const target = event.target instanceof HTMLElement
       ? event.target.closest('p,li,table,pre,blockquote,h1,h2,h3,h4,h5,h6')
       : null;
     if (!(target instanceof HTMLElement) || !paneState.preview?.contains(target)) return;
     const blocks = previewBlocks(paneState.preview);
     const index = blocks.indexOf(target);
-    const text = target.innerText.trim();
-    if (!text) return;
-    const range = previewTextRangeForElement(paneState.source, text, target, blocks, index);
-    const lines = lineRangeForOffsets(paneState.source, range.from, range.to);
+    const renderedText = target.innerText.trim();
+    if (!renderedText) return;
+    const fallbackRange = previewTextRangeForElement(paneState.source, renderedText, target, blocks, index);
+    const fallbackLines = lineRangeForOffsets(paneState.source, fallbackRange.from, fallbackRange.to);
+    const relativeLineStart = positiveLineNumber(target.dataset.lineStart) ?? fallbackLines.start;
+    const relativeLineEnd = Math.max(relativeLineStart, positiveLineNumber(target.dataset.lineEnd) ?? fallbackLines.end);
+    const relativeRange = sourceRangeForLines(paneState.source, relativeLineStart, relativeLineEnd);
+    const from = paneState.prefixLength + relativeRange.from;
+    const to = paneState.prefixLength + relativeRange.to;
+    const lines = lineRangeForOffsets(paneState.fullSource, from, to);
+    const sourceText = paneState.fullSource.slice(from, to);
     const context = {
       fileId: paneState.path,
-      text,
-      from: range.from,
-      to: range.to,
+      text: sourceText,
+      from,
+      to,
       lineStart: lines.start,
       lineEnd: lines.end,
     };
     setSelectedPreviewIndex(pane === 'primary' ? index : null);
     setWholeDocumentSelected(false);
     onSelectionChange(null);
-    onPreviewContextPick(context);
-    void copyPreviewContext(context, '복사됨');
+    if (agentCopyEnabled) {
+      setInlinePreviewEdit(null);
+      onPreviewContextPick(context);
+      void copyPreviewContext(context, 'Agent Copy');
+      return;
+    }
+    if (pane !== 'primary') return;
+    const previewRect = paneState.preview.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const left = Math.max(12, targetRect.left - previewRect.left + paneState.preview.scrollLeft - 8);
+    const availableWidth = Math.max(260, paneState.preview.clientWidth - left - 12);
+    setPreviewCopyTarget(null);
+    setInlinePreviewEdit({
+      fileId: paneState.path,
+      from,
+      to,
+      lineStart: lines.start,
+      lineEnd: lines.end,
+      originalDocument: paneState.fullSource,
+      originalSlice: sourceText,
+      value: sourceText,
+      top: targetRect.top - previewRect.top + paneState.preview.scrollTop - 8,
+      left,
+      width: Math.min(Math.max(targetRect.width + 16, 320), availableWidth),
+      error: '',
+    });
+  }
+
+  async function applyInlinePreviewEdit(saveAfter: boolean) {
+    const edit = inlinePreviewEdit;
+    if (!edit) return;
+    if (
+      buffer.path !== edit.fileId
+      || visibleContent !== edit.originalDocument
+      || visibleContent.slice(edit.from, edit.to) !== edit.originalSlice
+    ) {
+      setInlinePreviewEdit(current => current ? {
+        ...current,
+        error: '원문이 바뀌어 이 편집을 적용하지 않았습니다. 다시 블록을 선택하세요.',
+      } : current);
+      return;
+    }
+    const nextContent = `${visibleContent.slice(0, edit.from)}${edit.value}${visibleContent.slice(edit.to)}`;
+    const applied = await onApplySourceEdit({
+      fileId: edit.fileId,
+      expectedContent: edit.originalDocument,
+      nextContent,
+      saveAfter,
+    });
+    if (applied) {
+      setInlinePreviewEdit(null);
+      setCopyFeedback(feedbackNearRect(saveAfter ? '블록 적용 및 저장됨' : '블록 적용됨', null));
+    } else {
+      setInlinePreviewEdit(current => current ? {
+        ...current,
+        error: '편집 상태가 바뀌어 적용하지 않았습니다. 현재 내용을 확인한 뒤 다시 시도하세요.',
+      } : current);
+    }
+  }
+
+  function handleInlinePreviewEditKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setInlinePreviewEdit(null);
+      return;
+    }
+    if (!(event.metaKey || event.ctrlKey)) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      void applyInlinePreviewEdit(false);
+    } else if (event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      void applyInlinePreviewEdit(true);
+    }
   }
 
   function selectPreviewRange(event: MouseEvent<HTMLElement>, pane: 'primary' | 'secondary' = 'primary') {
@@ -1333,17 +1471,61 @@ export function EditorPane({
     );
   }
 
+  function renderInlinePreviewEditor() {
+    if (!inlinePreviewEdit) return null;
+    return (
+      <section
+        className="preview-inline-editor"
+        aria-label={`원문 ${inlinePreviewEdit.lineStart}-${inlinePreviewEdit.lineEnd}줄 편집`}
+        style={{
+          top: inlinePreviewEdit.top,
+          left: inlinePreviewEdit.left,
+          width: inlinePreviewEdit.width,
+        } as CSSProperties}
+        onClick={event => event.stopPropagation()}
+        onMouseDown={event => event.stopPropagation()}
+        onMouseUp={event => event.stopPropagation()}
+      >
+        <header>
+          <span>Source · {inlinePreviewEdit.lineStart === inlinePreviewEdit.lineEnd
+            ? `L${inlinePreviewEdit.lineStart}`
+            : `L${inlinePreviewEdit.lineStart}–${inlinePreviewEdit.lineEnd}`}</span>
+          <div>
+            <button type="button" aria-label="블록 편집 취소" onClick={() => setInlinePreviewEdit(null)}>취소</button>
+            <button type="button" aria-label="블록 편집 적용" onClick={() => void applyInlinePreviewEdit(false)}>적용</button>
+          </div>
+        </header>
+        <textarea
+          autoFocus
+          spellCheck={false}
+          value={inlinePreviewEdit.value}
+          onChange={event => setInlinePreviewEdit(current => current ? { ...current, value: event.currentTarget.value, error: '' } : current)}
+          onKeyDown={handleInlinePreviewEditKeyDown}
+        />
+        <footer>
+          {inlinePreviewEdit.error
+            ? <span role="alert">{inlinePreviewEdit.error}</span>
+            : <span>⌘/Ctrl+Enter 적용 · ⌘/Ctrl+S 적용 후 저장 · Esc 취소</span>}
+        </footer>
+      </section>
+    );
+  }
+
   function previewPaneState(pane: 'primary' | 'secondary') {
     if (pane === 'secondary') {
       return {
         path: secondaryBuffer?.path || '',
         source: secondaryPreviewSource,
+        fullSource: secondaryVisibleContent,
+        prefixLength: Math.max(0, secondaryVisibleContent.length - secondaryPreviewSource.length),
         preview: secondaryPreviewRef.current,
       };
     }
     return {
       path: buffer.path,
       source: previewSource,
+      fullSource: visibleContent,
+      prefixLength: Math.max(0, visibleContent.length - previewSource.length),
       preview: previewRef.current,
     };
   }
@@ -1507,7 +1689,13 @@ export function EditorPane({
     const ratio = clampNumber((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1);
     const rawWidth = PREVIEW_WIDTH_MIN + ratio * (previewMaxWidth - PREVIEW_WIDTH_MIN);
     const steppedWidth = Math.round(rawWidth / PREVIEW_WIDTH_STEP) * PREVIEW_WIDTH_STEP;
-    setPreviewWidth(clampNumber(steppedWidth, PREVIEW_WIDTH_MIN, previewMaxWidth));
+    setPreviewWidthExplicitly(clampNumber(steppedWidth, PREVIEW_WIDTH_MIN, previewMaxWidth));
+  }
+
+  function setPreviewWidthExplicitly(nextWidth: number) {
+    previewWidthExplicitRef.current = true;
+    window.localStorage.setItem(PREVIEW_WIDTH_EXPLICIT_STORAGE_KEY, '1');
+    setPreviewWidth(clampNumber(nextWidth, PREVIEW_WIDTH_MIN, PREVIEW_WIDTH_MAX));
   }
 
   function startPreviewWidthResize(event: MouseEvent<HTMLButtonElement>) {
@@ -1534,7 +1722,7 @@ export function EditorPane({
     const stop = () => {
       if (frame) window.cancelAnimationFrame(frame);
       renderPendingWidth();
-      setPreviewWidth(pendingWidth);
+      setPreviewWidthExplicitly(pendingWidth);
       document.body.classList.remove('resizing-preview-width');
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', stop);
@@ -1547,9 +1735,9 @@ export function EditorPane({
     const delta = event.key === 'ArrowLeft' ? -PREVIEW_WIDTH_STEP : event.key === 'ArrowRight' ? PREVIEW_WIDTH_STEP : 0;
     if (!delta && event.key !== 'Home' && event.key !== 'End') return;
     event.preventDefault();
-    if (event.key === 'Home') setPreviewWidth(PREVIEW_WIDTH_MIN);
-    else if (event.key === 'End') setPreviewWidth(previewMaxWidth);
-    else setPreviewWidth(current => clampNumber(current + delta, PREVIEW_WIDTH_MIN, previewMaxWidth));
+    if (event.key === 'Home') setPreviewWidthExplicitly(PREVIEW_WIDTH_MIN);
+    else if (event.key === 'End') setPreviewWidthExplicitly(previewMaxWidth);
+    else setPreviewWidthExplicitly(clampNumber(effectivePreviewWidth + delta, PREVIEW_WIDTH_MIN, previewMaxWidth));
   }
 
   function closeCommandPalette() {
@@ -1650,6 +1838,21 @@ export function EditorPane({
               </button>
             ) : null}
             {!jsonDocument ? <button className={mode === 'preview' ? 'active' : ''} type="button" onClick={() => switchBodyMode('preview')}>Preview</button> : null}
+            {mode === 'preview' && !jsonDocument ? (
+              <button
+                className={`agent-copy-toggle ${agentCopyEnabled ? 'active' : ''}`}
+                type="button"
+                aria-pressed={agentCopyEnabled}
+                aria-keyshortcuts="Meta+Shift+C Control+Shift+C"
+                title="Agent Copy · ⌘/Ctrl+Shift+C"
+                onClick={() => {
+                  setInlinePreviewEdit(null);
+                  setAgentCopyEnabled(current => !current);
+                }}
+              >
+                Agent Copy
+              </button>
+            ) : null}
           </div>
         ) : null}
         {jsonDocument ? <button className="editor-action" type="button" onClick={formatJsonDocument}>Format JSON</button> : null}
@@ -1741,12 +1944,12 @@ export function EditorPane({
                 min={PREVIEW_WIDTH_MIN}
                 max={previewMaxWidth}
                 step={PREVIEW_WIDTH_STEP}
-                value={previewWidth}
-                onInput={event => setPreviewWidth(clampNumber(Number(event.currentTarget.value), PREVIEW_WIDTH_MIN, previewMaxWidth))}
-                onChange={event => setPreviewWidth(clampNumber(Number(event.currentTarget.value), PREVIEW_WIDTH_MIN, previewMaxWidth))}
+                value={effectivePreviewWidth}
+                onInput={event => setPreviewWidthExplicitly(clampNumber(Number(event.currentTarget.value), PREVIEW_WIDTH_MIN, previewMaxWidth))}
+                onChange={event => setPreviewWidthExplicitly(clampNumber(Number(event.currentTarget.value), PREVIEW_WIDTH_MIN, previewMaxWidth))}
                 onPointerDown={setPreviewWidthFromPointer}
               />
-              <span>Width {previewWidth}</span>
+              <span>Width {effectivePreviewWidth}</span>
             </label>
           </div>
         </details>
@@ -1827,15 +2030,16 @@ export function EditorPane({
                     <span>주 파일</span>
                   </header>
                   <article
-                    className={`markdown-preview split-preview-document ${primaryIsAsciidoc ? 'adoc-preview' : ''}`}
+                    className={`markdown-preview split-preview-document ${primaryIsAsciidoc ? 'adoc-preview' : ''} ${agentCopyEnabled ? 'agent-copy-active' : ''}`}
                     ref={previewRef}
-                    style={{ '--preview-width': `${previewWidth}px` } as CSSProperties}
+                    style={{ '--preview-width': `${effectivePreviewWidth}px` } as CSSProperties}
                     onClick={event => selectPreviewBlock(event, 'primary')}
                     onMouseUp={event => selectPreviewRange(event, 'primary')}
                     onScroll={syncActiveHeading}
                   >
                     {!previewAsSource && frontmatter.entries.length ? <FrontmatterCard entries={frontmatter.entries} /> : null}
                     <RenderedPreviewHtml html={previewHtml} />
+                    {renderInlinePreviewEditor()}
                   </article>
                 </section>
                 <button
@@ -1855,11 +2059,12 @@ export function EditorPane({
                     <span>읽기 전용</span>
                   </header>
                   <article
-                    className={`markdown-preview split-preview-document secondary-document ${secondaryIsAsciidoc ? 'adoc-preview' : ''}`}
+                    className={`markdown-preview split-preview-document secondary-document ${secondaryIsAsciidoc ? 'adoc-preview' : ''} ${agentCopyEnabled ? 'agent-copy-active' : ''}`}
                     ref={secondaryPreviewRef}
-                    style={{ '--preview-width': `${previewWidth}px` } as CSSProperties}
+                    style={{ '--preview-width': `${effectivePreviewWidth}px` } as CSSProperties}
                     onClick={event => selectPreviewBlock(event, 'secondary')}
                     onMouseUp={event => selectPreviewRange(event, 'secondary')}
+                    onScroll={event => markPreviewScrollbarActive(event.currentTarget)}
                   >
                     {!secondaryPreviewAsSource && secondaryFrontmatter.entries.length ? <FrontmatterCard entries={secondaryFrontmatter.entries} /> : null}
                     <RenderedPreviewHtml html={secondaryPreviewHtml} />
@@ -1885,9 +2090,9 @@ export function EditorPane({
                   )) : <span>목차 없음</span>}
                 </nav>
               ) : null}
-              <div className="preview-document-stage" style={{ '--preview-width': `${previewWidth}px` } as CSSProperties}>
+              <div className="preview-document-stage" style={{ '--preview-width': `${effectivePreviewWidth}px` } as CSSProperties}>
                 <article
-                  className={`markdown-preview ${primaryIsAsciidoc ? 'adoc-preview' : ''} ${diffOn ? 'diff-preview-mode' : ''}`}
+                  className={`markdown-preview ${primaryIsAsciidoc ? 'adoc-preview' : ''} ${diffOn ? 'diff-preview-mode' : ''} ${agentCopyEnabled ? 'agent-copy-active' : ''}`}
                   ref={previewRef}
                   onClick={event => selectPreviewBlock(event, 'primary')}
                   onMouseUp={event => selectPreviewRange(event, 'primary')}
@@ -1905,6 +2110,7 @@ export function EditorPane({
                     <>
                       {frontmatter.entries.length ? <FrontmatterCard entries={frontmatter.entries} /> : null}
                       <RenderedPreviewHtml html={previewHtml} />
+                      {renderInlinePreviewEditor()}
                     </>
                   )}
                 </article>
@@ -1916,7 +2122,7 @@ export function EditorPane({
                   aria-orientation="vertical"
                   aria-valuemin={PREVIEW_WIDTH_MIN}
                   aria-valuemax={previewMaxWidth}
-                  aria-valuenow={previewWidth}
+                  aria-valuenow={effectivePreviewWidth}
                   onMouseDown={startPreviewWidthResize}
                   onKeyDown={adjustPreviewWidthFromKeyboard}
                 />
@@ -2341,6 +2547,37 @@ function lineRangeForOffsets(source: string, from: number, to: number) {
     start,
     end: Math.max(start, lineNumberForOffset(source, adjustedEnd)),
   };
+}
+
+function positiveLineNumber(value: string | undefined) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function sourceRangeForLines(source: string, lineStart: number, lineEnd: number) {
+  const starts = buildLineStartOffsets(source);
+  const safeStart = clampNumber(Math.floor(lineStart), 1, starts.length);
+  const safeEnd = clampNumber(Math.floor(lineEnd), safeStart, starts.length);
+  return {
+    from: starts[safeStart - 1] ?? 0,
+    to: starts[safeEnd] ?? source.length,
+  };
+}
+
+function isEditableShortcutTarget(target: EventTarget | null) {
+  const element = target instanceof Element ? target : null;
+  if (!element) return false;
+  return Boolean(element.closest(
+    'input, textarea, select, [contenteditable="true"], .cm-editor, .terminal-pane, .preview-inline-editor',
+  ));
+}
+
+function isNativePreviewControl(target: EventTarget | null) {
+  const element = target instanceof Element ? target : null;
+  if (!element) return false;
+  return Boolean(element.closest(
+    'a, button, input, label, summary, details > summary, [role="button"], .preview-copy-popover, .preview-inline-editor',
+  ));
 }
 
 function lineNumberForOffset(source: string, offset: number) {

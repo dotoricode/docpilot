@@ -2159,10 +2159,27 @@ body.resizing-panels * {
   min-width: 0;
   justify-self: center;
   overflow: auto;
+  scrollbar-color: transparent transparent;
   padding: 24px 28px;
   background: #08090b;
   color: #d7d9df;
   font: 14px/1.65 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.markdown-preview::-webkit-scrollbar-thumb,
+.markdown-preview::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.markdown-preview.is-scrolling {
+  scrollbar-color: color-mix(in srgb, var(--workbench-muted) 62%, transparent) transparent;
+}
+
+.markdown-preview.is-scrolling::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--workbench-muted) 62%, transparent);
+  background-clip: padding-box;
 }
 
 .docpilot-preview-loading {
@@ -7135,6 +7152,8 @@ textarea {
 }
 
 .terminal-pane {
+  container-name: terminal-pane;
+  container-type: inline-size;
   min-width: 0;
   min-height: 0;
   position: relative;
@@ -7152,6 +7171,7 @@ textarea {
   justify-content: space-between;
   border-bottom: 1px solid var(--workbench-border);
   background: var(--workbench-bg);
+  overflow: hidden;
 }
 
 .terminal-tabs,
@@ -7162,13 +7182,14 @@ textarea {
 }
 
 .terminal-tabs {
-  overflow-x: auto;
+  overflow: hidden;
 }
 
 .terminal-tab {
   height: 35px;
-  min-width: 104px;
+  min-width: 0;
   max-width: 190px;
+  flex: 1 1 104px;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
@@ -7189,6 +7210,8 @@ textarea {
 }
 
 .terminal-tab span {
+  min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -7224,6 +7247,23 @@ textarea {
   font: 11px var(--dp-mono);
   margin-right: 4px;
   padding: 0 10px;
+}
+
+@container terminal-pane (max-width: 520px) {
+  .terminal-shell-label,
+  .terminal-tabbar-drag-surface {
+    display: none;
+  }
+
+  .terminal-tab {
+    flex-basis: 64px;
+    gap: 4px;
+    padding-inline: 6px;
+  }
+
+  .terminal-actions .terminal-icon-button {
+    width: 28px;
+  }
 }
 
 .terminal-xterm-host {
