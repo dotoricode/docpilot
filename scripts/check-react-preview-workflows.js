@@ -60,6 +60,9 @@ async function main() {
   try {
     let editor = await openWorkspace(app, workspace);
     await selectFile(editor, 'README.md');
+    await editor.waitForSelector('.document-markdown-content[contenteditable="true"]');
+    const agentCopy = editor.getByRole('button', { name: 'Agent Copy' });
+    await agentCopy.click();
     await editor.waitForSelector('.markdown-preview h1[data-line-start="1"]');
 
     const defaultWidth = await editor.evaluate(() => {
@@ -88,37 +91,27 @@ async function main() {
     await editor.waitForTimeout(520);
     assert.equal(await preview.evaluate(node => node.classList.contains('is-scrolling')), false, 'preview scrollbar state must return to idle');
 
-    await editor.locator('.markdown-preview h1').first().click();
     const inline = editor.locator('.preview-inline-editor');
-    await inline.waitFor();
-    assert.equal(await inline.locator('textarea').inputValue(), '# Markdown workflow\n');
-    await inline.locator('textarea').press('Meta+Shift+C');
-    assert.equal(await editor.getByRole('button', { name: 'Agent Copy' }).getAttribute('aria-pressed'), 'false', 'Preview inputs must retain Cmd+Shift+C');
-    await inline.locator('textarea').press('Escape');
-    assert.equal(await inline.count(), 0, 'Escape must discard the edit');
-    assert.equal(await editor.locator('.dirty-pill').count(), 0, 'cancel must not dirty the document');
-
     await editor.locator('.markdown-preview a').first().evaluate(link => {
       link.addEventListener('click', event => event.preventDefault(), { once: true });
       link.click();
     });
     assert.equal(await inline.count(), 0, 'native Preview links must not open the source editor');
 
-    await editor.locator('.markdown-preview p').first().click();
-    await inline.locator('textarea').fill('Paragraph with **preserved Markdown** source.\n');
-    await inline.locator('textarea').press('Meta+Enter');
+    await agentCopy.click();
+    await editor.waitForSelector('.document-markdown-content[contenteditable="true"]');
+    await editor.locator('.document-markdown-content p').first().fill('Paragraph with preserved Markdown source.');
     await editor.waitForSelector('.dirty-pill');
-    assert.match(await editor.locator('.markdown-preview p').first().innerText(), /preserved Markdown/);
 
     await editor.keyboard.press('Meta+Shift+C');
-    const agentCopy = editor.getByRole('button', { name: 'Agent Copy' });
     assert.equal(await agentCopy.getAttribute('aria-pressed'), 'true');
+    await editor.waitForSelector('.markdown-preview p');
     await editor.locator('.markdown-preview p').first().click();
     assert.equal(await inline.count(), 0, 'Agent Copy click must not open the source editor');
     const clipboardText = await app.evaluate(({ clipboard }) => clipboard.readText());
     assert.match(clipboardText, /File: README\.md/);
     assert.match(clipboardText, /Lines: 3/);
-    assert.match(clipboardText, /\*\*preserved Markdown\*\*/);
+    assert.match(clipboardText, /preserved Markdown/);
 
     await selectFile(editor, 'guide.adoc');
     await editor.waitForSelector('.adoc-preview p[data-line-start]');

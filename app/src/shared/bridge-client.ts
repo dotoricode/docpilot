@@ -178,6 +178,7 @@ export type BridgePing = {
 export type AppSettings = {
   version: number;
   autosave: boolean;
+  suppressMarkdownVisualReadonlyNotice: boolean;
   theme: 'dark' | 'light' | 'system';
   defaultTerminalShell: TerminalShellId;
   agentCommandMode: 'auto' | 'custom';

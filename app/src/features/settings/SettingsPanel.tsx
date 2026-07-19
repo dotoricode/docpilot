@@ -5,6 +5,7 @@ import { applyThemePreference } from '../../shared/theme';
 const emptySettings: AppSettings = {
   version: 1,
   autosave: false,
+  suppressMarkdownVisualReadonlyNotice: false,
   theme: 'dark',
   defaultTerminalShell: 'default',
   agentCommandMode: 'auto',
@@ -97,6 +98,17 @@ export function SettingsPanel() {
             onChange={event => setDraft(current => ({ ...current, autosave: event.target.checked }))}
           />
           <span>자동 저장</span>
+        </label>
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={!draft.suppressMarkdownVisualReadonlyNotice}
+            onChange={event => setDraft(current => ({
+              ...current,
+              suppressMarkdownVisualReadonlyNotice: !event.target.checked,
+            }))}
+          />
+          <span>Document 읽기 전용 안내 모달 표시</span>
         </label>
         <label>
           <span>테마</span>

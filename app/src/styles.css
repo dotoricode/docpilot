@@ -2423,18 +2423,18 @@ body.resizing-panels * {
   transition: background 100ms ease;
 }
 
-.markdown-preview p:hover,
-.markdown-preview li:hover,
-.markdown-preview table:hover,
-.markdown-preview pre:hover,
-.markdown-preview blockquote:hover,
-.markdown-preview h1:hover,
-.markdown-preview h2:hover,
-.markdown-preview h3:hover,
-.markdown-preview h4:hover,
-.markdown-preview h5:hover,
-.markdown-preview h6:hover,
-.markdown-preview .preview-picked {
+.markdown-preview.agent-copy-active p:hover,
+.markdown-preview.agent-copy-active li:hover,
+.markdown-preview.agent-copy-active table:hover,
+.markdown-preview.agent-copy-active pre:hover,
+.markdown-preview.agent-copy-active blockquote:hover,
+.markdown-preview.agent-copy-active h1:hover,
+.markdown-preview.agent-copy-active h2:hover,
+.markdown-preview.agent-copy-active h3:hover,
+.markdown-preview.agent-copy-active h4:hover,
+.markdown-preview.agent-copy-active h5:hover,
+.markdown-preview.agent-copy-active h6:hover,
+.markdown-preview.agent-copy-active .preview-picked {
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -4476,18 +4476,18 @@ select,
   border-bottom: 0;
 }
 
-.markdown-preview .preview-picked,
-.markdown-preview p:hover,
-.markdown-preview li:hover,
-.markdown-preview table:hover,
-.markdown-preview pre:hover,
-.markdown-preview blockquote:hover,
-.markdown-preview h1:hover,
-.markdown-preview h2:hover,
-.markdown-preview h3:hover,
-.markdown-preview h4:hover,
-.markdown-preview h5:hover,
-.markdown-preview h6:hover {
+.markdown-preview.agent-copy-active .preview-picked,
+.markdown-preview.agent-copy-active p:hover,
+.markdown-preview.agent-copy-active li:hover,
+.markdown-preview.agent-copy-active table:hover,
+.markdown-preview.agent-copy-active pre:hover,
+.markdown-preview.agent-copy-active blockquote:hover,
+.markdown-preview.agent-copy-active h1:hover,
+.markdown-preview.agent-copy-active h2:hover,
+.markdown-preview.agent-copy-active h3:hover,
+.markdown-preview.agent-copy-active h4:hover,
+.markdown-preview.agent-copy-active h5:hover,
+.markdown-preview.agent-copy-active h6:hover {
   background: rgba(255, 255, 255, 0.075);
 }
 
@@ -8123,18 +8123,18 @@ textarea {
   color: #26251e;
 }
 
-:root[data-theme="light"] .markdown-preview .preview-picked,
-:root[data-theme="light"] .markdown-preview p:hover,
-:root[data-theme="light"] .markdown-preview li:hover,
-:root[data-theme="light"] .markdown-preview table:hover,
-:root[data-theme="light"] .markdown-preview pre:hover,
-:root[data-theme="light"] .markdown-preview blockquote:hover,
-:root[data-theme="light"] .markdown-preview h1:hover,
-:root[data-theme="light"] .markdown-preview h2:hover,
-:root[data-theme="light"] .markdown-preview h3:hover,
-:root[data-theme="light"] .markdown-preview h4:hover,
-:root[data-theme="light"] .markdown-preview h5:hover,
-:root[data-theme="light"] .markdown-preview h6:hover {
+:root[data-theme="light"] .markdown-preview.agent-copy-active .preview-picked,
+:root[data-theme="light"] .markdown-preview.agent-copy-active p:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active li:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active table:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active pre:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active blockquote:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active h1:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active h2:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active h3:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active h4:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active h5:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active h6:hover {
   background: rgba(245, 78, 0, 0.06);
 }
 
@@ -8597,18 +8597,18 @@ textarea {
   border-bottom-color: #e8edf3;
 }
 
-:root[data-theme="light"] .markdown-preview .preview-picked,
-:root[data-theme="light"] .markdown-preview p:hover,
-:root[data-theme="light"] .markdown-preview li:hover,
-:root[data-theme="light"] .markdown-preview table:hover,
-:root[data-theme="light"] .markdown-preview pre:hover,
-:root[data-theme="light"] .markdown-preview blockquote:hover,
-:root[data-theme="light"] .markdown-preview h1:hover,
-:root[data-theme="light"] .markdown-preview h2:hover,
-:root[data-theme="light"] .markdown-preview h3:hover,
-:root[data-theme="light"] .markdown-preview h4:hover,
-:root[data-theme="light"] .markdown-preview h5:hover,
-:root[data-theme="light"] .markdown-preview h6:hover {
+:root[data-theme="light"] .markdown-preview.agent-copy-active .preview-picked,
+:root[data-theme="light"] .markdown-preview.agent-copy-active p:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active li:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active table:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active pre:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active blockquote:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active h1:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active h2:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active h3:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active h4:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active h5:hover,
+:root[data-theme="light"] .markdown-preview.agent-copy-active h6:hover {
   background: rgba(125, 169, 219, 0.11);
 }
 

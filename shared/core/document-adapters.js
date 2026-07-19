@@ -1,7 +1,7 @@
 const FORMAT_CAPABILITIES = Object.freeze({
   markdown: Object.freeze({
     format: 'markdown',
-    modes: Object.freeze(['source', 'rich', 'preview']),
+    modes: Object.freeze(['source', 'document']),
     outline: true,
     formatDocument: false,
     validate: false,
@@ -45,24 +45,31 @@ function documentCapabilities(filePath) {
   };
 }
 
-function markdownRichSafety(source) {
+function stripMarkdownCodeForEligibility(source) {
+  return String(source || '')
+    .replace(/(^|\n)( {0,3})(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\2\3(?=\n|$)/g, '\n')
+    .replace(/`[^`\n]*`/g, '');
+}
+
+function getMarkdownDocumentEligibility(source) {
   const value = String(source || '');
-  if (value.length > 300_000) return { safe: false, reason: 'document-too-large' };
+  if (value.length > 50_000) return { editable: false, reason: 'document-too-large' };
+  const inspectable = stripMarkdownCodeForEligibility(value);
   const unsupported = [
-    /^\s*(?:import|export)\s/m,
-    /<\/?[A-Za-z][^>]*>/,
-    /^\s*:::/m,
-    /^\[\^[^\]]+\]:/m,
-    /\[\[[^\]]+\]\]/,
-    /\$\$[\s\S]*?\$\$/,
+    ['mdx', /^\s*(?:import|export)\s/m],
+    ['raw-html', /<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^>]*)?\/?>/],
+    ['directive', /^\s*:::/m],
+    ['footnote', /^\[\^[^\]]+\]:|\[\^[^\]]+\]/m],
+    ['reference-definition', /^\s*\[[^\]^]+\]:\s*\S+/m],
+    ['wiki-link', /\[\[[^\]]+\]\]/],
   ];
-  if (unsupported.some(pattern => pattern.test(value))) return { safe: false, reason: 'unsupported-syntax' };
-  return { safe: true, reason: '' };
+  const match = unsupported.find(([, pattern]) => pattern.test(inspectable));
+  return match ? { editable: false, reason: match[0] } : { editable: true, reason: '' };
 }
 
 module.exports = {
   FORMAT_CAPABILITIES,
   documentCapabilities,
   documentFormat,
-  markdownRichSafety,
+  getMarkdownDocumentEligibility,
 };

@@ -1960,21 +1960,527 @@ body.dragging-workbench-pane * {
   display: inline !important;
 }
 
-/* Keep AsciiDoc information-panel labels in normal flow. The earlier floating
-   badge used an absolutely positioned title inside a zero-height icon cell,
-   so the following content painted over the lower half of NOTE/IMPORTANT. */
+/* Information-panel labels straddle the top border while reserved top padding
+   keeps the document content below them. */
+:root[data-theme] .markdown-preview .admonitionblock {
+  --admonition-border: rgba(124, 159, 202, 0.58);
+  position: relative !important;
+  overflow: visible !important;
+  margin-top: 28px !important;
+  padding-top: 30px !important;
+  border: 1px solid var(--admonition-border) !important;
+}
+
+:root[data-theme] .markdown-preview .admonitionblock table,
+:root[data-theme] .markdown-preview .admonitionblock tbody,
+:root[data-theme] .markdown-preview .admonitionblock tr {
+  position: static !important;
+}
+
+:root[data-theme] .markdown-preview .admonitionblock.tip { --admonition-border: rgba(65, 171, 120, 0.58); }
+:root[data-theme] .markdown-preview .admonitionblock.note { --admonition-border: rgba(124, 159, 202, 0.58); }
+:root[data-theme] .markdown-preview .admonitionblock.important { --admonition-border: rgba(224, 104, 104, 0.62); }
+:root[data-theme] .markdown-preview .admonitionblock.warning { --admonition-border: rgba(218, 158, 82, 0.62); }
+:root[data-theme] .markdown-preview .admonitionblock.caution { --admonition-border: rgba(220, 188, 93, 0.62); }
+
 :root[data-theme] .markdown-preview .admonitionblock td.icon {
+  position: absolute !important;
+  top: 0 !important;
+  left: 28px !important;
+  z-index: 2 !important;
   display: block !important;
-  width: 100% !important;
-  min-height: 22px !important;
-  margin: 0 0 8px !important;
+  width: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  transform: translateY(-50%) !important;
 }
 
 :root[data-theme] .markdown-preview .admonitionblock td.icon .title {
   position: static !important;
   inset: auto !important;
-  z-index: auto !important;
+  z-index: 2 !important;
   box-sizing: border-box !important;
   max-width: 100% !important;
   white-space: nowrap !important;
+}
+
+:root[data-theme="light"] .markdown-preview .admonitionblock.tip { --admonition-border: rgba(35, 130, 82, 0.56); }
+:root[data-theme="light"] .markdown-preview .admonitionblock.note { --admonition-border: rgba(54, 99, 154, 0.56); }
+:root[data-theme="light"] .markdown-preview .admonitionblock.important { --admonition-border: rgba(180, 55, 65, 0.58); }
+:root[data-theme="light"] .markdown-preview .admonitionblock.warning { --admonition-border: rgba(165, 104, 24, 0.58); }
+:root[data-theme="light"] .markdown-preview .admonitionblock.caution { --admonition-border: rgba(151, 118, 22, 0.58); }
+
+/* Markdown Document uses Preview's document geometry and typography while
+   TipTap remains the only editable surface. */
+.editor-workspace.document {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.editor-workspace.document .editor-host,
+.editor-workspace.document.document-editable .preview-shell {
+  display: none !important;
+}
+
+.document-editor-shell {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--workbench-editor);
+  padding: 0 24px 80px;
+}
+
+.document-editor-shell > .frontmatter-card,
+.document-markdown-editor {
+  width: min(100%, var(--preview-width, 2400px));
+  margin-inline: auto;
+}
+
+.document-markdown-editor {
+  position: relative;
+}
+
+.document-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-bottom: 1px solid var(--workbench-border);
+  background: color-mix(in srgb, var(--workbench-editor) 94%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.document-toolbar > span {
+  width: 1px;
+  height: 18px;
+  background: var(--workbench-border);
+  margin: 0 5px;
+}
+
+.document-toolbar button,
+.document-toolbar summary {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--workbench-muted);
+  font: 600 12px var(--dp-sans);
+  cursor: pointer;
+}
+
+.document-toolbar button > svg,
+.document-toolbar summary > svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
+}
+
+.document-toolbar button:hover,
+.document-toolbar button:focus-visible,
+.document-toolbar button.active,
+.document-toolbar summary:hover,
+.document-toolbar summary:focus-visible {
+  background: var(--workbench-hover);
+  color: var(--workbench-text);
+  outline: none;
+}
+
+.document-toolbar button.active {
+  box-shadow: inset 0 0 0 1px var(--workbench-border-strong);
+}
+
+.document-toolbar-more {
+  position: relative;
+}
+
+.document-toolbar-more > summary {
+  display: grid;
+  place-items: center;
+  list-style: none;
+}
+
+.document-toolbar-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.document-toolbar-more > div {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 170px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--workbench-border-strong);
+  border-radius: 8px;
+  background: var(--workbench-raised);
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.28);
+  padding: 6px;
+}
+
+.document-toolbar-more > div button {
+  width: 100%;
+  display: flex;
+  flex: initial;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding-inline: 10px;
+  text-align: left;
+}
+
+.document-toolbar-more > div button svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.document-table-toolbar {
+  position: sticky;
+  top: 42px;
+  z-index: 7;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--workbench-border);
+  background: color-mix(in srgb, var(--workbench-editor) 96%, transparent);
+  padding: 6px 0;
+}
+
+.document-table-toolbar button {
+  min-height: 26px;
+  border: 1px solid var(--workbench-border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--workbench-muted);
+  padding: 0 8px;
+  font: 600 11px var(--dp-sans);
+  cursor: pointer;
+}
+
+.document-table-toolbar button:hover,
+.document-table-toolbar button:focus-visible {
+  border-color: var(--workbench-border-strong);
+  background: var(--workbench-hover);
+  color: var(--workbench-text);
+  outline: none;
+}
+
+.document-markdown-surface {
+  min-height: 60vh;
+  padding-top: 48px;
+}
+
+.document-markdown-content.markdown-preview {
+  width: 100%;
+  min-height: 60vh;
+  max-width: none;
+  margin: 0;
+  padding: 0 0 80px;
+  overflow: visible;
+  outline: none;
+  cursor: text;
+  caret-color: var(--workbench-text);
+}
+
+.document-markdown-content.markdown-preview:focus-visible {
+  outline: none;
+}
+
+.document-markdown-content.markdown-preview p,
+.document-markdown-content.markdown-preview li,
+.document-markdown-content.markdown-preview table,
+.document-markdown-content.markdown-preview pre,
+.document-markdown-content.markdown-preview blockquote,
+.document-markdown-content.markdown-preview h1,
+.document-markdown-content.markdown-preview h2,
+.document-markdown-content.markdown-preview h3,
+.document-markdown-content.markdown-preview h4,
+.document-markdown-content.markdown-preview h5,
+.document-markdown-content.markdown-preview h6 {
+  cursor: text;
+  transition: none;
+}
+
+.document-markdown-content.markdown-preview p:hover,
+.document-markdown-content.markdown-preview li:hover,
+.document-markdown-content.markdown-preview table:hover,
+.document-markdown-content.markdown-preview pre:hover,
+.document-markdown-content.markdown-preview blockquote:hover,
+.document-markdown-content.markdown-preview h1:hover,
+.document-markdown-content.markdown-preview h2:hover,
+.document-markdown-content.markdown-preview h3:hover,
+.document-markdown-content.markdown-preview h4:hover,
+.document-markdown-content.markdown-preview h5:hover,
+.document-markdown-content.markdown-preview h6:hover {
+  background: transparent;
+}
+
+.document-markdown-content .ProseMirror-selectednode {
+  outline: 2px solid var(--workbench-accent);
+  outline-offset: 3px;
+}
+
+.document-markdown-content ul:not([data-type="taskList"]),
+.document-markdown-content ol {
+  padding-inline-start: 1.65em;
+}
+
+.document-markdown-content ul:not([data-type="taskList"]) {
+  list-style-type: disc;
+}
+
+.document-markdown-content ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) {
+  list-style-type: circle;
+}
+
+.document-markdown-content ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) {
+  list-style-type: square;
+}
+
+.document-markdown-content ol {
+  list-style-type: decimal;
+}
+
+.document-markdown-content li::marker {
+  color: currentColor;
+}
+
+.document-markdown-content ul[data-type="taskList"] {
+  padding-left: 0;
+  list-style: none;
+}
+
+.document-markdown-content li[data-type="taskItem"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.document-markdown-content li[data-type="taskItem"] > label {
+  padding-top: 4px;
+  user-select: none;
+}
+
+.document-markdown-content li[data-type="taskItem"] > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.document-markdown-content table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.document-markdown-content .selectedCell {
+  background: color-mix(in srgb, var(--workbench-accent) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--workbench-accent) 55%, transparent);
+}
+
+.document-image-node {
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+}
+
+.document-image-node img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.document-inline-input {
+  position: sticky;
+  top: 42px;
+  z-index: 12;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  border-bottom: 1px solid var(--workbench-border);
+  background: var(--workbench-raised);
+  padding: 8px;
+}
+
+.document-inline-input label {
+  flex: 1;
+  display: grid;
+  gap: 4px;
+  color: var(--workbench-muted);
+  font-size: 11px;
+}
+
+.document-inline-input input {
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--workbench-border-strong);
+  border-radius: 5px;
+  background: var(--workbench-editor);
+  color: var(--workbench-text);
+  padding: 0 9px;
+  font: 12px var(--dp-mono);
+}
+
+.document-inline-input > span {
+  color: #e06c75;
+  font-size: 11px;
+}
+
+.document-inline-input button {
+  height: 30px;
+  border: 1px solid var(--workbench-border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--workbench-text);
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.document-slash-menu {
+  position: absolute;
+  z-index: 30;
+  width: min(340px, calc(100% - 24px));
+  max-height: 320px;
+  overflow: auto;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--workbench-border-strong);
+  border-radius: 9px;
+  background: var(--workbench-raised);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.34);
+  padding: 6px;
+}
+
+.document-slash-menu button {
+  display: grid;
+  gap: 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--workbench-text);
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.document-slash-menu button.active,
+.document-slash-menu button:hover {
+  background: var(--workbench-hover);
+}
+
+.document-slash-menu button strong {
+  font-size: 12px;
+}
+
+.document-slash-menu button span,
+.document-slash-menu p {
+  color: var(--workbench-muted);
+  font-size: 11px;
+}
+
+.document-readonly-banner {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid rgba(218, 158, 82, 0.42);
+  border-radius: 7px;
+  background: rgba(218, 158, 82, 0.1);
+  color: var(--workbench-text);
+  margin: 16px 0;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+.document-readonly-banner button {
+  border: 0;
+  background: transparent;
+  color: var(--workbench-accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+}
+
+.document-readonly-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgba(3, 5, 8, 0.58);
+  backdrop-filter: blur(4px);
+  padding: 24px;
+}
+
+.document-readonly-dialog {
+  width: min(100%, 460px);
+  border: 1px solid var(--workbench-border-strong);
+  border-radius: 12px;
+  background: var(--workbench-raised);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  color: var(--workbench-text);
+  padding: 22px;
+}
+
+.document-readonly-dialog h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.document-readonly-dialog p {
+  color: var(--workbench-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 18px;
+}
+
+.document-readonly-dialog > label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--workbench-muted);
+  font-size: 12px;
+}
+
+.document-readonly-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.document-readonly-dialog footer button {
+  min-height: 34px;
+  border: 1px solid var(--workbench-border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--workbench-text);
+  padding: 0 13px;
+  cursor: pointer;
+}
+
+.document-readonly-dialog footer button:last-child {
+  border-color: var(--workbench-accent);
+  background: var(--workbench-accent);
+  color: #fff;
+}
+
+@media (max-width: 820px) {
+  .document-editor-shell {
+    padding-inline: 22px;
+  }
+
+  .document-toolbar {
+    overflow-x: auto;
+  }
 }

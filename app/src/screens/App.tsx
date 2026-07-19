@@ -293,6 +293,7 @@ export function App() {
   const [leftCollapsed, setLeftCollapsed] = useState(() => readStoredBoolean('docpilot:left-panel-collapsed', false));
   const [themePreference, setThemePreference] = useState<AppSettings['theme']>(readInitialThemePreference);
   const [autosaveEnabled, setAutosaveEnabled] = useState(false);
+  const [suppressMarkdownDocumentReadonlyNotice, setSuppressMarkdownDocumentReadonlyNotice] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(() => readStoredBoolean('docpilot:terminal-open', true));
   const [paneLayout, setPaneLayout] = useState<WorkbenchLayout>(readWorkbenchLayout);
   const [draggingPane, setDraggingPane] = useState<PaneId | null>(null);
@@ -320,6 +321,7 @@ export function App() {
   const draggedDocumentTabRef = useRef<{ id: string; pane: 'primary' | 'secondary' } | null>(null);
   const savingRef = useRef(false);
   const menuSaveRef = useRef<() => void>(() => {});
+  const documentFlushRef = useRef<() => string | null>(() => null);
   const menuUpdateCheckRef = useRef<() => void>(() => {});
   const manualUpdateCheckVisibleRef = useRef(false);
   const bufferRef = useRef(buffer);
@@ -409,7 +411,8 @@ export function App() {
   }, [committedTerminalPosition, paneLayout, terminalOpen, terminalSize]);
 
   menuSaveRef.current = () => {
-    void saveFile();
+    const flushed = documentFlushRef.current();
+    void saveFile(flushed ?? undefined);
   };
 
   menuUpdateCheckRef.current = () => {
@@ -509,6 +512,7 @@ export function App() {
           currentThemePreference = response.settings.theme;
           setThemePreference(response.settings.theme);
           setAutosaveEnabled(response.settings.autosave);
+          setSuppressMarkdownDocumentReadonlyNotice(response.settings.suppressMarkdownVisualReadonlyNotice);
           applyAppTheme(currentThemePreference);
         })
         .catch(() => applyAppTheme(currentThemePreference));
@@ -517,6 +521,7 @@ export function App() {
       const settings = (event as CustomEvent).detail?.settings;
       if (settings) {
         setAutosaveEnabled(settings.autosave === true);
+        setSuppressMarkdownDocumentReadonlyNotice(settings.suppressMarkdownVisualReadonlyNotice === true);
         currentThemePreference = settings.theme;
         setThemePreference(settings.theme);
         applyAppTheme(currentThemePreference);
@@ -608,6 +613,18 @@ export function App() {
       window.dispatchEvent(new CustomEvent('docpilot-settings-saved', { detail: { settings: saved.settings } }));
     } catch {
       // Keep the immediate visual toggle even if settings persistence is unavailable.
+    }
+  }
+
+  async function suppressDocumentReadonlyNotice() {
+    setSuppressMarkdownDocumentReadonlyNotice(true);
+    try {
+      const response = await getSettings();
+      const saved = await saveSettings({ ...response.settings, suppressMarkdownVisualReadonlyNotice: true });
+      setSuppressMarkdownDocumentReadonlyNotice(saved.settings.suppressMarkdownVisualReadonlyNotice);
+      window.dispatchEvent(new CustomEvent('docpilot-settings-saved', { detail: { settings: saved.settings } }));
+    } catch {
+      // Keep the current-session suppression even when persistence is unavailable.
     }
   }
 
@@ -978,14 +995,21 @@ export function App() {
     return () => window.removeEventListener('keydown', handleAppShortcuts);
   }, [activePreviewPane, buffer.path, buffer.editorContent, openTabs, projectSearchOpen, quickOpenIndex, quickOpenOpen, quickOpenResults, secondaryBuffer, secondaryOpenTabs, splitOrientation]);
 
-  async function saveFile() {
-    if (!buffer.path || !buffer.dirtyByUser || savingRef.current) return;
-    const savedPath = buffer.path;
-    const savedContent = buffer.editorContent;
+  async function saveFile(contentOverride?: string) {
+    const liveBuffer = bufferRef.current;
+    if (!liveBuffer.path || savingRef.current) return;
+    if (contentOverride === undefined && !liveBuffer.dirtyByUser) return;
+    const bufferToSave = contentOverride === undefined
+      ? liveBuffer
+      : updateEditorContent(liveBuffer, contentOverride);
+    const savedPath = bufferToSave.path;
+    const savedContent = bufferToSave.editorContent;
+    bufferRef.current = bufferToSave;
+    setBuffer(bufferToSave);
     savingRef.current = true;
     setSaving(true);
     try {
-      const result = await saveWorkspaceFile(savedPath, savedContent, buffer.lastSavedRevision);
+      const result = await saveWorkspaceFile(savedPath, savedContent, bufferToSave.lastSavedRevision);
       setBuffer(current => applySaveResult(current, savedPath, savedContent, result.revision));
       setSecondaryBuffer(current => applyPeerSaveResult(current, savedPath, savedContent, result.revision));
       setOpenTabs(current => updateOpenTabsForSave(current, savedPath, savedContent, result.revision));
@@ -1709,6 +1733,9 @@ export function App() {
             }}
             onApplySourceEdit={applyPreviewSourceEdit}
             onSave={saveFile}
+            suppressMarkdownDocumentReadonlyNotice={suppressMarkdownDocumentReadonlyNotice}
+            onSuppressMarkdownDocumentReadonlyNotice={suppressDocumentReadonlyNotice}
+            onRegisterDocumentFlush={flush => { documentFlushRef.current = flush || (() => null); }}
             onReloadConflict={reloadConflictFromDisk}
             onOverwriteConflict={overwriteConflictWithLocal}
             onCloseSecondary={closeSplitPreview}

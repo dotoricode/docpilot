@@ -42,6 +42,7 @@ async function admonitionLabelShapes(page) {
     const titleRect = title?.getBoundingClientRect();
     const iconRect = icon?.getBoundingClientRect();
     const contentRect = content?.getBoundingClientRect();
+    const noteRect = note.getBoundingClientRect();
     const noteStyle = getComputedStyle(note);
     const titleStyle = title ? getComputedStyle(title) : null;
     return {
@@ -50,12 +51,20 @@ async function admonitionLabelShapes(page) {
       titleBottom: titleRect?.bottom || 0,
       contentTop: contentRect?.top || 0,
       overlap: titleRect && contentRect ? Math.max(0, titleRect.bottom - contentRect.top) : -1,
+      borderLabelOffset: titleRect ? Math.abs((titleRect.top + titleRect.height / 2) - noteRect.top) : -1,
+      borderTopColor: noteStyle.borderTopColor,
+      borderTopWidth: Number.parseFloat(noteStyle.borderTopWidth),
       panelPaddingTop: noteStyle.paddingTop,
       iconHeight: iconRect?.height || 0,
       titlePosition: titleStyle?.position || '',
       titleZIndex: titleStyle?.zIndex || '',
     };
   }));
+}
+
+function cssColorAlpha(value) {
+  const match = /rgba?\([^)]*?(?:,\s*([\d.]+))?\)$/.exec(String(value || ''));
+  return match?.[1] === undefined ? 1 : Number(match[1]);
 }
 
 async function main() {
@@ -112,8 +121,21 @@ async function main() {
     await page.screenshot({ path: path.join(artifactRoot, 'home-terminal-reopen-light.png'), scale: 'css' });
 
     await page.locator('.workspace-file-row').filter({ hasText: 'README.md' }).click();
-    await page.waitForSelector('.markdown-preview h3');
+    await page.waitForSelector('.document-markdown-content h3');
     await page.waitForTimeout(100);
+    const visualState = await page.evaluate(() => ({
+      documentActive: document.querySelector('.editor-mode-toggle button.active')?.textContent?.trim() === 'Document',
+      contentEditable: document.querySelector('.document-markdown-content')?.getAttribute('contenteditable'),
+      editorEditableState: document.querySelector('.document-markdown-editor')?.getAttribute('data-editable'),
+      safetyReason: document.querySelector('.document-markdown-editor')?.getAttribute('data-safety-reason'),
+      safetyBanner: document.querySelector('.document-readonly-banner')?.textContent?.trim() || '',
+      richButton: [...document.querySelectorAll('.editor-mode-toggle button')].some(button => button.textContent?.trim() === 'Rich'),
+      previewButton: [...document.querySelectorAll('.editor-mode-toggle button')].some(button => button.textContent?.trim() === 'Preview'),
+    }));
+    check(visualState.documentActive && visualState.contentEditable === 'true', `Markdown must open in editable Document: ${JSON.stringify(visualState)}`);
+    check(!visualState.richButton && !visualState.previewButton, `Markdown must expose only Source/Document modes: ${JSON.stringify(visualState)}`);
+    await page.getByRole('button', { name: 'Agent Copy' }).click();
+    await page.waitForSelector('.markdown-preview h3');
     const previewControls = await page.evaluate(() => {
       const toggle = document.querySelector('.line-number-toggle');
       const heading = document.querySelector('.markdown-preview h1');
@@ -149,15 +171,25 @@ async function main() {
     check(markdownHeadings.h1?.weight <= 590 && markdownHeadings.h2?.weight <= 580 && markdownHeadings.h3?.weight <= 570, `Markdown headings are too heavy: ${JSON.stringify(markdownHeadings)}`);
 
     const widthState = await page.evaluate(() => {
-      const stage = document.querySelector('.preview-document-stage');
+      const stage = document.querySelector('.document-markdown-editor') || document.querySelector('.preview-document-stage');
+      const visualShell = document.querySelector('.document-editor-shell');
+      const visualShellStyle = visualShell ? getComputedStyle(visualShell) : null;
       const slider = document.querySelector('.preview-width-control input');
       return {
         width: Math.round(stage?.getBoundingClientRect().width || 0),
         maximum: Number(slider?.max || 0),
+        available: visualShell && visualShellStyle
+          ? Math.round(visualShell.clientWidth - Number.parseFloat(visualShellStyle.paddingLeft) - Number.parseFloat(visualShellStyle.paddingRight))
+          : Number(slider?.max || 0),
+        computedWidth: stage ? getComputedStyle(stage).width : '',
+        computedMaxWidth: stage ? getComputedStyle(stage).maxWidth : '',
+        inheritedPreviewWidth: stage ? getComputedStyle(stage).getPropertyValue('--preview-width') : '',
+        parentClass: stage?.parentElement?.className || '',
+        parentWidth: Math.round(stage?.parentElement?.getBoundingClientRect().width || 0),
         explicit: localStorage.getItem('docpilot:preview-width-explicit-v1'),
       };
     });
-    check(widthState.width === widthState.maximum, `fresh preview width must use the available maximum: ${JSON.stringify(widthState)}`);
+    check(widthState.width === Math.min(widthState.maximum, widthState.available), `fresh preview width must use the available maximum: ${JSON.stringify(widthState)}`);
     check(widthState.explicit === null, `fresh preview width must not become an explicit user reduction: ${JSON.stringify(widthState)}`);
 
     await page.locator('.workspace-file-row').filter({ hasText: 'manual.adoc' }).click();
@@ -167,11 +199,15 @@ async function main() {
     const darkAdmonitionLabels = await admonitionLabelShapes(page);
     check(darkAdmonitionLabels.length === 2, `NOTE and IMPORTANT fixtures must both render: ${JSON.stringify(darkAdmonitionLabels)}`);
     check(darkAdmonitionLabels.every(item => item.title && item.overlap === 0), `Dark AsciiDoc information-panel labels must not overlap their content: ${JSON.stringify(darkAdmonitionLabels)}`);
+    check(darkAdmonitionLabels.every(item => item.borderLabelOffset <= 1), `Dark information-panel labels must straddle the top border: ${JSON.stringify(darkAdmonitionLabels)}`);
     await page.locator('.preview-document-stage').screenshot({ path: path.join(artifactRoot, 'asciidoc-admonition-labels-dark.png'), scale: 'css' });
     await page.locator('.theme-toggle button').filter({ hasText: 'Light' }).click();
     await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
     const lightAdmonitionLabels = await admonitionLabelShapes(page);
     check(lightAdmonitionLabels.every(item => item.title && item.overlap === 0), `Light AsciiDoc information-panel labels must not overlap their content: ${JSON.stringify(lightAdmonitionLabels)}`);
+    check(lightAdmonitionLabels.every(item => item.borderLabelOffset <= 1), `Light information-panel labels must straddle the top border: ${JSON.stringify(lightAdmonitionLabels)}`);
+    check(lightAdmonitionLabels.every(item => item.borderTopWidth >= 1 && cssColorAlpha(item.borderTopColor) >= 0.45), `Light information-panel borders must remain visible: ${JSON.stringify(lightAdmonitionLabels)}`);
+    await page.locator('.preview-document-stage').screenshot({ path: path.join(artifactRoot, 'asciidoc-admonition-labels-light.png'), scale: 'css' });
     const adocHeadings = await headingShape(page);
     check(adocHeadings.h2?.size === 36 && adocHeadings.h3?.size === 28 && adocHeadings.h4?.size === 22, `AsciiDoc heading scale is wrong: ${JSON.stringify(adocHeadings)}`);
     check(adocHeadings.h2?.weight <= 590 && adocHeadings.h3?.weight <= 580 && adocHeadings.h4?.weight <= 570, `AsciiDoc headings are too heavy: ${JSON.stringify(adocHeadings)}`);
