@@ -37,7 +37,7 @@ async function main() {
       localStorage.setItem('docpilot:terminal-open', '1');
       localStorage.setItem('docpilot:terminal-orientation', 'horizontal');
       localStorage.setItem('docpilot:terminal-size', '320');
-      localStorage.setItem('docpilot:release-notice-seen-id', '2.0.3:r2');
+      localStorage.setItem('docpilot:release-notice-seen-id', '2.0.5:r1');
       void window.docpilot.openFolder(root);
     }, workspace);
 
@@ -50,7 +50,7 @@ async function main() {
     }
     await editor.locator('.workspace-file-row').filter({ hasText: 'README.md' }).first().click();
     await editor.waitForSelector('.terminal-pane');
-    const emptyTerminal = editor.locator('.terminal-empty');
+    const emptyTerminal = editor.locator('.terminal-empty-primary');
     if (await emptyTerminal.isVisible().catch(() => false)) await emptyTerminal.click();
     else await editor.getByRole('button', { name: 'New terminal' }).click();
     await editor.waitForSelector('.terminal-tab.active', { timeout: 10_000 });
@@ -60,7 +60,7 @@ async function main() {
       const tabbar = document.querySelector('.terminal-tabbar');
       const tabs = document.querySelector('.terminal-tabs');
       const tab = document.querySelector('.terminal-tab.active span');
-      const create = document.querySelector('[aria-label="New terminal"]');
+      const create = document.querySelector('.terminal-new-primary');
       const dock = document.querySelector('[aria-label="Dock terminal right"]');
       if (!(pane instanceof HTMLElement) || !(tabbar instanceof HTMLElement) || !(tabs instanceof HTMLElement)) {
         throw new Error('terminal geometry is unavailable');
@@ -87,8 +87,8 @@ async function main() {
     assert.ok(geometry.tabsScrollHeight <= geometry.tabsClientHeight + 1, `terminal tabs must not scroll vertically: ${JSON.stringify(geometry)}`);
     assert.ok(geometry.tabbarScrollWidth <= geometry.tabbarClientWidth + 1, `terminal tabbar must not overflow horizontally: ${JSON.stringify(geometry)}`);
     assert.ok(geometry.tabbarScrollHeight <= geometry.tabbarClientHeight + 1, `terminal tabbar must not overflow vertically: ${JSON.stringify(geometry)}`);
-    assert.equal(geometry.newTerminalVisible, true, 'New terminal control must remain visible');
-    assert.equal(geometry.dockVisible, true, 'dock controls must remain visible');
+    assert.equal(geometry.newTerminalVisible, true, `New terminal control must remain visible: ${JSON.stringify(geometry)}`);
+    assert.equal(geometry.dockVisible, true, `dock controls must remain visible: ${JSON.stringify(geometry)}`);
     console.log('react terminal narrow layout checks passed');
   } finally {
     await app.close().catch(() => {});

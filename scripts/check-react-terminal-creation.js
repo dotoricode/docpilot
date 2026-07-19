@@ -112,6 +112,11 @@ async function main() {
     });
     const fishInstaller = terminalMenu.getByRole('menuitem', { name: /fish Built-in autosuggestions .* Not installed Install/ });
     assert.equal(await fishInstaller.isEnabled(), true, 'missing fish must expose a Homebrew install action');
+    assert.equal(await fishInstaller.evaluate(node => {
+      const rect = node.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return Boolean(hit && node.contains(hit));
+    }), true, 'terminal shell menu items must paint above the document pane and receive pointer input');
     editor.once('dialog', dialog => dialog.accept());
     await fishInstaller.click();
     await terminalMenu.getByText('fish installed · Select it to open a terminal').waitFor();

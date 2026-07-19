@@ -2,6 +2,33 @@ export const RELEASES_ENDPOINT = 'https://api.github.com/repos/dotoricode/docpil
 
 export const FALLBACK_RELEASES = Object.freeze([
   {
+    version: '2.0.5',
+    title: 'DocPilot 2.0.5',
+    date: '2026-07-19',
+    summary: '렌더링된 Markdown을 Document에서 바로 편집하고, 앱 안에서 최신 버전을 명시적으로 확인하며 좁은 터미널·프리뷰 레이아웃을 개선했습니다.',
+    body: `## Added
+- Markdown Document에서 렌더링된 결과에 직접 커서를 놓고 제목, 목록, 작업 목록, 인용, 표, 코드, 링크, 이미지, Mermaid와 수식을 편집할 수 있습니다.
+- 공식 GitHub Release의 최신 버전을 앱 안에서 명시적으로 확인하고 현재 Mac 아키텍처의 검증된 DMG를 내려받을 수 있습니다.
+- Agent Copy를 켜면 선택한 문서 블록과 원문 위치를 터미널 Agent에 전달하기 좋은 형태로 복사할 수 있습니다.
+
+## Changed
+- Markdown의 Visual 편집 흐름을 Source와 Document 중심으로 단순화하고, 안전하게 원문을 보존할 수 없는 문서는 읽기 전용으로 엽니다.
+- #, ##, ###, -, 번호, 작업 목록, 인용과 표 입력을 블록으로 전환하며 Tab과 Shift+Tab으로 목록 깊이를 조절합니다.
+- Document 명령 메뉴는 사용 가능한 위·아래 공간을 계산해 터미널에 가려지지 않는 방향으로 열립니다.
+
+## Fixed
+- macOS 한국어 입력기 조합 뒤에도 Markdown 블록 단축 입력이 문자로 남지 않고 의도한 블록으로 변환됩니다.
+- 빈 목록 항목의 글머리 기호가 CSS 초기화로 사라지던 문제를 수정했습니다.
+- 좁은 터미널 탭에 불필요한 스크롤이 생기거나 NOTE·IMPORTANT 레이블이 본문과 겹치던 문제를 수정했습니다.
+
+## Upgrade notes
+- 원문과 동일한 Markdown 구조를 증명할 수 없는 고급 문법 또는 매우 큰 문서는 Source와 읽기 전용 Preview를 사용합니다.
+- 이 공개 빌드는 Developer ID 서명과 Apple 공증이 없는 ad-hoc 배포입니다. DocPilot은 검증된 DMG를 열지만 앱을 자동 종료하거나 Applications의 앱을 자동 교체하지 않습니다.`,
+    assets: [],
+    fallback: true,
+    unreleased: true,
+  },
+  {
     version: '2.0.4',
     title: 'DocPilot 2.0.4',
     date: '2026-07-18',

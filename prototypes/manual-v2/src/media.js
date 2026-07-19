@@ -38,7 +38,7 @@ export const guideMedia = Object.freeze({
     media('image', 'source-edit-save', 'Source 편집과 저장', 'Source 버튼과 더보기 메뉴, 편집 상태와 저장 후 변경 표시가 사라진 결과'),
   ],
   'editing/markdown': [
-    media('image', 'markdown-preview-example', 'Markdown 실제 Preview', 'Markdown의 Source, Rich, Preview 버튼과 제목, 목록, 표, 코드, 이미지가 렌더링된 실제 예시'),
+    media('image', 'markdown-preview-example', 'Markdown 실제 Document', 'Markdown의 Source와 Document 버튼, 제목, 목록, 표, 코드, 이미지가 렌더링된 실제 예시'),
   ],
   'editing/asciidoc': [
     media('image', 'asciidoc-preview-example', 'AsciiDoc 실제 Preview', 'AsciiDoc Preview 버튼과 장문 목차, 표, 코드가 렌더링된 실제 예시', ['entry', 'result']),

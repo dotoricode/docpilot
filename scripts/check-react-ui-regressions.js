@@ -75,7 +75,7 @@ async function main() {
   fs.writeFileSync(path.join(fixtureRoot, 'README.md'), '# Markdown 제목\n\n## Markdown 섹션\n\n### Markdown 세부 제목\n\n본문입니다.\n');
   fs.writeFileSync(
     path.join(fixtureRoot, 'manual.adoc'),
-    `= AsciiDoc 매뉴얼\n\n== 1. Eversafe Android 개요\n\n=== 1.1. Eversafe Android 소개\n\n==== 1.1.1. Endpoint 보안\n\nNOTE: ${noteSentence} ${noteSentence} ${noteSentence}\n\nIMPORTANT: Agent Copy is session-only and starts off after DocPilot restarts.\n`,
+    `= AsciiDoc 매뉴얼\n\n== 1. Example Security Android 개요\n\n=== 1.1. Example Security Android 소개\n\n==== 1.1.1. Endpoint 보안\n\nNOTE: ${noteSentence} ${noteSentence} ${noteSentence}\n\nIMPORTANT: Agent Copy is session-only and starts off after DocPilot restarts.\n`,
   );
 
   const failures = [];
@@ -99,6 +99,15 @@ async function main() {
     const page = await waitForEditor(app);
     await page.setViewportSize({ width: 1800, height: 1100 });
     await page.waitForSelector('.home-screen');
+    const releaseNotice = page.getByRole('dialog', { name: '새 버전 안내' });
+    await releaseNotice.waitFor();
+    check(
+      JSON.stringify(await releaseNotice.locator('.release-notice-section h3').allTextContents()) === JSON.stringify(['v2.0.5', 'v2.0.4']),
+      'v2.0.5 release notice must include separate v2.0.5 and v2.0.4 sections',
+    );
+    check(await releaseNotice.getByText('Markdown을 Document에서 바로 편집합니다').count() === 1, 'v2.0.5 release notes must be visible once');
+    check(await releaseNotice.getByText('설치된 fish를 기본 터미널 셸로 사용합니다').count() === 1, 'v2.0.4 release notes must be visible once');
+    await releaseNotice.screenshot({ path: path.join(artifactRoot, 'release-notice-2.0.5-plus-2.0.4.png'), scale: 'css' });
     await dismissReleaseNotice(page);
     await page.waitForFunction(() => document.documentElement.dataset.themePreference);
 

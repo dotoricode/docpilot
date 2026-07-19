@@ -20,7 +20,7 @@ Every guide is generated through the shared content contract and includes:
 
 - Agent-specific panels and auto-launched Codex or Claude sessions are not documented.
 - Terminal guidance describes the actual PTY shell and leaves CLI selection to the user.
-- Rich is described as a guarded Markdown view, including the syntax and document-size conditions that disable it.
+- Document is described as a guarded, source-preserving Markdown editor, including the syntax and document-size conditions that make it read-only.
 - AsciiDoc, JSON, Preview, rendered Diff, context copy, instructions, search, pane layout, and settings match current code-backed behavior.
 - Unsupported promises are explicit: DocPilot is not a build/debug IDE, autosave is not guaranteed by this manual, PTY sessions are not claimed to survive process restart, and PDF viewer parity is not claimed.
 

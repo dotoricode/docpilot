@@ -314,7 +314,7 @@
 }
 
 .preview-shell.diff-review-shell .markdown-preview.diff-preview-mode .preview-diff-page > .preview-diff-list {
-  min-width: 0 !important;
+  min-width: 620px !important;
   overflow: visible !important;
 }
 
@@ -1715,6 +1715,10 @@ body.dragging-workbench-pane * {
 
 .terminal-pane.terminal-chooser-open {
   z-index: 20;
+  overflow: visible;
+}
+
+.terminal-pane.terminal-chooser-open .terminal-tabbar {
   overflow: visible;
 }
 

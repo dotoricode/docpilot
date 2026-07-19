@@ -9639,6 +9639,18 @@ textarea {
   line-height: 1.62;
 }
 
+.release-notice-sections {
+  display: grid;
+  gap: 20px;
+}
+
+.release-notice-section h3 {
+  margin: 0 0 8px;
+  color: var(--release-accent);
+  font: 700 11px var(--dp-mono);
+  letter-spacing: 0.08em;
+}
+
 .release-notice-list {
   display: grid;
   gap: 0;

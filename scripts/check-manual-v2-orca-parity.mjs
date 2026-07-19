@@ -58,8 +58,9 @@ assert.deepEqual(matchRoute('/changelog/2.0.1'), { kind: 'release', version: '2.
 assert.deepEqual(matchRoute('/changelog/2.0.2'), { kind: 'release', version: '2.0.2' });
 assert.deepEqual(matchRoute('/changelog/2.0.3'), { kind: 'release', version: '2.0.3' });
 assert.deepEqual(matchRoute('/changelog/2.0.4'), { kind: 'release', version: '2.0.4' });
+assert.deepEqual(matchRoute('/changelog/2.0.5'), { kind: 'release', version: '2.0.5' });
 assert.ok(routePaths().includes('/changelog'));
-assert.ok(routePaths(['2.0.4', '2.0.3', '2.0.2', '2.0.1', '2.0.0']).includes('/changelog/2.0.4'), 'versioned release routes must be materialized for clean reloads');
+assert.ok(routePaths(['2.0.5', '2.0.4', '2.0.3', '2.0.2', '2.0.1', '2.0.0']).includes('/changelog/2.0.5'), 'versioned release routes must be materialized for clean reloads');
 assert.deepEqual(matchRoute('/docpilot-manual-preview/docs/editing/markdown', '/docpilot-manual-preview/'), { kind: 'docs', slug: 'editing/markdown' });
 
 const fixtureRelease = normalizeRelease({
@@ -81,7 +82,7 @@ const mergedReleases = await fetchReleases(async () => ({
   ok: true,
   json: async () => [{ tag_name: 'v1.0.28', name: 'DocPilot 1.0.28', body: 'Stable', published_at: '2026-07-14', assets: [] }],
 }));
-assert.deepEqual(mergedReleases.map(release => release.version), ['2.0.4', '2.0.3', '2.0.2', '2.0.1', '2.0.0', '1.0.28', '1.0.27'], 'release candidate and verified v2/v1 history must remain visible when remote data is partial');
+assert.deepEqual(mergedReleases.map(release => release.version), ['2.0.5', '2.0.4', '2.0.3', '2.0.2', '2.0.1', '2.0.0', '1.0.28', '1.0.27'], 'release candidate and verified v2/v1 history must remain visible when remote data is partial');
 assert.match(mergedReleases.find(release => release.version === '1.0.28').summary, /AsciiDoc/, 'v1.0.28 must expose its verified feature summary');
 assert.match(mergedReleases.find(release => release.version === '1.0.27').body, /baseline|기준선/i, 'v1.0.27 must be described as a verified baseline');
 

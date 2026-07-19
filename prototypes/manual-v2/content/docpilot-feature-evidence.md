@@ -14,7 +14,7 @@ This matrix is the content boundary for the public v2 manual. A manual page may 
 | Pane layout | Moves document and terminal panes to all four edges, resizes them and persists layout | `App.tsx`, `workbench-pane-layout.js` | `/docs/workspace/pane-layout` |
 | Quick Open | `Cmd/Ctrl+P`, fuzzy file search, recent-file priority and split opening | `App.tsx` | `/docs/find/quick-open` |
 | Project search | `Cmd/Ctrl+Shift+F`, name/content modes, case/word/regex controls and include/exclude globs | `ProjectSearchPanel.tsx` | `/docs/find/project-search` |
-| Markdown | Source, safe Rich and Preview modes; frontmatter, outline, code highlighting and workspace-relative images | `document-adapters.js`, `EditorPane.tsx`, `RichMarkdownEditor.tsx` | `/docs/editing/markdown` |
+| Markdown | Source and guarded source-preserving Document editing; frontmatter, outline, code highlighting and workspace-relative images | `document-adapters.js`, `EditorPane.tsx`, `DocumentMarkdownEditor.tsx` | `/docs/editing/markdown` |
 | AsciiDoc | Source and server-converted Preview modes with outline extraction and cached conversion | `document-adapters.js`, `EditorPane.tsx`, `bridge-client.ts` | `/docs/editing/asciidoc` |
 | JSON | Source and Tree modes, invalid JSON feedback and JSON formatting | `document-adapters.js`, `EditorPane.tsx`, `JsonTreeView.tsx` | `/docs/editing/json` |
 | Source editor | CodeMirror editing, language-aware indentation, line numbers, search, undo/redo and explicit save | `EditorPane.tsx`, `main.js` | `/docs/editing/source` |
@@ -36,4 +36,4 @@ This matrix is the content boundary for the public v2 manual. A manual page may 
 - No claim that PTY processes survive a full application restart.
 - No public promise of automatic document save.
 - No standalone PDF or image viewer page.
-- No claim that AsciiDoc has Rich editing or JSON has rendered Preview mode.
+- No claim that AsciiDoc has Document editing or JSON has rendered Preview mode.
