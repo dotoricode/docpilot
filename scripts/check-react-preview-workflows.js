@@ -60,7 +60,7 @@ async function main() {
   try {
     let editor = await openWorkspace(app, workspace);
     await selectFile(editor, 'README.md');
-    await editor.waitForSelector('.visual-markdown-content[contenteditable="true"]');
+    await editor.waitForSelector('.document-markdown-content[contenteditable="true"]');
     const agentCopy = editor.getByRole('button', { name: 'Agent Copy' });
     await agentCopy.click();
     await editor.waitForSelector('.markdown-preview h1[data-line-start="1"]');
@@ -99,8 +99,8 @@ async function main() {
     assert.equal(await inline.count(), 0, 'native Preview links must not open the source editor');
 
     await agentCopy.click();
-    await editor.waitForSelector('.visual-markdown-content[contenteditable="true"]');
-    await editor.locator('.visual-markdown-content p').first().fill('Paragraph with preserved Markdown source.');
+    await editor.waitForSelector('.document-markdown-content[contenteditable="true"]');
+    await editor.locator('.document-markdown-content p').first().fill('Paragraph with preserved Markdown source.');
     await editor.waitForSelector('.dirty-pill');
 
     await editor.keyboard.press('Meta+Shift+C');

@@ -293,7 +293,7 @@ export function App() {
   const [leftCollapsed, setLeftCollapsed] = useState(() => readStoredBoolean('docpilot:left-panel-collapsed', false));
   const [themePreference, setThemePreference] = useState<AppSettings['theme']>(readInitialThemePreference);
   const [autosaveEnabled, setAutosaveEnabled] = useState(false);
-  const [suppressMarkdownVisualReadonlyNotice, setSuppressMarkdownVisualReadonlyNotice] = useState(false);
+  const [suppressMarkdownDocumentReadonlyNotice, setSuppressMarkdownDocumentReadonlyNotice] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(() => readStoredBoolean('docpilot:terminal-open', true));
   const [paneLayout, setPaneLayout] = useState<WorkbenchLayout>(readWorkbenchLayout);
   const [draggingPane, setDraggingPane] = useState<PaneId | null>(null);
@@ -321,7 +321,7 @@ export function App() {
   const draggedDocumentTabRef = useRef<{ id: string; pane: 'primary' | 'secondary' } | null>(null);
   const savingRef = useRef(false);
   const menuSaveRef = useRef<() => void>(() => {});
-  const visualFlushRef = useRef<() => string | null>(() => null);
+  const documentFlushRef = useRef<() => string | null>(() => null);
   const menuUpdateCheckRef = useRef<() => void>(() => {});
   const manualUpdateCheckVisibleRef = useRef(false);
   const bufferRef = useRef(buffer);
@@ -411,7 +411,7 @@ export function App() {
   }, [committedTerminalPosition, paneLayout, terminalOpen, terminalSize]);
 
   menuSaveRef.current = () => {
-    const flushed = visualFlushRef.current();
+    const flushed = documentFlushRef.current();
     void saveFile(flushed ?? undefined);
   };
 
@@ -512,7 +512,7 @@ export function App() {
           currentThemePreference = response.settings.theme;
           setThemePreference(response.settings.theme);
           setAutosaveEnabled(response.settings.autosave);
-          setSuppressMarkdownVisualReadonlyNotice(response.settings.suppressMarkdownVisualReadonlyNotice);
+          setSuppressMarkdownDocumentReadonlyNotice(response.settings.suppressMarkdownVisualReadonlyNotice);
           applyAppTheme(currentThemePreference);
         })
         .catch(() => applyAppTheme(currentThemePreference));
@@ -521,7 +521,7 @@ export function App() {
       const settings = (event as CustomEvent).detail?.settings;
       if (settings) {
         setAutosaveEnabled(settings.autosave === true);
-        setSuppressMarkdownVisualReadonlyNotice(settings.suppressMarkdownVisualReadonlyNotice === true);
+        setSuppressMarkdownDocumentReadonlyNotice(settings.suppressMarkdownVisualReadonlyNotice === true);
         currentThemePreference = settings.theme;
         setThemePreference(settings.theme);
         applyAppTheme(currentThemePreference);
@@ -616,12 +616,12 @@ export function App() {
     }
   }
 
-  async function suppressVisualReadonlyNotice() {
-    setSuppressMarkdownVisualReadonlyNotice(true);
+  async function suppressDocumentReadonlyNotice() {
+    setSuppressMarkdownDocumentReadonlyNotice(true);
     try {
       const response = await getSettings();
       const saved = await saveSettings({ ...response.settings, suppressMarkdownVisualReadonlyNotice: true });
-      setSuppressMarkdownVisualReadonlyNotice(saved.settings.suppressMarkdownVisualReadonlyNotice);
+      setSuppressMarkdownDocumentReadonlyNotice(saved.settings.suppressMarkdownVisualReadonlyNotice);
       window.dispatchEvent(new CustomEvent('docpilot-settings-saved', { detail: { settings: saved.settings } }));
     } catch {
       // Keep the current-session suppression even when persistence is unavailable.
@@ -1733,9 +1733,9 @@ export function App() {
             }}
             onApplySourceEdit={applyPreviewSourceEdit}
             onSave={saveFile}
-            suppressMarkdownVisualReadonlyNotice={suppressMarkdownVisualReadonlyNotice}
-            onSuppressMarkdownVisualReadonlyNotice={suppressVisualReadonlyNotice}
-            onRegisterVisualFlush={flush => { visualFlushRef.current = flush || (() => null); }}
+            suppressMarkdownDocumentReadonlyNotice={suppressMarkdownDocumentReadonlyNotice}
+            onSuppressMarkdownDocumentReadonlyNotice={suppressDocumentReadonlyNotice}
+            onRegisterDocumentFlush={flush => { documentFlushRef.current = flush || (() => null); }}
             onReloadConflict={reloadConflictFromDisk}
             onOverwriteConflict={overwriteConflictWithLocal}
             onCloseSecondary={closeSplitPreview}

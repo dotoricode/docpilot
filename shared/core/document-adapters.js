@@ -1,7 +1,7 @@
 const FORMAT_CAPABILITIES = Object.freeze({
   markdown: Object.freeze({
     format: 'markdown',
-    modes: Object.freeze(['source', 'visual']),
+    modes: Object.freeze(['source', 'document']),
     outline: true,
     formatDocument: false,
     validate: false,
@@ -51,7 +51,7 @@ function stripMarkdownCodeForEligibility(source) {
     .replace(/`[^`\n]*`/g, '');
 }
 
-function getMarkdownVisualEligibility(source) {
+function getMarkdownDocumentEligibility(source) {
   const value = String(source || '');
   if (value.length > 50_000) return { editable: false, reason: 'document-too-large' };
   const inspectable = stripMarkdownCodeForEligibility(value);
@@ -62,7 +62,6 @@ function getMarkdownVisualEligibility(source) {
     ['footnote', /^\[\^[^\]]+\]:|\[\^[^\]]+\]/m],
     ['reference-definition', /^\s*\[[^\]^]+\]:\s*\S+/m],
     ['wiki-link', /\[\[[^\]]+\]\]/],
-    ['math', /\$\$[\s\S]*?\$\$/],
   ];
   const match = unsupported.find(([, pattern]) => pattern.test(inspectable));
   return match ? { editable: false, reason: match[0] } : { editable: true, reason: '' };
@@ -72,5 +71,5 @@ module.exports = {
   FORMAT_CAPABILITIES,
   documentCapabilities,
   documentFormat,
-  getMarkdownVisualEligibility,
+  getMarkdownDocumentEligibility,
 };

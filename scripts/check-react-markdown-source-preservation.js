@@ -23,8 +23,8 @@ async function dismissReleaseNotice(page) {
 
 async function main() {
   const repoRoot = path.resolve(__dirname, '..');
-  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-visual-'));
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-visual-user-'));
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-document-source-'));
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-document-source-user-'));
   const sourcePath = path.join(fixtureRoot, 'README.md');
   const artifactRoot = path.join(repoRoot, '.tink', 'current', 'artifacts');
   fs.mkdirSync(artifactRoot, { recursive: true });
@@ -50,24 +50,26 @@ async function main() {
     await dismissReleaseNotice(page);
 
     await page.locator('.workspace-file-row').filter({ hasText: 'README.md' }).click();
-    await page.waitForSelector('.visual-markdown-content[contenteditable="true"]');
-    await page.locator('.visual-editor-shell').screenshot({ path: path.join(artifactRoot, 'markdown-visual-editor-dark.png'), scale: 'css' });
+    await page.waitForSelector('.document-markdown-content[contenteditable="true"]');
+    await page.locator('.document-editor-shell').screenshot({ path: path.join(artifactRoot, 'markdown-document-editor-dark.png'), scale: 'css' });
     assert.deepStrictEqual(
       await page.locator('.editor-mode-toggle button').allTextContents(),
-      ['Source', 'Visual', 'Agent Copy'],
+      ['Source', 'Document', 'Agent Copy'],
     );
 
-    const heading = page.locator('.visual-markdown-content h1');
+    const heading = page.locator('.document-markdown-content h1');
     await heading.click();
     await page.keyboard.press('End');
     await page.keyboard.type(' changed');
     const saveButton = page.locator('button.save-button');
-    assert.equal(await saveButton.isEnabled(), true, 'Visual edit must enable Save');
+    assert.equal(await saveButton.isEnabled(), true, 'Document edit must enable Save');
+    const updateClose = page.getByRole('button', { name: '업데이트 안내 닫기' });
+    if (await updateClose.isVisible().catch(() => false)) await updateClose.click();
     await saveButton.click();
     await page.waitForFunction(() => !document.querySelector('.dirty-pill'));
     assert.equal(fs.readFileSync(sourcePath, 'utf8'), '#  Title changed\n\nKeep  spacing\n');
 
-    await page.locator('.visual-markdown-content p').fill('Keep spacing through menu save');
+    await page.locator('.document-markdown-content p').fill('Keep spacing through menu save');
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows().find(window => !window.isDestroyed())?.webContents.send('menu-command', 'save');
     });
@@ -76,24 +78,24 @@ async function main() {
 
     await page.getByRole('button', { name: 'Agent Copy' }).click();
     await page.waitForSelector('.markdown-preview.agent-copy-active h1');
-    assert.equal(await page.locator('.visual-markdown-content').count(), 0);
+    assert.equal(await page.locator('.document-markdown-content').count(), 0);
     await page.getByRole('button', { name: 'Agent Copy' }).click();
-    await page.waitForSelector('.visual-markdown-content[contenteditable="true"]');
+    await page.waitForSelector('.document-markdown-content[contenteditable="true"]');
 
     await page.locator('.workspace-file-row').filter({ hasText: 'unsupported.md' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Visual에서 읽기 전용으로 열었습니다' });
+    const dialog = page.getByRole('dialog', { name: 'Document에서 읽기 전용으로 열었습니다' });
     await dialog.waitFor();
     assert.match(await dialog.textContent(), /지원하지 않는 HTML 또는 JSX/);
     await dialog.getByRole('checkbox', { name: '다시 알리지 않음' }).check();
     await dialog.getByRole('button', { name: '계속 보기' }).click();
-    await page.waitForSelector('.visual-readonly-banner');
-    assert.equal(await page.locator('.visual-markdown-content').count(), 0);
-    assert.match(await page.locator('.visual-readonly-banner').textContent(), /Source에서 편집/);
+    await page.waitForSelector('.document-readonly-banner');
+    assert.equal(await page.locator('.document-markdown-content').count(), 0);
+    assert.match(await page.locator('.document-readonly-banner').textContent(), /Source에서 편집/);
     await page.locator('.workspace-file-row').filter({ hasText: 'README.md' }).click();
     await page.locator('.workspace-file-row').filter({ hasText: 'unsupported.md' }).click();
     await page.waitForTimeout(300);
     assert.equal(await dialog.count(), 0, 'suppressed read-only modal must not reappear');
-    assert.equal(await page.locator('.visual-readonly-banner').count(), 1, 'persistent read-only banner must remain');
+    assert.equal(await page.locator('.document-readonly-banner').count(), 1, 'persistent read-only banner must remain');
   } finally {
     await app.close().catch(() => {});
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -102,6 +104,6 @@ async function main() {
 }
 
 main().then(
-  () => console.log('react Markdown Visual checks passed'),
+  () => console.log('react Markdown Document source-preservation checks passed'),
   error => { console.error(error); process.exitCode = 1; },
 );

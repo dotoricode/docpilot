@@ -108,7 +108,7 @@ export function SettingsPanel() {
               suppressMarkdownVisualReadonlyNotice: !event.target.checked,
             }))}
           />
-          <span>Visual 읽기 전용 안내 모달 표시</span>
+          <span>Document 읽기 전용 안내 모달 표시</span>
         </label>
         <label>
           <span>테마</span>

@@ -121,19 +121,19 @@ async function main() {
     await page.screenshot({ path: path.join(artifactRoot, 'home-terminal-reopen-light.png'), scale: 'css' });
 
     await page.locator('.workspace-file-row').filter({ hasText: 'README.md' }).click();
-    await page.waitForSelector('.visual-markdown-content h3');
+    await page.waitForSelector('.document-markdown-content h3');
     await page.waitForTimeout(100);
     const visualState = await page.evaluate(() => ({
-      visualActive: document.querySelector('.editor-mode-toggle button.active')?.textContent?.trim() === 'Visual',
-      contentEditable: document.querySelector('.visual-markdown-content')?.getAttribute('contenteditable'),
-      editorEditableState: document.querySelector('.visual-markdown-editor')?.getAttribute('data-editable'),
-      safetyReason: document.querySelector('.visual-markdown-editor')?.getAttribute('data-safety-reason'),
-      safetyBanner: document.querySelector('.visual-readonly-banner')?.textContent?.trim() || '',
+      documentActive: document.querySelector('.editor-mode-toggle button.active')?.textContent?.trim() === 'Document',
+      contentEditable: document.querySelector('.document-markdown-content')?.getAttribute('contenteditable'),
+      editorEditableState: document.querySelector('.document-markdown-editor')?.getAttribute('data-editable'),
+      safetyReason: document.querySelector('.document-markdown-editor')?.getAttribute('data-safety-reason'),
+      safetyBanner: document.querySelector('.document-readonly-banner')?.textContent?.trim() || '',
       richButton: [...document.querySelectorAll('.editor-mode-toggle button')].some(button => button.textContent?.trim() === 'Rich'),
       previewButton: [...document.querySelectorAll('.editor-mode-toggle button')].some(button => button.textContent?.trim() === 'Preview'),
     }));
-    check(visualState.visualActive && visualState.contentEditable === 'true', `Markdown must open in editable Visual: ${JSON.stringify(visualState)}`);
-    check(!visualState.richButton && !visualState.previewButton, `Markdown must expose only Source/Visual modes: ${JSON.stringify(visualState)}`);
+    check(visualState.documentActive && visualState.contentEditable === 'true', `Markdown must open in editable Document: ${JSON.stringify(visualState)}`);
+    check(!visualState.richButton && !visualState.previewButton, `Markdown must expose only Source/Document modes: ${JSON.stringify(visualState)}`);
     await page.getByRole('button', { name: 'Agent Copy' }).click();
     await page.waitForSelector('.markdown-preview h3');
     const previewControls = await page.evaluate(() => {
@@ -171,8 +171,8 @@ async function main() {
     check(markdownHeadings.h1?.weight <= 590 && markdownHeadings.h2?.weight <= 580 && markdownHeadings.h3?.weight <= 570, `Markdown headings are too heavy: ${JSON.stringify(markdownHeadings)}`);
 
     const widthState = await page.evaluate(() => {
-      const stage = document.querySelector('.visual-markdown-editor') || document.querySelector('.preview-document-stage');
-      const visualShell = document.querySelector('.visual-editor-shell');
+      const stage = document.querySelector('.document-markdown-editor') || document.querySelector('.preview-document-stage');
+      const visualShell = document.querySelector('.document-editor-shell');
       const visualShellStyle = visualShell ? getComputedStyle(visualShell) : null;
       const slider = document.querySelector('.preview-width-control input');
       return {
