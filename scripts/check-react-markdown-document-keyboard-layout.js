@@ -17,7 +17,7 @@ async function waitForEditor(app) {
     if (page) return page;
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-  throw new Error('React editor window did not open');
+  throw new Error(`React editor window did not open; windows: ${app.windows().map(window => window.url()).join(', ')}`);
 }
 
 async function dismissOverlays(page) {
@@ -34,6 +34,40 @@ async function commitImeComposition(cdp, text) {
     selectionEnd: text.length,
   });
   await cdp.send('Input.insertText', { text });
+  await new Promise(resolve => setTimeout(resolve, 50));
+}
+
+async function commitStagedImeComposition(cdp, stages) {
+  for (const text of stages) {
+    await cdp.send('Input.imeSetComposition', {
+      text,
+      selectionStart: text.length,
+      selectionEnd: text.length,
+    });
+  }
+  await cdp.send('Input.insertText', { text: stages.at(-1) || '' });
+  await new Promise(resolve => setTimeout(resolve, 50));
+}
+
+async function assertToolbarIconsCentered(page, theme) {
+  const toolbarGeometry = await page.locator('.document-toolbar > button:has(svg)').evaluateAll(buttons => buttons.map(button => {
+    const icon = button.querySelector('svg');
+    const buttonRect = button.getBoundingClientRect();
+    const iconRect = icon.getBoundingClientRect();
+    return {
+      label: button.getAttribute('aria-label'),
+      width: buttonRect.width,
+      height: buttonRect.height,
+      centerDeltaX: (buttonRect.left + buttonRect.width / 2) - (iconRect.left + iconRect.width / 2),
+      centerDeltaY: (buttonRect.top + buttonRect.height / 2) - (iconRect.top + iconRect.height / 2),
+    };
+  }));
+  for (const geometry of toolbarGeometry) {
+    assert.equal(geometry.width, 30, `${theme}: ${geometry.label} toolbar button must keep a 30px square hit area`);
+    assert.equal(geometry.height, 30, `${theme}: ${geometry.label} toolbar button must keep a 30px square hit area`);
+    assert.ok(Math.abs(geometry.centerDeltaX) <= 0.5, `${theme}: ${geometry.label} icon must be horizontally centered: ${JSON.stringify(geometry)}`);
+    assert.ok(Math.abs(geometry.centerDeltaY) <= 0.5, `${theme}: ${geometry.label} icon must be vertically centered: ${JSON.stringify(geometry)}`);
+  }
 }
 
 async function main() {
@@ -48,8 +82,9 @@ async function main() {
   fs.writeFileSync(path.join(workspace, 'ordered.md'), '', 'utf8');
   fs.writeFileSync(path.join(workspace, 'syntax.md'), '', 'utf8');
   fs.writeFileSync(path.join(workspace, 'ime-bullet.md'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'ime-bullet-marker.md'), '', 'utf8');
   fs.writeFileSync(path.join(workspace, 'ime-quote.md'), '', 'utf8');
-  fs.writeFileSync(path.join(workspace, 'ime-table.md'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'ime-pipe-quote.md'), '', 'utf8');
   fs.writeFileSync(path.join(workspace, 'ime-heading.md'), '', 'utf8');
   fs.writeFileSync(path.join(workspace, 'ime-ordered.md'), '', 'utf8');
   fs.writeFileSync(path.join(workspace, 'ime-task.md'), '', 'utf8');
@@ -130,6 +165,15 @@ async function main() {
         `${label} must use the same Lucide icon as Orca`,
       );
     }
+    for (const theme of ['Dark', 'Light']) {
+      await page.locator('.theme-toggle button').filter({ hasText: theme }).click();
+      await page.waitForFunction(expected => document.documentElement.dataset.theme === expected, theme.toLowerCase());
+      await assertToolbarIconsCentered(page, theme);
+      await page.locator('.document-toolbar').screenshot({
+        path: path.join(artifactRoot, `markdown-document-toolbar-${theme.toLowerCase()}.png`),
+        scale: 'css',
+      });
+    }
     const documentEmptyBlock = document.locator('p').first();
     await documentEmptyBlock.hover();
     assert.equal(
@@ -150,6 +194,7 @@ async function main() {
     await document.waitFor();
     await document.click();
     await page.keyboard.type('- ');
+    assert.equal(await document.locator('ul:not([data-type="taskList"]) > li').count(), 1, '`- ` must immediately create a bullet list before body text is typed');
     await page.keyboard.type('Parent');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Tab');
@@ -172,18 +217,32 @@ async function main() {
     assert.equal(await document.locator('ol > li > ol > li').count(), 0, 'Shift+Tab must outdent the current numbered item');
     assert.equal(await document.locator('ol > li').count(), 2, 'outdented numbered items must remain siblings');
 
+    await page.locator('.workspace-file-row[title="ime-bullet-marker.md"]').click();
+    await document.waitFor();
+    await document.click();
+    await commitStagedImeComposition(cdp, ['-', '- ']);
+    assert.equal(await document.locator('ul:not([data-type="taskList"]) > li').count(), 1, 'IME-staged `- ` must immediately create a bullet list');
+    await cdp.send('Input.insertText', { text: '한글' });
+    assert.equal(await document.locator('ul:not([data-type="taskList"]) > li').last().textContent(), '한글', 'IME-staged bullet must accept following Korean text');
+
     await page.locator('.workspace-file-row[title="syntax.md"]').click();
     await document.waitFor();
     await document.click();
     await page.keyboard.type('> ');
     await page.keyboard.type('Quoted');
     assert.equal(await document.locator('blockquote').last().textContent(), 'Quoted', '`> ` must create a quote block');
-    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
     await page.keyboard.press('Enter');
     await page.keyboard.type('| ');
-    assert.equal(await document.locator('table').count(), 1, '`| ` must create a Markdown table');
+    await page.keyboard.type('Pipe quoted');
+    assert.equal(
+      await document.locator('blockquote').last().textContent(),
+      'Pipe quoted',
+      `\`| \` must create the same blockquote as \`> \`; DOM: ${await document.innerHTML()}`,
+    );
+    assert.equal(await document.locator('table').count(), 0, '`| ` must never create a Markdown table');
     await page.waitForTimeout(400);
-    assert.equal(await page.locator('.document-readonly-banner').count(), 0, 'pipe-created table must remain safely editable');
+    assert.equal(await page.locator('.document-readonly-banner').count(), 0, 'pipe-created blockquote must remain safely editable');
 
     await page.locator('.agent-copy-toggle').click();
     const agentCopyPreview = page.locator('.markdown-preview.agent-copy-active');
@@ -209,12 +268,12 @@ async function main() {
     await commitImeComposition(cdp, '> 한글');
     assert.equal(await document.locator('blockquote').last().textContent(), '한글', 'IME-composed `> ` must create a quote block');
 
-    await page.locator('.workspace-file-row[title="ime-table.md"]').click();
+    await page.locator('.workspace-file-row[title="ime-pipe-quote.md"]').click();
     await document.waitFor();
     await document.click();
     await commitImeComposition(cdp, '| 한글');
-    assert.equal(await document.locator('table').count(), 1, 'IME-composed `| ` must create a table');
-    assert.equal(await document.locator('table th').first().textContent(), '한글', 'pipe table must preserve composed text in the first cell');
+    assert.equal(await document.locator('blockquote').last().textContent(), '한글', 'IME-composed `| ` must create a blockquote and preserve text');
+    assert.equal(await document.locator('table').count(), 0, 'IME-composed `| ` must never create a table');
 
     await page.locator('.workspace-file-row[title="ime-heading.md"]').click();
     await document.waitFor();

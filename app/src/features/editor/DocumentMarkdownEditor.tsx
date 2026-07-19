@@ -116,6 +116,7 @@ export const DocumentMarkdownEditor = forwardRef<DocumentMarkdownEditorHandle, D
     const readyRef = useRef(false);
     const safetyLockedRef = useRef(false);
     const pendingCommitTimerRef = useRef<number | null>(null);
+    const compositionPromotionFrameRef = useRef<number | null>(null);
     const compositionStartTextRef = useRef<string | null>(null);
     const slashMenuRef = useRef<SlashMenuState | null>(null);
     const filteredCommandsRef = useRef<MarkdownDocumentCommand[]>([]);
@@ -240,6 +241,10 @@ export const DocumentMarkdownEditor = forwardRef<DocumentMarkdownEditorHandle, D
         },
         handleDOMEvents: {
           compositionstart: () => {
+            if (compositionPromotionFrameRef.current !== null) {
+              window.cancelAnimationFrame(compositionPromotionFrameRef.current);
+              compositionPromotionFrameRef.current = null;
+            }
             const currentEditor = editorRef.current;
             const selection = currentEditor?.state.selection;
             compositionStartTextRef.current = selection?.empty && selection.$from.parent.type.name === 'paragraph'
@@ -251,19 +256,24 @@ export const DocumentMarkdownEditor = forwardRef<DocumentMarkdownEditorHandle, D
             // TipTap's built-in input rules only see the final composed line.
             // Korean IME can commit `- 한글` in one transaction, so promote the
             // leading Markdown marker after composition without dropping text.
+            // Two animation frames let ProseMirror finish its final DOM/state
+            // reconciliation before this command mutates the settled document.
             const compositionStartText = compositionStartTextRef.current;
             compositionStartTextRef.current = null;
-            window.setTimeout(() => {
-              const currentEditor = editorRef.current;
-              if (currentEditor) promoteComposedMarkdownShortcut(currentEditor, compositionStartText);
+            compositionPromotionFrameRef.current = window.requestAnimationFrame(() => {
+              compositionPromotionFrameRef.current = window.requestAnimationFrame(() => {
+                compositionPromotionFrameRef.current = null;
+                const currentEditor = editorRef.current;
+                if (currentEditor) promoteComposedMarkdownShortcut(currentEditor, compositionStartText);
+              });
             });
             return false;
           },
         },
         handleKeyDown: (_view, event) => {
           const currentEditor = editorRef.current;
+          if (currentEditor && convertMarkdownBlockShortcut(currentEditor, event)) return true;
           if (currentEditor && convertBulletTaskShortcut(currentEditor, event)) return true;
-          if (currentEditor && convertPipeTableShortcut(currentEditor, event)) return true;
           const menu = slashMenuRef.current;
           if (menu) {
             const commands = filteredCommandsRef.current;
@@ -389,6 +399,7 @@ export const DocumentMarkdownEditor = forwardRef<DocumentMarkdownEditorHandle, D
 
     useEffect(() => () => {
       if (pendingCommitTimerRef.current !== null) window.clearTimeout(pendingCommitTimerRef.current);
+      if (compositionPromotionFrameRef.current !== null) window.cancelAnimationFrame(compositionPromotionFrameRef.current);
       onSelectionContextChangeRef.current?.(null);
     }, []);
 
@@ -593,24 +604,30 @@ function convertBulletTaskShortcut(editor: Editor, event: KeyboardEvent) {
   return converted;
 }
 
-function convertPipeTableShortcut(editor: Editor, event: KeyboardEvent) {
+function convertMarkdownBlockShortcut(editor: Editor, event: KeyboardEvent) {
   if (event.key !== ' ' || event.isComposing || editor.isActive('table')) return false;
   const { selection } = editor.state;
   if (!selection.empty || selection.$from.parent.type.name !== 'paragraph') return false;
   const before = selection.$from.parent.textBetween(0, selection.$from.parentOffset, '\n', '\n');
-  if (before !== '|') return false;
+  const kind = /^[-+*]$/.test(before)
+    ? 'bullet'
+    : before === '>' || before === '|'
+      ? 'blockquote'
+      : null;
+  if (!kind) return false;
   event.preventDefault();
-  return editor.chain()
+  const chain = editor.chain()
     .focus()
-    .deleteRange({ from: selection.$from.start(), to: selection.from })
-    .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-    .run();
+    .deleteRange({ from: selection.$from.start(), to: selection.from });
+  return kind === 'bullet'
+    ? chain.toggleBulletList().run()
+    : chain.toggleBlockquote().run();
 }
 
 type ComposedMarkdownShortcut = {
   body: string;
   checked?: boolean;
-  kind: 'blockquote' | 'bullet' | 'heading' | 'ordered' | 'table' | 'task';
+  kind: 'blockquote' | 'bullet' | 'heading' | 'ordered' | 'task';
   level?: 1 | 2 | 3 | 4 | 5 | 6;
   markerLength: number;
   start?: number;
@@ -626,15 +643,6 @@ function promoteComposedMarkdownShortcut(editor: Editor, compositionStartText: s
   const marker = text.slice(0, shortcut.markerLength);
   if (compositionStartText !== '' && compositionStartText !== marker && compositionStartText !== marker.trimEnd()) return false;
   const paragraphStart = selection.$from.start();
-  if (shortcut.kind === 'table') {
-    return editor.chain()
-      .focus()
-      .deleteRange({ from: paragraphStart, to: paragraphStart + text.length })
-      .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-      .insertContent(shortcut.body)
-      .run();
-  }
-
   const chain = editor.chain()
     .focus()
     .deleteRange({ from: paragraphStart, to: paragraphStart + shortcut.markerLength });
@@ -664,7 +672,7 @@ function composedMarkdownShortcut(text: string): ComposedMarkdownShortcut | null
   if (bullet) return { body: bullet[1], kind: 'bullet', markerLength: 2 };
   const quote = /^> (.*)$/s.exec(text);
   if (quote) return { body: quote[1], kind: 'blockquote', markerLength: 2 };
-  const table = /^\| (.*)$/s.exec(text);
-  if (table) return { body: table[1], kind: 'table', markerLength: 2 };
+  const pipeQuote = /^\| (.*)$/s.exec(text);
+  if (pipeQuote) return { body: pipeQuote[1], kind: 'blockquote', markerLength: 2 };
   return null;
 }

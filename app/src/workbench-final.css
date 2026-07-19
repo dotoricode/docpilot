@@ -2061,8 +2061,13 @@ body.dragging-workbench-pane * {
 
 .document-toolbar button,
 .document-toolbar summary {
+  width: 30px;
   min-width: 30px;
   height: 30px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  padding: 0;
   border: 0;
   border-radius: 5px;
   background: transparent;
@@ -2124,6 +2129,7 @@ body.dragging-workbench-pane * {
 .document-toolbar-more > div button {
   width: 100%;
   display: flex;
+  flex: initial;
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
