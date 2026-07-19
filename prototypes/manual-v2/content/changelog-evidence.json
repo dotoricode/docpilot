@@ -1,14 +1,26 @@
 {
   "generatedAt": "2026-07-19",
   "current": {
-    "version": "2.0.4",
-    "state": "release",
-    "tag": "v2.0.4",
-    "implementationCommit": "5f452d5d9ce5d67dfaefeef4b96fe8d29372b927",
+    "version": "2.0.5",
+    "state": "release-candidate",
+    "tag": "v2.0.5",
+    "implementationCommit": "b76bd4568a1e027edec4c9e1fbca74d051a494c7",
     "implementationDate": "2026-07-19",
-    "note": "The v2.0.4 implementation PR is merged; this release finalization PR must merge before the tag, GitHub Release, Pages publication, and Vercel production deployment gates."
+    "note": "The v2.0.5 implementation PRs are merged; this release candidate PR must merge before the finalization PR, tag, GitHub Latest Release, Pages publication, and Vercel production deployment gates."
   },
   "fixes": [
+    {
+      "id": "markdown-document-editor",
+      "claim": "Markdown Document supports direct rendered editing, source-preserving reconciliation, block shortcuts including Korean IME composition, list nesting, tables, and read-only fallback when safety cannot be proven.",
+      "implementation": ["app/src/features/editor/DocumentMarkdownEditor.tsx", "app/src/features/editor/MarkdownDocumentToolbar.tsx", "shared/core/markdown-source-reconcile.js"],
+      "verification": ["tests/markdown-source-reconcile.test.js", "scripts/check-react-markdown-document.js", "scripts/check-react-markdown-document-keyboard-layout.js", "scripts/check-react-markdown-source-preservation.js"]
+    },
+    {
+      "id": "update-check-preview-layout",
+      "claim": "Users can explicitly check the trusted unsigned update flow while active work is preserved, and constrained preview, terminal, slash-menu, and admonition layouts remain usable.",
+      "implementation": ["app/src/screens/App.tsx", "app/src/features/editor/EditorPane.tsx", "shared/core/update-controller.js", "app/src/workbench-final.css"],
+      "verification": ["tests/update-controller.test.js", "scripts/check-react-manual-update.js", "scripts/check-react-preview-workflows.js", "scripts/check-react-terminal-narrow-layout.js"]
+    },
     {
       "id": "embedded-terminal-shells",
       "claim": "The embedded terminal offers only fixed shell choices, defaults to fish when available, installs fish through a confirmed fixed Homebrew command, and treats user-closed tabs as normal termination.",
@@ -73,19 +85,19 @@
     {
       "id": "document-modes",
       "title": "Format-aware document modes",
-      "claim": "Markdown exposes Source, guarded Rich, and Preview modes; AsciiDoc exposes Source and Preview; JSON exposes Source, Tree, formatting, and parse validation.",
+      "claim": "Markdown exposes Source and guarded source-preserving Document editing; AsciiDoc exposes Source and Preview; JSON exposes Source, Tree, formatting, and parse validation.",
       "implementation": [
         "shared/core/document-adapters.js",
         "app/src/features/editor/EditorPane.tsx",
-        "app/src/features/editor/RichMarkdownEditor.tsx",
+        "app/src/features/editor/DocumentMarkdownEditor.tsx",
         "app/src/features/editor/JsonTreeView.tsx"
       ],
-      "verification": ["tests/document-adapters.test.js"],
+      "verification": ["tests/document-adapters.test.js", "scripts/check-react-markdown-document.js", "scripts/check-react-markdown-source-preservation.js"],
       "documentation": ["docs/architecture/orca-parity-redesign.md"],
       "commit": "adcf9de46f9bbd2c7433da6ec9d681cb6c6cb050",
       "date": "2026-07-15",
       "limitations": [
-        "Rich mode is disabled for documents larger than 300,000 characters and for syntax that cannot safely round-trip.",
+        "Document editing is read-only for documents larger than 300,000 characters and for syntax that cannot safely reconcile to the original source.",
         "JavaScript, TypeScript, YAML, and plain text remain Source-only."
       ]
     },

@@ -45,7 +45,7 @@ type OpenFileTab = {
 type ReleaseNotice = {
   id: string;
   version: string;
-  items: ReleaseNoteItem[];
+  sections: ReleaseNoticeSection[];
 };
 
 type ReleaseNoteItem = {
@@ -53,7 +53,30 @@ type ReleaseNoteItem = {
   body: string;
 };
 
+type ReleaseNoticeSection = {
+  version: string;
+  items: ReleaseNoteItem[];
+};
+
 const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
+  '2.0.5': [
+    {
+      title: 'Markdown을 Document에서 바로 편집합니다',
+      body: '렌더링된 문서에서 커서를 놓고 제목, 목록, 인용, 표, 코드, 링크와 이미지를 편집하며 원문의 줄바꿈과 지원 문법을 안전하게 보존합니다.',
+    },
+    {
+      title: 'Markdown 입력과 목록 편집이 더 자연스럽습니다',
+      body: '#, -, 번호, 인용과 표 입력을 블록으로 전환하고 Tab과 Shift+Tab으로 목록 깊이를 조절합니다. 한국어 입력기 조합도 같은 방식으로 처리합니다.',
+    },
+    {
+      title: '앱에서 최신 버전을 직접 확인할 수 있습니다',
+      body: '열린 terminal과 미저장 문서를 유지한 채 공식 GitHub Release를 확인하고, 현재 Mac에 맞는 검증된 DMG를 내려받을 수 있습니다.',
+    },
+    {
+      title: '좁은 화면의 편집기와 터미널을 보정했습니다',
+      body: 'Document 명령 메뉴가 터미널 뒤로 가려지지 않으며, 좁은 터미널 탭과 NOTE·IMPORTANT 정보 패널의 표시가 겹치지 않습니다.',
+    },
+  ],
   '2.0.4': [
     {
       title: '설치된 fish를 기본 터미널 셸로 사용합니다',
@@ -253,11 +276,23 @@ const DEFAULT_RELEASE_NOTES: ReleaseNoteItem[] = [
   { title: 'DocPilot이 업데이트되었습니다', body: '이번 버전의 변경사항을 확인한 뒤 문서 작업을 이어갈 수 있습니다.' },
 ];
 
+const RELEASE_NOTICE_VERSION_GROUPS: Record<string, string[]> = {
+  '2.0.5': ['2.0.5', '2.0.4'],
+};
+
 const RELEASE_NOTICE_REVISION = 'r1';
 const RELEASE_NOTICE_SEEN_ID_KEY = 'docpilot:release-notice-seen-id';
 
 function releaseNoticeId(version: string) {
   return `${version}:${RELEASE_NOTICE_REVISION}`;
+}
+
+function releaseNoticeSections(version: string): ReleaseNoticeSection[] {
+  const versions = RELEASE_NOTICE_VERSION_GROUPS[version] || [version];
+  return versions.map(sectionVersion => ({
+    version: sectionVersion,
+    items: RELEASE_NOTES[sectionVersion] || DEFAULT_RELEASE_NOTES,
+  }));
 }
 
 export type SelectedContext = {
@@ -382,8 +417,7 @@ export function App() {
         if (seenNoticeId === noticeId) {
           return;
         }
-        const items = RELEASE_NOTES[version] || DEFAULT_RELEASE_NOTES;
-        setReleaseNotice({ id: noticeId, version, items });
+        setReleaseNotice({ id: noticeId, version, sections: releaseNoticeSections(version) });
       })
       .catch(() => {});
     return () => {
@@ -1568,24 +1602,31 @@ export function App() {
                 <span className="release-notice-mark" aria-hidden="true"><FileText size={15} weight="regular" /></span>
                 <span>DocPilot</span>
               </div>
-              <span className="release-notice-version">v{releaseNotice.version}</span>
+              <span className="release-notice-version">{releaseNotice.sections.map(section => `v${section.version}`).join(' + ')}</span>
               <button type="button" aria-label="새 버전 안내 닫기" onClick={closeReleaseNotice}><X size={16} /></button>
             </header>
             <div className="release-notice-body">
               <span className="release-notice-kicker">Documentation</span>
-              <h2>What&apos;s new in v{releaseNotice.version}</h2>
-              <p>문서 검토 중 헷갈리던 부분을 줄였습니다. Diff는 바뀐 줄에 더 가깝게 표시되고, 지침과 복사 동작은 현재 화면 상태를 기준으로 움직입니다.</p>
-              <ul className="release-notice-list">
-                {releaseNotice.items.map((item, index) => (
-                  <li key={item.title}>
-                    <span className="release-note-index">{String(index + 1).padStart(2, '0')}</span>
-                    <div>
-                      <strong>{item.title}</strong>
-                      <p>{item.body}</p>
-                    </div>
-                  </li>
+              <h2>What&apos;s new in {releaseNotice.sections.map(section => `v${section.version}`).join(' + ')}</h2>
+              <p>Document 편집, 업데이트 확인과 터미널 셸 개선을 포함해 최근 두 버전의 변경사항을 한 번에 확인할 수 있습니다.</p>
+              <div className="release-notice-sections">
+                {releaseNotice.sections.map(section => (
+                  <section className="release-notice-section" key={section.version} aria-labelledby={`release-notice-${section.version}`}>
+                    <h3 id={`release-notice-${section.version}`}>v{section.version}</h3>
+                    <ul className="release-notice-list">
+                      {section.items.map((item, index) => (
+                        <li key={item.title}>
+                          <span className="release-note-index">{String(index + 1).padStart(2, '0')}</span>
+                          <div>
+                            <strong>{item.title}</strong>
+                            <p>{item.body}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
                 ))}
-              </ul>
+              </div>
             </div>
             <footer>
               <button type="button" onClick={closeReleaseNotice}><Check size={15} />확인</button>

@@ -105,7 +105,7 @@ async function main() {
     await page.setViewportSize({ width: 1440, height: 900 });
     await dismissReleaseNotice(page);
     await page.evaluate(() => {
-      localStorage.setItem('docpilot:release-notice-seen-id', '2.0.3:r2');
+      localStorage.setItem('docpilot:release-notice-seen-id', '2.0.5:r1');
       localStorage.setItem('docpilot:terminal-open', '0');
       localStorage.setItem('docpilot:preview-width', '760');
       localStorage.setItem('docpilot:preview-width-explicit-v1', '1');
@@ -164,11 +164,11 @@ async function main() {
       [page.getByRole('button', { name: '저장', exact: true }), '저장 버튼'],
     ]);
     await page.getByRole('button', { name: '저장', exact: true }).click();
-    await selectMode(page, 'Preview');
-    await capture(page, 'markdown-preview-example', 'Markdown 실제 Preview 예시', [
-      [page.locator('.editor-mode-toggle'), 'Source · Rich · Preview'],
-      [page.locator('.markdown-preview h1'), '렌더링된 제목과 본문'],
-      [page.locator('.toc-rail'), '문서 목차'],
+    await selectMode(page, 'Document');
+    await capture(page, 'markdown-preview-example', 'Markdown 실제 Document 예시', [
+      [page.locator('.editor-mode-toggle'), 'Source · Document · Agent Copy'],
+      [page.locator('.document-markdown-content h1'), '바로 편집하는 제목과 본문'],
+      [page.locator('.document-toolbar'), 'Markdown 서식 도구'],
     ]);
 
     await openFile(page, 'manual.adoc');
@@ -187,7 +187,8 @@ async function main() {
       [page.locator('.json-tree'), '펼쳐 보는 구조'],
     ]);
 
-    await openFile(page, 'manual.md');
+    await openFile(page, 'manual.adoc');
+    await selectMode(page, 'Preview');
     await page.locator('.editor-more-menu summary').click();
     await capture(page, 'preview-controls', 'Preview 탐색과 표시 설정 위치', [
       [page.locator('.editor-mode-toggle').getByRole('button', { name: 'Preview' }), 'Preview 버튼'],
@@ -204,7 +205,8 @@ async function main() {
       [page.locator('.editor-pane'), '문서 전체 적용 결과'],
     ]);
     await page.locator('.theme-toggle button').nth(1).click();
-    await openFile(page, 'README.md');
+    await openFile(page, 'manual.adoc');
+    await selectMode(page, 'Preview');
     await page.locator('.editor-more-menu summary').click();
     await capture(page, 'settings-reference', '문서별 표시 설정과 앱 설정 위치', [
       [page.locator('.theme-toggle'), '앱 테마 설정'],
