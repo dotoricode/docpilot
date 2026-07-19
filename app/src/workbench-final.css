@@ -2229,6 +2229,31 @@ body.dragging-workbench-pane * {
   outline-offset: 3px;
 }
 
+.document-markdown-content ul:not([data-type="taskList"]),
+.document-markdown-content ol {
+  padding-inline-start: 1.65em;
+}
+
+.document-markdown-content ul:not([data-type="taskList"]) {
+  list-style-type: disc;
+}
+
+.document-markdown-content ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) {
+  list-style-type: circle;
+}
+
+.document-markdown-content ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) {
+  list-style-type: square;
+}
+
+.document-markdown-content ol {
+  list-style-type: decimal;
+}
+
+.document-markdown-content li::marker {
+  color: currentColor;
+}
+
 .document-markdown-content ul[data-type="taskList"] {
   padding-left: 0;
   list-style: none;

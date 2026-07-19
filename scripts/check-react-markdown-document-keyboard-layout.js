@@ -50,7 +50,7 @@ async function commitStagedImeComposition(cdp, stages) {
 }
 
 async function assertToolbarIconsCentered(page, theme) {
-  const toolbarGeometry = await page.locator('.document-toolbar > button:has(svg)').evaluateAll(buttons => buttons.map(button => {
+  const toolbarGeometry = await page.locator('.document-toolbar:visible > button:has(svg)').evaluateAll(buttons => buttons.map(button => {
     const icon = button.querySelector('svg');
     const buttonRect = button.getBoundingClientRect();
     const iconRect = icon.getBoundingClientRect();
@@ -113,7 +113,7 @@ async function main() {
     await dismissOverlays(page);
     await page.locator('.workspace-file-row[title="layout.md"]').click();
     await page.waitForSelector('.terminal-pane');
-    const document = page.locator('.document-markdown-content[contenteditable="true"]');
+    const document = page.locator('.document-markdown-content[contenteditable="true"]:visible');
     await document.waitFor();
     const shell = page.locator('.document-editor-shell');
     await shell.evaluate(node => { node.scrollTop = node.scrollHeight; });
@@ -169,7 +169,7 @@ async function main() {
       await page.locator('.theme-toggle button').filter({ hasText: theme }).click();
       await page.waitForFunction(expected => document.documentElement.dataset.theme === expected, theme.toLowerCase());
       await assertToolbarIconsCentered(page, theme);
-      await page.locator('.document-toolbar').screenshot({
+      await page.locator('.document-toolbar:visible').screenshot({
         path: path.join(artifactRoot, `markdown-document-toolbar-${theme.toLowerCase()}.png`),
         scale: 'css',
       });
@@ -192,9 +192,46 @@ async function main() {
 
     await page.locator('.workspace-file-row[title="bullet.md"]').click();
     await document.waitFor();
-    await document.click();
+    await shell.evaluate(node => { node.scrollTop = 0; });
+    await document.locator('p').first().click();
     await page.keyboard.type('- ');
-    assert.equal(await document.locator('ul:not([data-type="taskList"]) > li').count(), 1, '`- ` must immediately create a bullet list before body text is typed');
+    const emptyBulletShape = await page.evaluate(() => {
+      const editor = document.activeElement;
+      const item = editor?.matches('.document-markdown-content')
+        ? editor.querySelector('ul:not([data-type="taskList"]) > li')
+        : null;
+      const toolbar = editor?.closest('.document-markdown-editor')?.querySelector('.document-toolbar');
+      if (!(item instanceof HTMLElement) || !(toolbar instanceof HTMLElement)) return null;
+      const style = getComputedStyle(item);
+      const marker = getComputedStyle(item, '::marker');
+      return {
+        itemRect: item.getBoundingClientRect().toJSON(),
+        toolbarRect: toolbar.getBoundingClientRect().toJSON(),
+        height: item.getBoundingClientRect().height,
+        listStylePosition: style.listStylePosition,
+        listStyleType: style.listStyleType,
+        markerColor: marker.color,
+        markerContent: marker.content,
+        markerFontSize: marker.fontSize,
+      };
+    });
+    assert.ok(emptyBulletShape, '`- ` must immediately create a bullet list in the focused editor');
+    assert.equal(emptyBulletShape.listStyleType, 'disc', `empty bullet must expose a disc marker: ${JSON.stringify(emptyBulletShape)}`);
+    assert.ok(emptyBulletShape.height >= 20, `empty bullet must retain a visible line box: ${JSON.stringify(emptyBulletShape)}`);
+    assert.ok(
+      emptyBulletShape.itemRect.y >= emptyBulletShape.toolbarRect.y + emptyBulletShape.toolbarRect.height,
+      `empty bullet must remain below the sticky toolbar: ${JSON.stringify(emptyBulletShape)}`,
+    );
+    await page.screenshot({
+      path: path.join(artifactRoot, 'markdown-empty-bullet-marker.png'),
+      scale: 'css',
+      clip: {
+        x: Math.max(0, emptyBulletShape.itemRect.x - 48),
+        y: Math.max(0, emptyBulletShape.itemRect.y - 8),
+        width: Math.min(640, page.viewportSize().width - Math.max(0, emptyBulletShape.itemRect.x - 48)),
+        height: emptyBulletShape.itemRect.height + 16,
+      },
+    });
     await page.keyboard.type('Parent');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Tab');
@@ -208,6 +245,15 @@ async function main() {
     await document.waitFor();
     await document.click();
     await page.keyboard.type('1. ');
+    assert.equal(
+      await page.evaluate(() => {
+        const editor = document.activeElement;
+        const item = editor?.matches('.document-markdown-content') ? editor.querySelector('ol > li') : null;
+        return item ? getComputedStyle(item).listStyleType : null;
+      }),
+      'decimal',
+      '`1. ` must immediately expose a visible decimal marker before body text is typed',
+    );
     await page.keyboard.type('Parent');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Tab');
