@@ -116,6 +116,7 @@ export const DocumentMarkdownEditor = forwardRef<DocumentMarkdownEditorHandle, D
     const readyRef = useRef(false);
     const safetyLockedRef = useRef(false);
     const pendingCommitTimerRef = useRef<number | null>(null);
+    const compositionStartTextRef = useRef<string | null>(null);
     const slashMenuRef = useRef<SlashMenuState | null>(null);
     const filteredCommandsRef = useRef<MarkdownDocumentCommand[]>([]);
     const selectedCommandIndexRef = useRef(0);
@@ -236,6 +237,28 @@ export const DocumentMarkdownEditor = forwardRef<DocumentMarkdownEditorHandle, D
           class: 'document-markdown-content markdown-preview',
           spellcheck: 'true',
           'aria-label': 'Markdown Document editor',
+        },
+        handleDOMEvents: {
+          compositionstart: () => {
+            const currentEditor = editorRef.current;
+            const selection = currentEditor?.state.selection;
+            compositionStartTextRef.current = selection?.empty && selection.$from.parent.type.name === 'paragraph'
+              ? selection.$from.parent.textContent
+              : null;
+            return false;
+          },
+          compositionend: () => {
+            // TipTap's built-in input rules only see the final composed line.
+            // Korean IME can commit `- 한글` in one transaction, so promote the
+            // leading Markdown marker after composition without dropping text.
+            const compositionStartText = compositionStartTextRef.current;
+            compositionStartTextRef.current = null;
+            window.setTimeout(() => {
+              const currentEditor = editorRef.current;
+              if (currentEditor) promoteComposedMarkdownShortcut(currentEditor, compositionStartText);
+            });
+            return false;
+          },
         },
         handleKeyDown: (_view, event) => {
           const currentEditor = editorRef.current;
@@ -582,4 +605,66 @@ function convertPipeTableShortcut(editor: Editor, event: KeyboardEvent) {
     .deleteRange({ from: selection.$from.start(), to: selection.from })
     .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
     .run();
+}
+
+type ComposedMarkdownShortcut = {
+  body: string;
+  checked?: boolean;
+  kind: 'blockquote' | 'bullet' | 'heading' | 'ordered' | 'table' | 'task';
+  level?: 1 | 2 | 3 | 4 | 5 | 6;
+  markerLength: number;
+  start?: number;
+};
+
+function promoteComposedMarkdownShortcut(editor: Editor, compositionStartText: string | null) {
+  if (editor.view.composing) return false;
+  const { selection } = editor.state;
+  if (!selection.empty || selection.$from.parent.type.name !== 'paragraph') return false;
+  const text = selection.$from.parent.textContent;
+  const shortcut = composedMarkdownShortcut(text);
+  if (!shortcut) return false;
+  const marker = text.slice(0, shortcut.markerLength);
+  if (compositionStartText !== '' && compositionStartText !== marker && compositionStartText !== marker.trimEnd()) return false;
+  const paragraphStart = selection.$from.start();
+  if (shortcut.kind === 'table') {
+    return editor.chain()
+      .focus()
+      .deleteRange({ from: paragraphStart, to: paragraphStart + text.length })
+      .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+      .insertContent(shortcut.body)
+      .run();
+  }
+
+  const chain = editor.chain()
+    .focus()
+    .deleteRange({ from: paragraphStart, to: paragraphStart + shortcut.markerLength });
+  if (shortcut.kind === 'bullet') return chain.toggleBulletList().run();
+  if (shortcut.kind === 'blockquote') return chain.toggleBlockquote().run();
+  if (shortcut.kind === 'heading') return chain.setHeading({ level: shortcut.level || 1 }).run();
+  if (shortcut.kind === 'task') {
+    const converted = chain.toggleTaskList().run();
+    if (converted && shortcut.checked) editor.commands.updateAttributes('taskItem', { checked: true });
+    return converted;
+  }
+  const converted = chain.toggleOrderedList().run();
+  if (converted && shortcut.start && shortcut.start !== 1) {
+    editor.commands.updateAttributes('orderedList', { start: shortcut.start });
+  }
+  return converted;
+}
+
+function composedMarkdownShortcut(text: string): ComposedMarkdownShortcut | null {
+  const task = /^- \[([ xX])\] (.*)$/s.exec(text);
+  if (task) return { body: task[2], checked: task[1].toLocaleLowerCase() === 'x', kind: 'task', markerLength: task[0].length - task[2].length };
+  const heading = /^(#{1,6}) (.*)$/s.exec(text);
+  if (heading) return { body: heading[2], kind: 'heading', level: heading[1].length as 1 | 2 | 3 | 4 | 5 | 6, markerLength: heading[1].length + 1 };
+  const ordered = /^(\d+)\. (.*)$/s.exec(text);
+  if (ordered) return { body: ordered[2], kind: 'ordered', markerLength: ordered[1].length + 2, start: Number(ordered[1]) };
+  const bullet = /^[-+*] (.*)$/s.exec(text);
+  if (bullet) return { body: bullet[1], kind: 'bullet', markerLength: 2 };
+  const quote = /^> (.*)$/s.exec(text);
+  if (quote) return { body: quote[1], kind: 'blockquote', markerLength: 2 };
+  const table = /^\| (.*)$/s.exec(text);
+  if (table) return { body: table[1], kind: 'table', markerLength: 2 };
+  return null;
 }

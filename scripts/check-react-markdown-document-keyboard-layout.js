@@ -27,6 +27,15 @@ async function dismissOverlays(page) {
   if (await updateClose.isVisible().catch(() => false)) await updateClose.click();
 }
 
+async function commitImeComposition(cdp, text) {
+  await cdp.send('Input.imeSetComposition', {
+    text,
+    selectionStart: text.length,
+    selectionEnd: text.length,
+  });
+  await cdp.send('Input.insertText', { text });
+}
+
 async function main() {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-document-keyboard-layout-'));
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-document-keyboard-layout-user-'));
@@ -38,6 +47,13 @@ async function main() {
   fs.writeFileSync(path.join(workspace, 'bullet.md'), '', 'utf8');
   fs.writeFileSync(path.join(workspace, 'ordered.md'), '', 'utf8');
   fs.writeFileSync(path.join(workspace, 'syntax.md'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'ime-bullet.md'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'ime-quote.md'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'ime-table.md'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'ime-heading.md'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'ime-ordered.md'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'ime-task.md'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'ime-literal.md'), '\\- literal', 'utf8');
 
   const app = await electron.launch({
     args: ['.'],
@@ -56,10 +72,11 @@ async function main() {
     }, workspace);
 
     const page = await waitForEditor(app);
+    const cdp = await page.context().newCDPSession(page);
     await page.setViewportSize({ width: 1180, height: 760 });
     await page.waitForSelector('.home-screen');
     await dismissOverlays(page);
-    await page.locator('.workspace-file-row').filter({ hasText: 'layout.md' }).click();
+    await page.locator('.workspace-file-row[title="layout.md"]').click();
     await page.waitForSelector('.terminal-pane');
     const document = page.locator('.document-markdown-content[contenteditable="true"]');
     await document.waitFor();
@@ -99,7 +116,7 @@ async function main() {
     await page.screenshot({ path: path.join(artifactRoot, 'markdown-slash-menu-above-terminal.png'), scale: 'css' });
     await page.keyboard.press('Escape');
 
-    await page.locator('.workspace-file-row').filter({ hasText: 'keyboard.md' }).click();
+    await page.locator('.workspace-file-row[title="keyboard.md"]').click();
     await document.waitFor();
     assert.equal(
       await document.locator('[data-placeholder]').count(),
@@ -129,7 +146,7 @@ async function main() {
       await page.keyboard.press('Enter');
     }
 
-    await page.locator('.workspace-file-row').filter({ hasText: 'bullet.md' }).click();
+    await page.locator('.workspace-file-row[title="bullet.md"]').click();
     await document.waitFor();
     await document.click();
     await page.keyboard.type('- ');
@@ -142,7 +159,7 @@ async function main() {
     assert.equal(await document.locator('ul > li > ul > li').count(), 0, 'Shift+Tab must outdent the current bullet item');
     assert.equal(await document.locator('ul > li').count(), 2, 'outdented bullet items must remain siblings');
 
-    await page.locator('.workspace-file-row').filter({ hasText: 'ordered.md' }).click();
+    await page.locator('.workspace-file-row[title="ordered.md"]').click();
     await document.waitFor();
     await document.click();
     await page.keyboard.type('1. ');
@@ -155,7 +172,7 @@ async function main() {
     assert.equal(await document.locator('ol > li > ol > li').count(), 0, 'Shift+Tab must outdent the current numbered item');
     assert.equal(await document.locator('ol > li').count(), 2, 'outdented numbered items must remain siblings');
 
-    await page.locator('.workspace-file-row').filter({ hasText: 'syntax.md' }).click();
+    await page.locator('.workspace-file-row[title="syntax.md"]').click();
     await document.waitFor();
     await document.click();
     await page.keyboard.type('> ');
@@ -178,8 +195,56 @@ async function main() {
       'rgba(0, 0, 0, 0)',
       'blue block highlighting must be reserved for Agent Copy mode',
     );
+    await page.locator('.agent-copy-toggle').click();
 
-    console.log('react Markdown Document keyboard, syntax, icon, and terminal-boundary checks passed');
+    await page.locator('.workspace-file-row[title="ime-bullet.md"]').click();
+    await document.waitFor();
+    await document.click();
+    await commitImeComposition(cdp, '- 한글');
+    assert.equal(await document.locator('ul > li').last().textContent(), '한글', 'IME-composed `- ` must create a bullet list');
+
+    await page.locator('.workspace-file-row[title="ime-quote.md"]').click();
+    await document.waitFor();
+    await document.click();
+    await commitImeComposition(cdp, '> 한글');
+    assert.equal(await document.locator('blockquote').last().textContent(), '한글', 'IME-composed `> ` must create a quote block');
+
+    await page.locator('.workspace-file-row[title="ime-table.md"]').click();
+    await document.waitFor();
+    await document.click();
+    await commitImeComposition(cdp, '| 한글');
+    assert.equal(await document.locator('table').count(), 1, 'IME-composed `| ` must create a table');
+    assert.equal(await document.locator('table th').first().textContent(), '한글', 'pipe table must preserve composed text in the first cell');
+
+    await page.locator('.workspace-file-row[title="ime-heading.md"]').click();
+    await document.waitFor();
+    await document.click();
+    await commitImeComposition(cdp, '## 한글 제목');
+    assert.equal(await document.locator('h2').last().textContent(), '한글 제목', 'IME-composed heading marker must create its heading level');
+
+    await page.locator('.workspace-file-row[title="ime-ordered.md"]').click();
+    await document.waitFor();
+    await document.click();
+    await commitImeComposition(cdp, '3. 세 번째');
+    assert.equal(await document.locator('ol').first().getAttribute('start'), '3', 'IME-composed numbered marker must preserve its start number');
+    assert.equal(await document.locator('ol > li').last().textContent(), '세 번째', 'IME-composed numbered marker must preserve text');
+
+    await page.locator('.workspace-file-row[title="ime-task.md"]').click();
+    await document.waitFor();
+    await document.click();
+    await commitImeComposition(cdp, '- [x] 완료');
+    assert.equal(await document.locator('ul[data-type="taskList"] li[data-checked="true"]').last().textContent(), '완료', 'IME-composed task marker must preserve checked state and text');
+
+    await page.locator('.workspace-file-row[title="ime-literal.md"]').click();
+    await document.waitFor();
+    const literalParagraph = document.locator('p').first();
+    await literalParagraph.click();
+    await page.keyboard.press('End');
+    await commitImeComposition(cdp, '한글');
+    assert.equal(await document.locator('ul').count(), 0, 'IME text after an existing escaped marker must not rewrite the paragraph');
+    assert.equal(await literalParagraph.textContent(), '- literal한글', 'escaped marker text and composed suffix must be preserved');
+
+    console.log('react Markdown Document keyboard, IME syntax, icon, and terminal-boundary checks passed');
   } finally {
     await app.close().catch(() => {});
     try { execFileSync('pkill', ['-f', `bridge.js --root ${workspace}`]); } catch {}
