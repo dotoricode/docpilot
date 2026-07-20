@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-07-19",
+  "generatedAt": "2026-07-20",
   "current": {
     "version": "2.0.5",
     "state": "release",
     "tag": "v2.0.5",
-    "implementationCommit": "6995fb122b9d566fb83b1e35d1a15bd5df275db6",
-    "implementationDate": "2026-07-19",
-    "note": "The v2.0.5 release candidate merged in PR #32. Tagging, GitHub Latest Release publication, Pages publication, and Vercel production deployment follow this finalization merge."
+    "implementationCommit": "70fe7218539b880c68d5d5bd360cf48356d36d09",
+    "implementationDate": "2026-07-20",
+    "note": "The user approved a one-time same-version v2.0.5 replacement. The existing tag and four public assets may move only after the original artifacts are backed up and the replacement DMGs pass the release gates."
   },
   "fixes": [
     {
@@ -59,9 +59,15 @@
     },
     {
       "id": "packaged-icon",
-      "claim": "Source, packaged app, and mounted x64/arm64 DMG icons retain transparent outer pixels instead of an opaque black square.",
+      "claim": "Source, packaged app, and mounted x64/arm64 DMG icons retain transparent outer pixels and remove the bright perimeter rim and outer halo visible at Finder scale.",
       "implementation": ["assets/icon.png", "assets/docpilot.icns", "package.json"],
       "verification": ["scripts/check-packaged-app.js"]
+    },
+    {
+      "id": "unsigned-install-guidance",
+      "claim": "Unsigned releases always document Apple's System Settings > Privacy & Security > Open Anyway flow without recommending terminal quarantine removal or Gatekeeper disablement.",
+      "implementation": ["prototypes/manual-v2/src/content.js", "prototypes/manual-v2/src/releases.mjs", "docs/release-process.md", "app/src/screens/App.tsx"],
+      "verification": ["scripts/check-manual-v2-orca-parity.mjs", "scripts/check-public-manual.mjs"]
     }
   ],
   "features": [
