@@ -59,9 +59,9 @@
     },
     {
       "id": "packaged-icon",
-      "claim": "Source, packaged app, and mounted x64/arm64 DMG icons retain transparent outer pixels and remove the bright perimeter rim and outer halo visible at Finder scale.",
-      "implementation": ["assets/icon.png", "assets/docpilot.icns", "package.json"],
-      "verification": ["scripts/check-packaged-app.js"]
+      "claim": "The macOS app uses an Icon Composer asset catalog so Finder does not wrap the legacy ICNS in a bright system plate; source, packaged, and mounted-DMG icons keep the dark enclosure and central mark.",
+      "implementation": ["assets/docpilot.icon", "assets/icon.png", "assets/docpilot.icns", "package.json"],
+      "verification": ["scripts/check-packaged-app.js", "scripts/check-packaged-icon-render.swift"]
     },
     {
       "id": "unsigned-install-guidance",

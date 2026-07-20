@@ -58,10 +58,11 @@
       "scripts/fake-agent.js",
       "dist/renderer/**",
       "assets/**",
-      "!assets/*.icns"
+      "!assets/*.icns",
+      "!assets/*.icon/**"
     ],
     "mac": {
-      "icon": "assets/docpilot.icns",
+      "icon": "assets/docpilot.icon",
       "category": "public.app-category.productivity",
       "identity": "-",
       "hardenedRuntime": false,
@@ -77,6 +78,7 @@
     },
     "dmg": {
       "title": "docpilot",
+      "icon": "assets/docpilot.icns",
       "window": {
         "width": 540,
         "height": 360

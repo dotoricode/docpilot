@@ -20,7 +20,7 @@ export const FALLBACK_RELEASES = Object.freeze([
 - macOS 한국어 입력기 조합 뒤에도 Markdown 블록 단축 입력이 문자로 남지 않고 의도한 블록으로 변환됩니다.
 - 빈 목록 항목의 글머리 기호가 CSS 초기화로 사라지던 문제를 수정했습니다.
 - 좁은 터미널 탭에 불필요한 스크롤이 생기거나 NOTE·IMPORTANT 레이블이 본문과 겹치던 문제를 수정했습니다.
-- Finder와 DMG 설치 화면에서 앱 아이콘 바깥쪽에 보이던 밝은 외곽 림과 그림자를 제거했습니다.
+- macOS 26 Finder가 레거시 ICNS 바깥에 합성하던 밝은 시스템 플레이트를 없애고, 네이티브 Icon Composer 아이콘을 적용했습니다.
 
 ## Upgrade notes
 - 원문과 동일한 Markdown 구조를 증명할 수 없는 고급 문법 또는 매우 큰 문서는 Source와 읽기 전용 Preview를 사용합니다.
