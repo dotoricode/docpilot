@@ -22,6 +22,8 @@ for (const target of targets) {
   assert.match(bundle, new RegExp(`DocPilot ${escapeRegExp(version)}`), `${target.name}: bundle does not contain v${version}`);
   assert.match(bundle, /Apple Silicon/, `${target.name}: Apple Silicon download option is missing`);
   assert.match(bundle, /Intel Mac/, `${target.name}: Intel download option is missing`);
+  assert.match(bundle, /개인정보 보호 및 보안/, `${target.name}: official macOS privacy and security path is missing`);
+  assert.match(bundle, /확인 없이 열기/, `${target.name}: unsigned Open Anyway guidance is missing`);
 
   const changelogUrl = new URL(`changelog/${version}/`, baseUrl);
   await fetchText(changelogUrl);

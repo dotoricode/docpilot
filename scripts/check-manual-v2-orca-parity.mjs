@@ -96,6 +96,9 @@ for (const label of ['Docs', 'Changelog', 'Download']) {
 }
 assert.ok(app.includes('window.location.assign(asset.url)'), 'Download must navigate directly to the selected DMG asset');
 assert.ok(app.includes('Apple Silicon') && app.includes('Intel Mac'), 'Download must expose an explicit architecture choice');
+assert.match(content, /시스템 설정.*개인정보 보호 및 보안/, 'unsigned install guide must name the official System Settings path');
+assert.match(content, /확인 없이 열기/, 'unsigned install guide must include the official Open Anyway action');
+assert.doesNotMatch(content, /xattr\s|-dr\s+com\.apple\.quarantine|spctl\s+--master-disable/, 'manual must not provide terminal Gatekeeper bypass commands');
 for (const forbidden of ['Star', 'Enterprise', 'View on GitHub', 'GitHub에서']) {
   assert.ok(!visibleSource.includes(forbidden), `public manual exposes forbidden GitHub/social UI: ${forbidden}`);
 }
