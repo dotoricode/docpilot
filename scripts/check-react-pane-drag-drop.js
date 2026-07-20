@@ -146,12 +146,15 @@ async function main() {
     await page.keyboard.press('Alt+ArrowUp');
     await page.waitForFunction(() => document.querySelector('.workbench-stack')?.classList.contains('terminal-top'));
 
-    await dragPaneWithMouse(page, '.document-pane-drag-handle', 'left', 'right');
+    if (await page.locator('.document-pane-drag-handle').count()) {
+      throw new Error('redundant document pane drag handle must not be rendered');
+    }
+    await dragPaneWithMouse(page, '.document-tabbar-drag-surface', 'left', 'right');
 
     await page.locator('.theme-toggle button').filter({ hasText: 'Light' }).click();
     await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
     await page.getByLabel('Collapse project panel').click();
-    const chrome = await page.locator('.panel-rail-open-button, .terminal-pane-drag-handle, .document-pane-drag-handle').evaluateAll(nodes => nodes.map(node => ({
+    const chrome = await page.locator('.panel-rail-open-button, .terminal-pane-drag-handle').evaluateAll(nodes => nodes.map(node => ({
       className: node.className,
       borderTopWidth: getComputedStyle(node).borderTopWidth,
       borderStyle: getComputedStyle(node).borderTopStyle,

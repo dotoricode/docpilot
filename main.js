@@ -11,6 +11,8 @@ const { isFileUrlForPath, normalizeExternalUrl } = require('./shared/core/app-na
 const { canonicalizeRoot, isPathInside } = require('./shared/core/bridge-security');
 const { createUpdateController } = require('./shared/core/update-controller');
 
+const HIDE_TEST_WINDOWS = process.env.DOCPILOT_TEST_HIDDEN_WINDOWS === '1';
+
 if (process.env.DOCPILOT_USER_DATA_DIR) {
   app.setPath('userData', process.env.DOCPILOT_USER_DATA_DIR);
 }
@@ -549,7 +551,9 @@ function createStartWindow() {
   startWin = win;
   installStartNavigationGuard(win);
   win.loadFile('start.html', { query: { theme: effectiveTheme, preference } });
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    if (!HIDE_TEST_WINDOWS) win.show();
+  });
   win.on('closed', () => {
     if (startWin === win) startWin = null;
   });
@@ -589,7 +593,9 @@ function createEditorWindow(root, openFileRel = '', port = bridgePort, bridge = 
   editorWin = win;
   installEditorNavigationGuard(win);
   loadEditorShell(win);
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    if (!HIDE_TEST_WINDOWS) win.show();
+  });
   win.on('focus', () => {
     editorWin = win;
     bridgePort = win._docpilotBridgePort || bridgePort;

@@ -83,12 +83,25 @@ async function main() {
     assert.equal(await paragraph.evaluate(node => getComputedStyle(node).cursor), 'text', 'editable Document blocks must use an I-beam cursor');
     await paragraph.click();
     assert.equal(await page.locator('.preview-inline-editor').count(), 0, 'Document click must never open the Source line overlay');
+    await paragraph.evaluate(node => {
+      const editor = node.closest('[contenteditable="true"]');
+      const range = window.document.createRange();
+      range.selectNodeContents(node);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      if (editor instanceof HTMLElement) editor.focus();
+    });
 
-    await page.keyboard.press('End');
     await page.keyboard.press('Enter');
     await page.keyboard.type('## ');
     await page.keyboard.type('Heading two');
-    assert.equal(await document.locator('h2').last().textContent(), 'Heading two', '`## ` must create a level-two heading');
+    assert.equal(
+      await document.locator('h2').last().textContent(),
+      'Heading two',
+      `\`## \` must create a level-two heading: ${await document.evaluate(node => node.innerHTML)}`,
+    );
 
     await page.keyboard.press('End');
     await page.keyboard.press('Enter');
@@ -137,6 +150,8 @@ async function main() {
     await page.getByRole('button', { name: 'Agent Copy' }).click();
 
     await page.locator('.workspace-file-row').filter({ hasText: 'shortcuts.md' }).click();
+    await page.locator('.file-tab.active[title="shortcuts.md"]').waitFor();
+    await page.waitForFunction(() => (document.querySelector('.document-markdown-content')?.textContent || '').trim() === '');
     await document.waitFor();
     await document.click();
     for (let level = 1; level <= 6; level += 1) {
@@ -189,6 +204,8 @@ async function main() {
     assert.match(shortcutsSaved, /^\|/m);
 
     await page.locator('.workspace-file-row').filter({ hasText: 'media.md' }).click();
+    await page.locator('.file-tab.active[title="media.md"]').waitFor();
+    await page.waitForFunction(() => (document.querySelector('.document-markdown-content')?.textContent || '').trim() === 'Link target');
     await document.waitFor();
     await document.locator('p').click();
     await page.keyboard.press('Meta+A');
@@ -197,8 +214,16 @@ async function main() {
     await linkInput.fill('https://example.com/docs');
     await page.getByRole('button', { name: '적용' }).click();
     assert.equal(await document.locator('a').getAttribute('href'), 'https://example.com/docs');
-    await page.keyboard.press('ArrowRight');
-    await page.keyboard.press('End');
+    await document.locator('p').evaluate(node => {
+      const editor = node.closest('[contenteditable="true"]');
+      const range = window.document.createRange();
+      range.selectNodeContents(node);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      if (editor instanceof HTMLElement) editor.focus();
+    });
     await page.keyboard.press('Enter');
     await page.getByRole('button', { name: '이미지' }).click();
     const imageInput = page.getByLabel('이미지 경로 또는 URL');
@@ -221,6 +246,8 @@ async function main() {
     assert.match(mediaSaved, /!\[\]\(asset\.svg\)/);
 
     await page.locator('.workspace-file-row').filter({ hasText: 'advanced.md' }).click();
+    await page.locator('.file-tab.active[title="advanced.md"]').waitFor();
+    await page.waitForFunction(() => (document.querySelector('.document-markdown-content')?.textContent || '').trim() === '');
     await document.waitFor();
     await document.click();
     await page.keyboard.type('/mermaid');
@@ -234,6 +261,8 @@ async function main() {
     assert.match(fs.readFileSync(advancedPath, 'utf8'), /^```mermaid/m);
 
     await page.locator('.workspace-file-row').filter({ hasText: 'math.md' }).click();
+    await page.locator('.file-tab.active[title="math.md"]').waitFor();
+    await page.waitForFunction(() => (document.querySelector('.document-markdown-content')?.textContent || '').trim() === '');
     await document.waitFor();
     await document.click();
     await page.locator('summary[aria-label="더 많은 블록"]').click();
