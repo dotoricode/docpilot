@@ -163,6 +163,7 @@ async function assertPackagedBridgeStarts() {
     assert(fs.statSync(targetDmgPath).size > 50 * 1024 * 1024, `${target.arch} DMG looks too small to contain the Electron app`);
     assert(fs.existsSync(targetAppPath), `packaged app missing: ${targetAppPath}`);
     assertIconHasAlpha(path.join(targetAppPath, 'Contents', 'Resources', 'icon.icns'), `${target.arch} packaged app icon`);
+    assert(fs.existsSync(path.join(targetAppPath, 'Contents', 'Resources', 'Assets.car')), `${target.arch} Icon Composer Assets.car missing`);
     assert.match(execFileSync('file', [path.join(targetAppPath, 'Contents', 'MacOS', 'DocPilot')], { encoding: 'utf8' }), new RegExp(`\\b${target.fileArch}\\b`));
     assert.match(execFileSync('file', [targetPtyPath], { encoding: 'utf8' }), new RegExp(`\\b${target.fileArch}\\b`));
     execFileSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', targetAppPath], {
@@ -180,6 +181,10 @@ async function assertPackagedBridgeStarts() {
   assert.strictEqual(plistValue('CFBundleName'), 'DocPilot');
   assert.strictEqual(plistValue('CFBundleIdentifier'), 'com.docpilot.app');
   assert.strictEqual(plistValue('CFBundleShortVersionString'), pkg.version);
+  assert.strictEqual(plistValue('CFBundleIconName'), 'Icon');
+  execFileSync('swift', [path.join(root, 'scripts', 'check-packaged-icon-render.swift'), appPath], {
+    stdio: 'inherit',
+  });
 
   const packagedPkg = readAsarJson('package.json');
   assert.strictEqual(packagedPkg.version, pkg.version, 'packaged package version must match source package');
