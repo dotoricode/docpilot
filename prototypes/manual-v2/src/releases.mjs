@@ -21,6 +21,8 @@ export const FALLBACK_RELEASES = Object.freeze([
 - 빈 목록 항목의 글머리 기호가 CSS 초기화로 사라지던 문제를 수정했습니다.
 - 좁은 터미널 탭에 불필요한 스크롤이 생기거나 NOTE·IMPORTANT 레이블이 본문과 겹치던 문제를 수정했습니다.
 - macOS 26 Finder가 레거시 ICNS 바깥에 합성하던 밝은 시스템 플레이트를 없애고, 네이티브 Icon Composer 아이콘을 적용했습니다.
+- 설치된 앱에서도 AsciiDoc worker가 변환 의존성을 찾도록 패키징해 Preview 오류를 수정했습니다.
+- 업데이트 확인을 제품 글꼴의 간결한 상태 토스트로 바꾸고, 확인 중에서 최신 버전 상태로 전환한 뒤 자동으로 닫히게 했습니다.
 
 ## Upgrade notes
 - 원문과 동일한 Markdown 구조를 증명할 수 없는 고급 문법 또는 매우 큰 문서는 Source와 읽기 전용 Preview를 사용합니다.

@@ -142,6 +142,47 @@ async function assertPackagedBridgeStarts() {
   }
 }
 
+function assertPackagedAsciidocWorkerStarts() {
+  const isolatedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-packaged-adoc-worker-'));
+  const isolatedWorkerPath = path.join(isolatedRoot, 'adoc-worker.js');
+  const packagedNodeModules = path.join(appPath, 'Contents', 'Resources', 'app.asar.unpacked', 'node_modules');
+  try {
+    fs.copyFileSync(unpackedAdocWorkerPath, isolatedWorkerPath);
+    if (fs.existsSync(packagedNodeModules)) {
+      fs.cpSync(packagedNodeModules, path.join(isolatedRoot, 'node_modules'), { recursive: true });
+    }
+    const harness = `
+      const { Worker } = require('worker_threads');
+      const worker = new Worker(process.argv[1]);
+      const timer = setTimeout(() => {
+        console.error('packaged AsciiDoc worker timed out');
+        process.exit(1);
+      }, 10_000);
+      worker.once('error', error => {
+        clearTimeout(timer);
+        console.error(error.stack || error.message);
+        process.exit(1);
+      });
+      worker.once('message', message => {
+        clearTimeout(timer);
+        if (message.error) {
+          console.error(message.error);
+          process.exit(1);
+        }
+        if (!message.html || !message.html.includes('Render succeeds.')) {
+          console.error('packaged AsciiDoc worker returned unexpected HTML');
+          process.exit(1);
+        }
+        worker.terminate().then(() => process.exit(0));
+      });
+      worker.postMessage({ reqId: 1, source: '= Packaged AsciiDoc worker\\n\\nRender succeeds.' });
+    `;
+    execFileSync(process.execPath, ['-e', harness, isolatedWorkerPath], { stdio: 'pipe' });
+  } finally {
+    fs.rmSync(isolatedRoot, { recursive: true, force: true });
+  }
+}
+
 (async () => {
   assertIconHasAlpha(path.join(root, 'assets', 'icon.png'), 'source PNG icon');
   assertIconHasAlpha(path.join(root, 'assets', 'docpilot.icns'), 'source ICNS icon');
@@ -177,6 +218,7 @@ async function assertPackagedBridgeStarts() {
   assert(fs.existsSync(unpackedAdocWorkerPath), `unpacked adoc worker missing: ${unpackedAdocWorkerPath}`);
   assert(fs.existsSync(unpackedFakeAgentPath), `unpacked fake agent missing: ${unpackedFakeAgentPath}`);
   assert(fs.existsSync(unpackedContextPolicyPath), `unpacked bridge dependency missing: ${unpackedContextPolicyPath}`);
+  assertPackagedAsciidocWorkerStarts();
 
   assert.strictEqual(plistValue('CFBundleName'), 'DocPilot');
   assert.strictEqual(plistValue('CFBundleIdentifier'), 'com.docpilot.app');

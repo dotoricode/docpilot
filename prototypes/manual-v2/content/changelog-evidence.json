@@ -17,9 +17,15 @@
     },
     {
       "id": "update-check-preview-layout",
-      "claim": "Users can explicitly check the trusted unsigned update flow while active work is preserved, and constrained preview, terminal, slash-menu, and admonition layouts remain usable.",
+      "claim": "Users can explicitly check the trusted unsigned update flow while active work is preserved; checking and latest states use a product-font status toast that transitions and dismisses automatically, while actionable update states retain the full card.",
       "implementation": ["app/src/screens/App.tsx", "app/src/features/editor/EditorPane.tsx", "shared/core/update-controller.js", "app/src/workbench-final.css"],
       "verification": ["tests/update-controller.test.js", "scripts/check-react-manual-update.js", "scripts/check-react-preview-workflows.js", "scripts/check-react-terminal-narrow-layout.js"]
+    },
+    {
+      "id": "packaged-asciidoc-worker",
+      "claim": "Installed apps unpack the AsciiDoc worker and its complete runtime dependency closure so Preview conversion works outside the development repository.",
+      "implementation": ["package.json", "adoc-worker.js"],
+      "verification": ["scripts/check-packaged-app.js", "scripts/check-react-preview-workflows.js", "scripts/check-react-asciidoc-security.js"]
     },
     {
       "id": "embedded-terminal-shells",

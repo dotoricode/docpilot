@@ -473,6 +473,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!updateCardVisible || updateState.status !== 'latest') return;
+    const timer = window.setTimeout(() => setUpdateCardVisible(false), 2800);
+    return () => window.clearTimeout(timer);
+  }, [updateCardVisible, updateState.status, updateState.version]);
+
+  useEffect(() => {
     const bridge = window.docpilot;
     if (!bridge) return;
     let disposed = false;
@@ -1638,7 +1644,20 @@ export function App() {
           </section>
         </div>
       ) : null}
-      {updateCardVisible ? (
+      {updateCardVisible && ['checking', 'latest'].includes(updateState.status) ? (
+        <aside className={`update-toast ${updateState.status}`} role="status" aria-live="polite">
+          <span className="update-toast-icon" aria-hidden="true">
+            {updateState.status === 'latest'
+              ? <Check size={18} weight="regular" />
+              : <ClockCounterClockwise size={18} weight="regular" />}
+          </span>
+          <span className="update-toast-message">
+            {updateState.status === 'latest'
+              ? '최신 버전을 사용 중입니다.'
+              : '업데이트를 확인 중입니다.'}
+          </span>
+        </aside>
+      ) : updateCardVisible ? (
         <aside className="update-card" role="dialog" aria-label="업데이트 확인" aria-live="polite">
           <header>
             <div>

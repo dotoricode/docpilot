@@ -339,6 +339,55 @@
   color: currentColor;
 }
 
+.update-toast {
+  position: fixed;
+  z-index: 260;
+  left: 50%;
+  bottom: 24px;
+  width: min(460px, calc(100vw - 32px));
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 14px 20px;
+  border: 1px solid var(--workbench-border-strong);
+  border-radius: 17px;
+  background: var(--workbench-editor);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.22);
+  color: var(--workbench-text);
+  font-family: var(--dp-sans);
+  transform: translateX(-50%);
+}
+
+.update-toast-icon {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--workbench-muted);
+}
+
+.update-toast.checking .update-toast-icon {
+  animation: update-toast-spin 900ms linear infinite;
+}
+
+.update-toast-message {
+  font-family: var(--dp-sans);
+  font-size: 15px;
+  font-weight: 480;
+  line-height: 1.45;
+  letter-spacing: -0.015em;
+}
+
+@keyframes update-toast-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-toast.checking .update-toast-icon { animation: none; }
+}
+
 .update-card {
   position: fixed;
   z-index: 260;

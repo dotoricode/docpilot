@@ -62,7 +62,7 @@ async function main() {
     assert.equal(menuLabel, '업데이트 확인…');
 
     await sendMenuCommand(app, 'check-update');
-    await editor.waitForSelector('.update-card');
+    await editor.waitForSelector('.update-toast');
     await editor.waitForTimeout(800);
     await sendUpdateState(app, {
       status: 'available',
@@ -72,12 +72,20 @@ async function main() {
     });
     await editor.waitForFunction(() => document.querySelector('.update-card')?.textContent?.includes('v9.9.9'));
     await sendUpdateState(app, { status: 'checking' });
-    await editor.waitForFunction(() => document.querySelector('.update-card')?.textContent?.includes('공식 릴리즈와 현재 버전'));
-    assert.match(await editor.locator('.update-card').innerText(), /공식 릴리즈와 현재 버전/);
+    await editor.waitForFunction(() => document.querySelector('.update-toast')?.textContent?.includes('업데이트를 확인 중입니다.'));
+    assert.match(await editor.locator('.update-toast').innerText(), /업데이트를 확인 중입니다\./);
 
     await sendUpdateState(app, { status: 'latest', version: '2.0.3' });
-    await editor.waitForFunction(() => document.querySelector('.update-card')?.textContent?.includes('최신 버전'));
-    assert.match(await editor.locator('.update-card').innerText(), /v2\.0\.3.*최신 버전/);
+    await editor.waitForFunction(() => document.querySelector('.update-toast')?.textContent?.includes('최신 버전을 사용 중입니다.'));
+    assert.match(await editor.locator('.update-toast').innerText(), /최신 버전을 사용 중입니다\./);
+    assert.equal(await editor.locator('.update-toast svg').count(), 1, 'latest toast must show a confirmation icon');
+    const toastTypography = await editor.locator('.update-toast-message').evaluate(element => {
+      const style = getComputedStyle(element);
+      return { fontFamily: style.fontFamily, fontSize: style.fontSize, fontWeight: style.fontWeight };
+    });
+    assert.match(toastTypography.fontFamily, /Geist/i, 'update toast must use the product sans font');
+    assert.equal(toastTypography.fontSize, '15px');
+    await editor.waitForSelector('.update-toast', { state: 'detached', timeout: 5_000 });
 
     await sendMenuCommand(app, 'check-update');
     await editor.waitForTimeout(800);
