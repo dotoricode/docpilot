@@ -4,7 +4,7 @@
     "version": "2.0.5",
     "state": "release",
     "tag": "v2.0.5",
-    "implementationCommit": "f151cd4624a9adf9abd79feb8ffbb4e6ab2a3cef",
+    "implementationCommit": "7f5731362c42673ac47b647bfee0860d3225f59a",
     "implementationDate": "2026-07-20",
     "note": "The user approved a one-time same-version v2.0.5 replacement. The existing tag and four public assets may move only after the original artifacts are backed up and the replacement DMGs pass the release gates."
   },
