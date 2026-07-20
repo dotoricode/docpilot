@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { ArrowRight, ArrowSquareOut, Check, ClockCounterClockwise, DotsSixVertical, DownloadSimple, FileText, FolderOpen, MagnifyingGlass, Moon, SidebarSimple, Sun, TerminalWindow, X } from '@phosphor-icons/react';
+import { ArrowRight, ArrowSquareOut, Check, ClockCounterClockwise, DownloadSimple, FileText, FolderOpen, MagnifyingGlass, Moon, SidebarSimple, Sun, TerminalWindow, X } from '@phosphor-icons/react';
 import { EditorPane } from '../features/editor/EditorPane';
 import { InstructionsPanel } from '../features/instructions/InstructionsPanel';
 import { TerminalPane } from '../features/terminal/TerminalPane';
@@ -1744,19 +1744,6 @@ export function App() {
             if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDocumentTabDropPreview(null);
           }}
         >
-          {!showHome && terminalOpen ? (
-            <button
-              className="document-pane-drag-handle"
-              type="button"
-              draggable={false}
-              aria-label="Drag document pane. Use Alt plus arrow keys to move."
-              title="Drag document pane"
-              onPointerDown={event => beginPanePointerDrag(event, 'document')}
-              onKeyDown={event => movePaneFromKeyboard(event, 'document')}
-            >
-              <DotsSixVertical size={16} weight="bold" />
-            </button>
-          ) : null}
           {showHome ? (
           <HomeScreen
             workspaceRoot={workspaceRoot}

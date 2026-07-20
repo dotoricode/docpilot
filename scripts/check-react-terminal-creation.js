@@ -62,6 +62,31 @@ async function main() {
     await emptyChooser.click();
     const terminalMenu = editor.getByRole('menu', { name: 'Terminal shells' });
     await terminalMenu.waitFor();
+    const chooserGeometry = await editor.evaluate(() => {
+      const pane = document.querySelector('.terminal-pane');
+      const tabbar = document.querySelector('.terminal-tabbar');
+      const menu = document.querySelector('.terminal-shell-menu');
+      if (!(pane instanceof HTMLElement) || !(tabbar instanceof HTMLElement) || !(menu instanceof HTMLElement)) return null;
+      const paneRect = pane.getBoundingClientRect();
+      const tabbarRect = tabbar.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      return {
+        paneTop: paneRect.top,
+        paneBottom: paneRect.bottom,
+        tabbarBottom: tabbarRect.bottom,
+        menuTop: menuRect.top,
+        menuBottom: menuRect.bottom,
+      };
+    });
+    assert(chooserGeometry, 'terminal chooser geometry must be measurable');
+    assert(
+      chooserGeometry.menuTop >= chooserGeometry.tabbarBottom,
+      `terminal chooser must open below the toolbar instead of outside the top of the pane: ${JSON.stringify(chooserGeometry)}`,
+    );
+    assert(
+      chooserGeometry.menuBottom <= chooserGeometry.paneBottom,
+      `terminal chooser must stay inside the visible terminal pane: ${JSON.stringify(chooserGeometry)}`,
+    );
     assert.equal(await terminalMenu.getByRole('menuitem').count(), 4, 'terminal chooser must keep the fixed shell allowlist');
     assert.equal(await terminalMenu.getByText('Runs inside DocPilot · Change the default in Settings').count(), 1, 'terminal chooser must explain that shells stay embedded');
     for (const label of ['Default shell', 'fish', 'zsh', 'bash']) {
@@ -166,6 +191,7 @@ async function main() {
     assert(createResponse, 'New terminal click must POST /terminal-sessions');
     assert.equal(createResponse.status(), 200, await createResponse.text());
     assert.equal(createResponse.request().postDataJSON().shellId, 'default', 'one-time shell choice must be sent to the embedded terminal session API');
+    assert.equal(createResponse.request().postDataJSON().cwd, '.', 'new terminals must explicitly start at the active workspace root');
     const state = await editor.evaluate(async () => {
     const params = new URLSearchParams(window.location.search);
     const port = params.get('port') || '7474';
@@ -178,6 +204,7 @@ async function main() {
     assert.equal(state.status, 200);
     assert.equal(state.body.sessions.length, 1, 'bridge must retain the created terminal session');
     assert.equal(state.body.sessions[0].shellId, 'default', 'bridge must run the chosen shell inside the retained terminal session');
+    assert.equal(state.body.sessions[0].cwd, fs.realpathSync(workspace), 'terminal PTY must resolve its working directory to the active workspace root');
     assert.equal(await editor.locator('.terminal-tab.active').count(), 1, 'renderer must show the created terminal tab');
     const persistedDefault = await editor.evaluate(async () => {
       const params = new URLSearchParams(window.location.search);

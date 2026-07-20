@@ -835,18 +835,18 @@ export function EditorPane({
       });
     };
     scheduleRefresh();
-    const preview = previewRef.current;
-    preview?.addEventListener('load', scheduleRefresh, true);
+    const scrollContainer = activeHeadingScrollContainer();
+    scrollContainer?.addEventListener('load', scheduleRefresh, true);
     window.addEventListener('resize', scheduleRefresh);
     return () => {
-      preview?.removeEventListener('load', scheduleRefresh, true);
+      scrollContainer?.removeEventListener('load', scheduleRefresh, true);
       window.removeEventListener('resize', scheduleRefresh);
       if (activeHeadingFrameRef.current !== null) {
         window.cancelAnimationFrame(activeHeadingFrameRef.current);
         activeHeadingFrameRef.current = null;
       }
     };
-  }, [previewHtml, headings.length, previewWidth]);
+  }, [previewHtml, headings.length, previewWidth, documentEditable]);
 
   useEffect(() => {
     if (!previewFindOpen) return undefined;
@@ -1160,10 +1160,13 @@ export function EditorPane({
   }
 
   function scrollToHeading(index: number) {
-    const preview = previewRef.current;
-    const heading = preview?.querySelectorAll('h1,h2,h3,h4,h5,h6')[index];
-    if (preview && heading instanceof HTMLElement) {
-      preview.scrollTo({ top: Math.max(0, heading.offsetTop - 28), behavior: 'smooth' });
+    const scrollContainer = activeHeadingScrollContainer();
+    const heading = activeHeadingElements(scrollContainer)[index];
+    if (scrollContainer && heading) {
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const headingTop = heading.getBoundingClientRect().top - containerRect.top + scrollContainer.scrollTop;
+      const topOffset = documentEditable ? 56 : 28;
+      scrollContainer.scrollTo({ top: Math.max(0, headingTop - topOffset), behavior: 'smooth' });
     }
     shouldScrollTocActiveRef.current = index !== activeHeadingIndex;
     setActiveHeadingIndex(index);
@@ -1171,8 +1174,8 @@ export function EditorPane({
 
   function syncActiveHeading() {
     if (diffOn) return;
-    const preview = previewRef.current;
-    if (preview) markPreviewScrollbarActive(preview);
+    const scrollContainer = activeHeadingScrollContainer();
+    if (scrollContainer) markPreviewScrollbarActive(scrollContainer);
     if (activeHeadingScrollIdleRef.current !== null) {
       window.clearTimeout(activeHeadingScrollIdleRef.current);
     }
@@ -1203,18 +1206,19 @@ export function EditorPane({
   }
 
   function cachePreviewHeadingOffsets() {
-    const preview = previewRef.current;
-    if (!preview) {
+    const scrollContainer = activeHeadingScrollContainer();
+    if (!scrollContainer) {
       headingOffsetsRef.current = [];
       return;
     }
-    headingOffsetsRef.current = Array.from(preview.querySelectorAll('h1,h2,h3,h4,h5,h6'))
-      .map(heading => heading instanceof HTMLElement ? heading.offsetTop : 0);
+    const containerRect = scrollContainer.getBoundingClientRect();
+    headingOffsetsRef.current = activeHeadingElements(scrollContainer)
+      .map(heading => heading.getBoundingClientRect().top - containerRect.top + scrollContainer.scrollTop);
   }
 
   function updateActiveHeading() {
-    const preview = previewRef.current;
-    if (!preview) return;
+    const scrollContainer = activeHeadingScrollContainer();
+    if (!scrollContainer) return;
     let headingOffsets = headingOffsetsRef.current;
     if (!headingOffsets.length && headings.length) {
       cachePreviewHeadingOffsets();
@@ -1224,9 +1228,40 @@ export function EditorPane({
       setActiveHeadingIndex(0);
       return;
     }
-    const threshold = preview.scrollTop + 96;
+    const threshold = scrollContainer.scrollTop + 96;
     const nextIndex = headingIndexForScrollTop(headingOffsets, threshold);
     setActiveHeadingIndex(current => current === nextIndex ? current : nextIndex);
+  }
+
+  function activeHeadingScrollContainer() {
+    return documentEditable ? documentShellRef.current : previewRef.current;
+  }
+
+  function activeHeadingElements(scrollContainer: HTMLElement | null) {
+    if (!scrollContainer) return [];
+    const selector = documentEditable
+      ? '.document-markdown-content h1, .document-markdown-content h2, .document-markdown-content h3, .document-markdown-content h4, .document-markdown-content h5, .document-markdown-content h6'
+      : 'h1,h2,h3,h4,h5,h6';
+    return Array.from(scrollContainer.querySelectorAll(selector))
+      .filter((heading): heading is HTMLElement => heading instanceof HTMLElement);
+  }
+
+  function renderTocRail() {
+    return (
+      <nav ref={tocRef} className={`toc-rail ${headings.length ? '' : 'empty'}`} aria-label="문서 목차">
+        {headings.length ? headings.map((heading, index) => (
+          <button
+            className={`toc-item toc-h${heading.level}`}
+            data-active={index === activeHeadingIndex ? 'true' : 'false'}
+            key={`${heading.line}-${heading.text}`}
+            type="button"
+            onClick={() => scrollToHeading(index)}
+          >
+            {heading.text}
+          </button>
+        )) : <span>목차 없음</span>}
+      </nav>
+    );
   }
 
   function handlePreviewShellWheel(event: WheelEvent<HTMLDivElement>) {
@@ -2088,7 +2123,12 @@ export function EditorPane({
       >
         <div className="editor-host" ref={hostRef} />
         {mode === 'document' && documentEditable ? (
-          <div ref={documentShellRef} className="document-editor-shell" style={{ '--preview-width': `${effectivePreviewWidth}px` } as CSSProperties}>
+          <div
+            ref={documentShellRef}
+            className="document-editor-shell"
+            style={{ '--preview-width': `${effectivePreviewWidth}px` } as CSSProperties}
+            onScroll={syncActiveHeading}
+          >
             {frontmatter.entries.length ? <FrontmatterCard entries={frontmatter.entries} /> : null}
             <DocumentMarkdownEditor
               key={buffer.path}
@@ -2103,6 +2143,7 @@ export function EditorPane({
             />
           </div>
         ) : null}
+        {mode === 'document' && documentEditable ? renderTocRail() : null}
         {mode === 'tree' ? (
           <div className="json-tree-shell">
             <JsonTreeView source={visibleContent} />
@@ -2203,21 +2244,7 @@ export function EditorPane({
             </>
           ) : (
             <>
-              {mode !== 'edit' && !diffOn ? (
-                <nav ref={tocRef} className={`toc-rail ${headings.length ? '' : 'empty'}`} aria-label="문서 목차">
-                  {headings.length ? headings.map((heading, index) => (
-                    <button
-                      className={`toc-item toc-h${heading.level}`}
-                      data-active={index === activeHeadingIndex ? 'true' : 'false'}
-                      key={`${heading.line}-${heading.text}`}
-                      type="button"
-                      onClick={() => scrollToHeading(index)}
-                    >
-                      {heading.text}
-                    </button>
-                  )) : <span>목차 없음</span>}
-                </nav>
-              ) : null}
+              {mode !== 'edit' && !diffOn ? renderTocRail() : null}
               <div className="preview-document-stage" style={{ '--preview-width': `${effectivePreviewWidth}px` } as CSSProperties}>
                 {mode === 'document' && (!documentEligibility.editable || documentSafetyFailure) ? (
                   <div className="document-readonly-banner" role="status">

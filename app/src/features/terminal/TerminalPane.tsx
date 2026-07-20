@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CaretDown, Check, DotsSixVertical, Plus, Trash, X } from '@phosphor-icons/react';
 import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import {
   acknowledgeTerminalFrame,
@@ -83,6 +84,7 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
   const [defaultTerminalShell, setDefaultTerminalShell] = useState<TerminalShellId>('default');
   const [terminalShells, setTerminalShells] = useState<TerminalShell[]>([DEFAULT_TERMINAL_SHELL]);
   const [chooserOpen, setChooserOpen] = useState(false);
+  const [chooserMaxHeight, setChooserMaxHeight] = useState(320);
   const [installingFish, setInstallingFish] = useState(false);
   const [installMessage, setInstallMessage] = useState('');
   const activeSession = sessions.find(session => session.id === activeId) || null;
@@ -100,15 +102,23 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
       scrollback: 5000,
       theme: TERMINAL_THEME[theme],
     });
+    const fitAddon = new FitAddon();
+    terminal.loadAddon(fitAddon);
     terminal.open(hostRef.current);
     terminalRef.current = terminal;
+    let disposed = false;
     const input = terminal.onData(data => {
       if (activeId) void sendTerminalInput(activeId, data).catch(reportError);
     });
-    const resizeObserver = new ResizeObserver(() => resizeTerminalToHost(terminal, hostRef.current, activeId));
+    const fit = () => {
+      if (!disposed) fitTerminalToHost(terminal, fitAddon, hostRef.current, activeId);
+    };
+    const resizeObserver = new ResizeObserver(fit);
     resizeObserver.observe(hostRef.current);
-    resizeTerminalToHost(terminal, hostRef.current, activeId);
+    fit();
+    void document.fonts.ready.then(fit);
     return () => {
+      disposed = true;
       input.dispose();
       resizeObserver.disconnect();
       terminal.dispose();
@@ -195,7 +205,7 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
   async function createTerminal(shellId: TerminalShellId = defaultTerminalShell) {
     setError('');
     try {
-      const result = await startTerminalSession({ title: `Terminal ${sessions.length + 1}`, shellId });
+      const result = await startTerminalSession({ title: `Terminal ${sessions.length + 1}`, shellId, cwd: '.' });
       setSessions(current => [...current, result.session]);
       setActiveId(result.session.id);
     } catch (cause) {
@@ -234,6 +244,13 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
   }
 
   function openTerminalChooser() {
+    const control = chooserRef.current;
+    const pane = control?.closest<HTMLElement>('.terminal-pane');
+    if (control && pane) {
+      const controlRect = control.getBoundingClientRect();
+      const paneRect = pane.getBoundingClientRect();
+      setChooserMaxHeight(Math.max(80, Math.floor(paneRect.bottom - controlRect.bottom - 8)));
+    }
     setChooserOpen(true);
     window.requestAnimationFrame(() => {
       chooserRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
@@ -336,7 +353,12 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
               <CaretDown size={10} weight="bold" />
             </button>
             {chooserOpen ? (
-              <div className="terminal-shell-menu" role="menu" aria-label="Terminal shells">
+              <div
+                className="terminal-shell-menu"
+                role="menu"
+                aria-label="Terminal shells"
+                style={{ maxHeight: chooserMaxHeight }}
+              >
                 {terminalShells.map(shell => (
                   <button
                     key={shell.id}
@@ -417,13 +439,10 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
   }
 }
 
-function resizeTerminalToHost(terminal: Terminal, host: HTMLDivElement | null, sessionId: string) {
+function fitTerminalToHost(terminal: Terminal, fitAddon: FitAddon, host: HTMLDivElement | null, sessionId: string) {
   if (!host || !sessionId) return;
-  const cols = Math.max(20, Math.floor(host.clientWidth / 7.3));
-  const rows = Math.max(5, Math.floor(host.clientHeight / 16.5));
-  if (terminal.cols === cols && terminal.rows === rows) return;
-  terminal.resize(cols, rows);
-  void resizeTerminalSession(sessionId, cols, rows).catch(() => {});
+  fitAddon.fit();
+  void resizeTerminalSession(sessionId, terminal.cols, terminal.rows).catch(() => {});
 }
 
 function shellName(shell: string) {

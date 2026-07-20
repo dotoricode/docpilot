@@ -18,6 +18,7 @@ async function waitForReactEditorWindow(app) {
 async function main() {
   const repoRoot = path.resolve(__dirname, '..');
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-toc-navigation-'));
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-toc-navigation-user-'));
   fs.writeFileSync(path.join(fixtureRoot, 'README.md'), [
     '# Component Guide',
     '',
@@ -62,6 +63,7 @@ async function main() {
     env: {
       ...process.env,
       DOCPILOT_FAKE_AGENT: '1',
+      DOCPILOT_USER_DATA_DIR: userData,
     },
   });
 
@@ -75,24 +77,30 @@ async function main() {
 
     const editor = await waitForReactEditorWindow(app);
     await editor.waitForSelector('.workspace-file-row', { timeout: 15000 });
+    const releaseNotice = editor.getByRole('dialog', { name: '새 버전 안내' });
+    if (await releaseNotice.isVisible().catch(() => false)) {
+      await releaseNotice.getByRole('button', { name: '확인' }).click();
+    }
     await editor.locator('.workspace-file-row').filter({ hasText: 'README.md' }).first().click();
+    const documentMode = editor.locator('.editor-mode-toggle button').filter({ hasText: /^Document$/ });
+    if (!await documentMode.evaluate(node => node.classList.contains('active'))) await documentMode.click();
+    await editor.waitForSelector('.document-markdown-content[contenteditable="true"]');
     await editor.waitForSelector('.toc-rail .toc-item');
 
-    const layout = await editor.locator('.preview-shell').evaluate(shell => {
-      const preview = shell.querySelector('.markdown-preview');
-      const tocRail = shell.querySelector('.toc-rail');
+    const layout = await editor.locator('.editor-workspace.document').evaluate(shell => {
+      const documentEditor = shell.querySelector('.document-editor-shell');
+      const tocRail = shell.querySelector(':scope > .toc-rail');
       const shellRect = shell.getBoundingClientRect();
-      const previewRect = preview ? preview.getBoundingClientRect() : null;
+      const documentRect = documentEditor ? documentEditor.getBoundingClientRect() : null;
       const tocRect = tocRail ? tocRail.getBoundingClientRect() : null;
       return {
         columns: getComputedStyle(shell).gridTemplateColumns,
-        previewLeft: previewRect ? previewRect.left - shellRect.left : -1,
-        previewRight: previewRect ? previewRect.right - shellRect.left : -1,
+        documentRight: documentRect ? documentRect.right - shellRect.left : -1,
         tocLeft: tocRect ? tocRect.left - shellRect.left : -1,
       };
     });
-    if (!layout.columns.includes('54px') || layout.previewLeft < 48 || layout.tocLeft < layout.previewRight) {
-      throw new Error(`TOC should sit on the right with a left line gutter reserved: ${JSON.stringify(layout)}`);
+    if (!layout.columns.includes('220px') || layout.tocLeft < layout.documentRight) {
+      throw new Error(`Document TOC should sit to the right of the editable document: ${JSON.stringify(layout)}`);
     }
 
     const toc = await editor.locator('.toc-rail .toc-item').evaluateAll(items => items.map(item => ({
@@ -117,26 +125,27 @@ async function main() {
 
     await editor.locator('.toc-rail .toc-item').filter({ hasText: '배경' }).click();
     await editor.waitForFunction(() => {
-      const preview = document.querySelector('.markdown-preview');
-      const heading = [...document.querySelectorAll('.markdown-preview h5')]
+      const shell = document.querySelector('.document-editor-shell');
+      const heading = [...document.querySelectorAll('.document-markdown-content h5')]
         .find(node => (node.textContent || '').trim() === '배경');
-      if (!(preview instanceof HTMLElement) || !(heading instanceof HTMLElement)) return false;
-      return Math.abs((heading.getBoundingClientRect().top - preview.getBoundingClientRect().top) - 28) < 12;
+      if (!(shell instanceof HTMLElement) || !(heading instanceof HTMLElement)) return false;
+      return Math.abs((heading.getBoundingClientRect().top - shell.getBoundingClientRect().top) - 56) < 12;
     }, null, { timeout: 5000 });
 
     await editor.locator('.toc-rail .toc-item').filter({ hasText: /^계약 \/ 인터페이스$/ }).click();
     await editor.waitForFunction(() => {
-      const preview = document.querySelector('.markdown-preview');
-      const heading = [...document.querySelectorAll('.markdown-preview h5')]
+      const shell = document.querySelector('.document-editor-shell');
+      const heading = [...document.querySelectorAll('.document-markdown-content h5')]
         .find(node => (node.textContent || '').trim() === '계약 / 인터페이스');
-      if (!(preview instanceof HTMLElement) || !(heading instanceof HTMLElement)) return false;
-      return Math.abs((heading.getBoundingClientRect().top - preview.getBoundingClientRect().top) - 28) < 12;
+      if (!(shell instanceof HTMLElement) || !(heading instanceof HTMLElement)) return false;
+      return Math.abs((heading.getBoundingClientRect().top - shell.getBoundingClientRect().top) - 56) < 12;
     }, null, { timeout: 5000 });
 
     console.log(`${executablePath ? 'packaged ' : ''}react toc navigation checks passed`);
   } finally {
     await app.close().catch(() => {});
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    fs.rmSync(userData, { recursive: true, force: true });
   }
 }
 

@@ -62,6 +62,9 @@ async function main() {
       const tab = document.querySelector('.terminal-tab.active span');
       const create = document.querySelector('.terminal-new-primary');
       const dock = document.querySelector('[aria-label="Dock terminal right"]');
+      const host = document.querySelector('.terminal-xterm-host');
+      const viewport = document.querySelector('.terminal-xterm-host .xterm-viewport');
+      const screen = document.querySelector('.terminal-xterm-host .xterm-screen');
       if (!(pane instanceof HTMLElement) || !(tabbar instanceof HTMLElement) || !(tabs instanceof HTMLElement)) {
         throw new Error('terminal geometry is unavailable');
       }
@@ -79,6 +82,11 @@ async function main() {
         tabTitle: tab?.textContent || '',
         newTerminalVisible: create instanceof HTMLElement && create.getBoundingClientRect().width > 0,
         dockVisible: dock instanceof HTMLElement && dock.getBoundingClientRect().width > 0,
+        terminalHostWidth: host instanceof HTMLElement ? host.clientWidth : -1,
+        terminalViewportWidth: viewport instanceof HTMLElement ? viewport.clientWidth : -1,
+        terminalScreenRight: screen instanceof HTMLElement ? screen.getBoundingClientRect().right : -1,
+        terminalHostRight: host instanceof HTMLElement ? host.getBoundingClientRect().right : -1,
+        terminalScrollbarWidth: viewport instanceof HTMLElement ? getComputedStyle(viewport, '::-webkit-scrollbar').width : '',
       };
     });
 
@@ -89,6 +97,8 @@ async function main() {
     assert.ok(geometry.tabbarScrollHeight <= geometry.tabbarClientHeight + 1, `terminal tabbar must not overflow vertically: ${JSON.stringify(geometry)}`);
     assert.equal(geometry.newTerminalVisible, true, `New terminal control must remain visible: ${JSON.stringify(geometry)}`);
     assert.equal(geometry.dockVisible, true, `dock controls must remain visible: ${JSON.stringify(geometry)}`);
+    assert.ok(geometry.terminalScreenRight <= geometry.terminalHostRight + 1, `terminal content must fit inside the visible host: ${JSON.stringify(geometry)}`);
+    assert.equal(geometry.terminalScrollbarWidth, '8px', `terminal scrollbar must use the compact editor-style width: ${JSON.stringify(geometry)}`);
     console.log('react terminal narrow layout checks passed');
   } finally {
     await app.close().catch(() => {});

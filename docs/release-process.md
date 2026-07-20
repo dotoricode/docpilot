@@ -78,11 +78,16 @@ git diff -- docs prototypes/manual-v2
 
 ## 4. 앱 및 패키지 게이트
 
+Electron 회귀 검사는 작업 중인 사용자의 창과 포커스를 방해하지 않도록 `DOCPILOT_TEST_HIDDEN_WINDOWS=1`인 숨김 창과 검사별 임시 `DOCPILOT_USER_DATA_DIR`에서 실행합니다. 아래 npm `check:*` 명령은 숨김 창을 기본으로 사용합니다. 화면 확인이 꼭 필요한 수동 검증만 별도의 테스트 워크스페이스에서 창을 표시합니다.
+
 ```bash
 npm run renderer:typecheck
 npm test
 npm run check:shutdown
 npm run check:terminal:create
+npm run check:terminal:narrow
+npm run check:toc
+npm run check:pane-drag
 npm run check:update-flow
 npm run check:renderer-security
 npm audit --audit-level=low
