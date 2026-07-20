@@ -76,6 +76,10 @@ const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
       title: '좁은 화면의 편집기와 터미널을 보정했습니다',
       body: 'Document 명령 메뉴가 터미널 뒤로 가려지지 않으며, 좁은 터미널 탭과 NOTE·IMPORTANT 정보 패널의 표시가 겹치지 않습니다.',
     },
+    {
+      title: '앱 아이콘과 미서명 설치 안내를 바로잡았습니다',
+      body: '아이콘 바깥쪽의 밝은 외곽 림을 제거하고, macOS가 실행을 막을 때 개인정보 보호 및 보안에서 확인 없이 열기를 선택하는 절차를 안내합니다.',
+    },
   ],
   '2.0.4': [
     {

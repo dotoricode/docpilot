@@ -20,10 +20,12 @@ export const FALLBACK_RELEASES = Object.freeze([
 - macOS 한국어 입력기 조합 뒤에도 Markdown 블록 단축 입력이 문자로 남지 않고 의도한 블록으로 변환됩니다.
 - 빈 목록 항목의 글머리 기호가 CSS 초기화로 사라지던 문제를 수정했습니다.
 - 좁은 터미널 탭에 불필요한 스크롤이 생기거나 NOTE·IMPORTANT 레이블이 본문과 겹치던 문제를 수정했습니다.
+- Finder와 DMG 설치 화면에서 앱 아이콘 바깥쪽에 보이던 밝은 외곽 림과 그림자를 제거했습니다.
 
 ## Upgrade notes
 - 원문과 동일한 Markdown 구조를 증명할 수 없는 고급 문법 또는 매우 큰 문서는 Source와 읽기 전용 Preview를 사용합니다.
-- 이 공개 빌드는 Developer ID 서명과 Apple 공증이 없는 ad-hoc 배포입니다. DocPilot은 검증된 DMG를 열지만 앱을 자동 종료하거나 Applications의 앱을 자동 교체하지 않습니다.`,
+- 이 공개 빌드는 Developer ID 서명과 Apple 공증이 없는 ad-hoc 배포입니다. DocPilot은 검증된 DMG를 열지만 앱을 자동 종료하거나 Applications의 앱을 자동 교체하지 않습니다.
+- macOS가 실행을 막으면 DocPilot을 한 번 실행한 뒤 시스템 설정 → 개인정보 보호 및 보안 → 확인 없이 열기를 누르고, 다시 나타난 경고에서 열기를 선택합니다. Gatekeeper 비활성화나 터미널 우회 명령은 사용하지 마세요.`,
     assets: [],
     fallback: true,
   },
