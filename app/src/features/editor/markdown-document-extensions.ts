@@ -9,6 +9,7 @@ import { Markdown } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
 import { common, createLowlight } from 'lowlight';
 import { workspaceAssetUrl } from '../../shared/bridge-client';
+import { MarkdownMermaid } from './markdown-mermaid-extension';
 
 const lowlight = createLowlight(common);
 
@@ -24,6 +25,7 @@ export function createMarkdownDocumentExtensions(filePath = ''): AnyExtension[] 
     InlineMath.configure({ katexOptions: { throwOnError: false } }),
     BlockMath.configure({ katexOptions: { displayMode: true, throwOnError: false } }),
     Markdown.configure({ markedOptions: { gfm: true } }),
+    MarkdownMermaid,
   ];
 }
 

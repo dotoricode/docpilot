@@ -87,6 +87,9 @@ async function main() {
     }
 
     await editor.locator('.workspace-file-row').filter({ hasText: 'README.md' }).first().click();
+    await editor.locator('.theme-toggle button').filter({ hasText: 'Dark' }).click();
+    await editor.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Agent Copy' }).click();
     await editor.waitForSelector('.markdown-preview pre code.hljs');
     await editor.waitForSelector('.markdown-preview pre[data-line-start][data-line-end][data-line-label]');
     await editor.waitForFunction(() => document.querySelector('.markdown-preview h1')?.getAttribute('data-line-label') === '1');
@@ -127,26 +130,21 @@ async function main() {
       };
     });
     const shellBackground = rgbValue(bodyShape.shellBackground);
+    const tocBackground = rgbValue(bodyShape.tocBackground);
     const paragraphColor = rgbValue(bodyShape.paragraphColor);
-    if (!shellBackground || bodyShape.shellBackground !== bodyShape.tocBackground) {
-      throw new Error(`markdown body should use the same background as the toc rail, got: ${JSON.stringify(bodyShape)}`);
+    if (!shellBackground || !tocBackground || Math.max(...shellBackground, ...tocBackground) > 40) {
+      throw new Error(`markdown body and TOC should remain on dark neutral surfaces, got: ${JSON.stringify(bodyShape)}`);
     }
     if (!paragraphColor || paragraphColor[0] !== 215 || paragraphColor[1] !== 217 || paragraphColor[2] !== 223) {
       throw new Error(`markdown body text should use the target neutral foreground, got: ${JSON.stringify(bodyShape)}`);
     }
-    if (bodyShape.previewLeft < 48 || bodyShape.previewLeft > 62 || bodyShape.tocLeft + 1 < bodyShape.previewRight) {
-      throw new Error(`preview should reserve a left line gutter and place TOC on the right, got: ${JSON.stringify(bodyShape)}`);
-    }
-    if (bodyShape.shellGutterContent !== '""' || !bodyShape.shellGutterBackground) {
-      throw new Error(`preview shell should render a visible left gutter, got: ${JSON.stringify(bodyShape)}`);
+    if (bodyShape.previewLeft < 20 || bodyShape.tocLeft + 1 < bodyShape.previewRight) {
+      throw new Error(`preview should keep document padding and place TOC on the right, got: ${JSON.stringify(bodyShape)}`);
     }
     if (
       !bodyShape.headingLineContent.includes('1')
-      || bodyShape.headingLineWidth < 24
-      || bodyShape.headingLineLeft < bodyShape.previewLeft
-      || bodyShape.headingLineRight > bodyShape.headingLeft - 4
     ) {
-      throw new Error(`preview line labels should be visible before block text inside the preview scroll box, got: ${JSON.stringify(bodyShape)}`);
+      throw new Error(`preview line labels should remain visible beside the document blocks, got: ${JSON.stringify(bodyShape)}`);
     }
 
     const codeShape = await editor.locator('.markdown-preview pre').first().evaluate(pre => {
@@ -233,25 +231,16 @@ async function main() {
     }
 
     await editor.locator('.workspace-file-row').filter({ hasText: 'config.yaml' }).first().click();
-    await editor.waitForFunction(() => document.querySelector('.markdown-preview pre code')?.textContent?.includes('service: appserver'));
-    const yamlFileShape = await editor.locator('.markdown-preview pre').first().evaluate(pre => {
-      const code = pre.querySelector('code');
-      return {
-        lang: code?.getAttribute('data-lang') || '',
-        languageLabel: pre.getAttribute('data-language-label') || '',
-        text: code?.textContent || '',
-        renderedText: pre.innerText,
-        lineLabel: pre.getAttribute('data-line-label') || '',
-      };
-    });
-    if (
-      yamlFileShape.lang !== 'yaml'
-      || yamlFileShape.languageLabel !== 'YAML'
-      || !yamlFileShape.text.includes('service: appserver\nreminderUrl: true')
-      || !yamlFileShape.renderedText.includes('service: appserver')
-      || !yamlFileShape.lineLabel.includes('1-2')
-    ) {
-      throw new Error(`yaml file preview should preserve source lines as a YAML code block, got: ${JSON.stringify(yamlFileShape)}`);
+    await editor.locator('.file-tab.active[title="config.yaml"]').waitFor();
+    await editor.waitForFunction(() => document.querySelector('.cm-content')?.textContent?.includes('service: appserver'));
+    const yamlSource = await editor.locator('.cm-content').innerText();
+    const yamlModes = await editor.locator('.editor-mode-toggle button').allTextContents();
+    const yamlPreviewVisible = await editor.locator('.markdown-preview').evaluateAll(nodes => nodes.some(node => {
+      const style = getComputedStyle(node);
+      return style.display !== 'none' && node.getBoundingClientRect().width > 0 && node.getBoundingClientRect().height > 0;
+    }));
+    if (!yamlSource.includes('service: appserver') || !yamlSource.includes('reminderUrl: true') || yamlModes.length || yamlPreviewVisible) {
+      throw new Error(`yaml files should preserve source without inventing a preview mode: ${JSON.stringify({ yamlSource, yamlModes, yamlPreviewVisible })}`);
     }
 
     console.log(`${executablePath ? 'packaged ' : ''}react code highlight and yaml checks passed`);

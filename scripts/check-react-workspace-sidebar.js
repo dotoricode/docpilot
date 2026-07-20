@@ -111,7 +111,7 @@ assert(editor.includes('previewWidth'), 'editor must support preview width contr
 assert(editor.includes('selectWholeDocument'), 'editor must support whole-document selection context');
 assert(editor.includes('copyWholeDocument'), 'editor must copy after whole-document selection');
 assert(editor.includes('전체 복사'), 'editor must expose whole-document copy after selection');
-assert(editor.includes('Width {previewWidth}'), 'preview width control must label the numeric width');
+assert(editor.includes('Width {effectivePreviewWidth}'), 'preview width control must label the effective numeric width');
 assert(editor.includes('selectPreviewBlock'), 'editor must support clicking preview blocks into context');
 assert(editor.includes('preview-picked'), 'editor must mark the selected preview block');
 assert(styles.includes('.bridge-status'), 'bridge status banner must be styled');

@@ -21,8 +21,11 @@ async function waitForEditor(app) {
 }
 
 async function sendMenuCommand(app, command) {
-  await app.evaluate(({ BrowserWindow }, value) => {
-    BrowserWindow.getAllWindows().find(win => win._docpilotWindowKind === 'editor')?.webContents.send('menu-command', value);
+  return app.evaluate(({ BrowserWindow }, value) => {
+    const editor = BrowserWindow.getAllWindows().find(win => win._docpilotWindowKind === 'editor');
+    if (!editor) return false;
+    editor.webContents.send('menu-command', value);
+    return true;
   }, command);
 }
 
@@ -30,6 +33,16 @@ async function sendUpdateState(app, state) {
   await app.evaluate(({ BrowserWindow }, value) => {
     BrowserWindow.getAllWindows().find(win => win._docpilotWindowKind === 'editor')?.webContents.send('update-state', value);
   }, state);
+}
+
+async function openManualUpdateToast(app, editor) {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    assert.equal(await sendMenuCommand(app, 'check-update'), true, 'manual update command must target the editor window');
+    if (await editor.locator('.update-toast').isVisible().catch(() => false)) return;
+    await editor.waitForTimeout(100);
+  }
+  throw new Error('manual update menu command did not open its status toast');
 }
 
 async function main() {
@@ -61,8 +74,7 @@ async function main() {
     });
     assert.equal(menuLabel, '업데이트 확인…');
 
-    await sendMenuCommand(app, 'check-update');
-    await editor.waitForSelector('.update-toast');
+    await openManualUpdateToast(app, editor);
     await editor.waitForTimeout(800);
     await sendUpdateState(app, {
       status: 'available',

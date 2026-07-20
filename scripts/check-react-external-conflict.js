@@ -64,7 +64,7 @@ async function main() {
     const conflictText = await editor.locator('.conflict-pill').innerText();
     assert(conflictText.includes('외부 변경 충돌'), `expected external conflict, got ${conflictText}`);
 
-    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Preview' }).click();
+    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Document' }).click();
     await editor.waitForSelector('.markdown-preview h1');
     const previewTitleBeforeAccept = await editor.locator('.markdown-preview h1').innerText();
     assert.strictEqual(previewTitleBeforeAccept.trim(), 'User Draft', 'dirty editor content must not be overwritten by external disk write');

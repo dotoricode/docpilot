@@ -34,13 +34,41 @@ async function main() {
   const shortcutsPath = path.join(fixtureRoot, 'shortcuts.md');
   const mediaPath = path.join(fixtureRoot, 'media.md');
   const advancedPath = path.join(fixtureRoot, 'advanced.md');
+  const diagramPath = path.join(fixtureRoot, 'diagram.md');
   const mathPath = path.join(fixtureRoot, 'math.md');
+  const mermaidFixture = [
+    '# 시스템 구성',
+    '',
+    '수정 가능한 설명',
+    '',
+    '```mermaid',
+    'graph LR',
+    '    subgraph 클라이언트["Android 클라이언트"]',
+    '        LIB["library<br/>auth nonce 전달<br/>HTTP"]',
+    '        MOD["module (native)<br/>JNI로 Keystore 직접 호출<br/>체인 생성·update 루프"]',
+    '        LIB -->|"nonce/echo<br/>전달"| MOD',
+    '    end',
+    '    API["api server<br/>(검증 코어 포함)"]',
+    '    subgraph 관리["Admin"]',
+    '        POL["기능 활성화<br/>7범주 정책"]',
+    '        LOG["전용 로그<br/>(위협 로그와 분리)"]',
+    '        FETCH["루트·폐기 인증서<br/>목록 주기 fetch"]',
+    '    end',
+    '    LIB <-->|"auth<br/>(nonce·echo·features)"| API',
+    '    MOD <-->|"update<br/>(체인·echo·모바일 관측값)"| API',
+    '    API -->|"로그 push"| LOG',
+    '    POL -.->|"agent sync<br/>(정책·기능활성화)"| API',
+    '    FETCH -.->|"루트·폐기목록<br/>sync"| API',
+    '```',
+    '',
+  ].join('\n');
   const artifactRoot = path.join(repoRoot, '.tink', 'current', 'artifacts');
   fs.mkdirSync(artifactRoot, { recursive: true });
   fs.writeFileSync(sourcePath, '# Existing title\n\nEditable paragraph\n');
   fs.writeFileSync(shortcutsPath, '');
   fs.writeFileSync(mediaPath, 'Link target\n');
   fs.writeFileSync(advancedPath, '');
+  fs.writeFileSync(diagramPath, mermaidFixture);
   fs.writeFileSync(mathPath, '');
   fs.writeFileSync(path.join(fixtureRoot, 'asset.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#5794f2"/></svg>');
 
@@ -259,6 +287,31 @@ async function main() {
     await page.locator('button.save-button').click();
     await page.waitForFunction(() => !document.querySelector('.dirty-pill'));
     assert.match(fs.readFileSync(advancedPath, 'utf8'), /^```mermaid/m);
+
+    await page.locator('.workspace-file-row').filter({ hasText: 'diagram.md' }).click();
+    await page.locator('.file-tab.active[title="diagram.md"]').waitFor();
+    await document.waitFor();
+    assert.equal(await document.getAttribute('contenteditable'), 'true', 'a Mermaid block must not make the whole Markdown document read-only');
+    assert.equal(await document.locator('.document-mermaid-source').getAttribute('contenteditable'), 'false', 'the rendered Mermaid source block itself must stay protected');
+    const documentDiagram = page.locator('.document-mermaid-diagram');
+    await documentDiagram.locator('svg').waitFor({ timeout: 15_000 });
+    assert.match(await documentDiagram.innerText(), /Android 클라이언트/);
+    assert.match(await documentDiagram.innerText(), /루트·폐기 인증서/);
+    const editableDescription = document.locator('p').filter({ hasText: '수정 가능한 설명' });
+    await editableDescription.click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' 업데이트');
+    await page.waitForTimeout(400);
+    await page.locator('button.save-button').click();
+    await page.waitForFunction(() => !document.querySelector('.dirty-pill'));
+    const diagramSaved = fs.readFileSync(diagramPath, 'utf8');
+    assert.match(diagramSaved, /수정 가능한 설명 업데이트/);
+    assert(diagramSaved.includes(mermaidFixture.slice(mermaidFixture.indexOf('```mermaid'))), 'editing normal Markdown must preserve the protected Mermaid source exactly');
+    await page.getByRole('button', { name: 'Agent Copy' }).click();
+    const previewDiagram = page.locator('.preview-mermaid-diagram');
+    await previewDiagram.locator('svg').waitFor({ timeout: 15_000 });
+    assert.match(await previewDiagram.innerText(), /Android 클라이언트/);
+    await page.getByRole('button', { name: 'Agent Copy' }).click();
 
     await page.locator('.workspace-file-row').filter({ hasText: 'math.md' }).click();
     await page.locator('.file-tab.active[title="math.md"]').waitFor();

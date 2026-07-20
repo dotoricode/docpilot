@@ -14,15 +14,6 @@ async function waitForEditor(app) {
   throw new Error(`React editor did not open: ${app.windows().map(window => window.url()).join(', ')}`);
 }
 
-async function dismissReleaseNotice(page) {
-  const notice = page.locator('.release-notice-overlay');
-  if (await notice.isVisible().catch(() => false)) {
-    const confirm = notice.getByRole('button', { name: '확인' });
-    if (await confirm.count()) await confirm.click();
-    else await notice.click({ position: { x: 8, y: 8 } });
-  }
-}
-
 async function headingShape(page) {
   return page.locator('.markdown-preview').evaluate(preview => {
     const read = selector => {
@@ -85,18 +76,26 @@ async function main() {
   const app = await electron.launch({
     args: ['.'],
     cwd: repoRoot,
-    env: { ...process.env, DOCPILOT_FAKE_AGENT: '1', DOCPILOT_USER_DATA_DIR: userData },
+    env: {
+      ...process.env,
+      DOCPILOT_FAKE_AGENT: '1',
+      DOCPILOT_TEST_SHOW_RELEASE_NOTICE: '1',
+      DOCPILOT_USER_DATA_DIR: userData,
+    },
   });
 
   try {
     const start = await app.firstWindow();
     await start.evaluate(() => {
       localStorage.setItem('docpilot:terminal-open', '0');
-      localStorage.setItem('docpilot:release-notice-seen-id', '2.0.3:r2');
+      localStorage.setItem('docpilot:release-notice-seen-id', '2.0.5:r1');
     });
     await start.evaluate(root => { window.docpilot.openFolder(root); }, fixtureRoot);
 
     const page = await waitForEditor(app);
+    if (new URL(page.url()).searchParams.get('quietTest') === '1') {
+      throw new Error(`release notice regression must render the modal inside its hidden window: ${page.url()}`);
+    }
     await page.setViewportSize({ width: 1800, height: 1100 });
     await page.waitForSelector('.home-screen');
     const releaseNotice = page.getByRole('dialog', { name: '새 버전 안내' });
@@ -108,7 +107,11 @@ async function main() {
     check(await releaseNotice.getByText('Markdown을 Document에서 바로 편집합니다').count() === 1, 'v2.0.5 release notes must be visible once');
     check(await releaseNotice.getByText('설치된 fish를 기본 터미널 셸로 사용합니다').count() === 1, 'v2.0.4 release notes must be visible once');
     await releaseNotice.screenshot({ path: path.join(artifactRoot, 'release-notice-2.0.5-plus-2.0.4.png'), scale: 'css' });
-    await dismissReleaseNotice(page);
+    await page.waitForFunction(() => !document.querySelector('.release-notice-overlay'), undefined, { timeout: 12000 });
+    check(
+      await page.evaluate(() => localStorage.getItem('docpilot:release-notice-seen-id')) === '2.0.5:r2',
+      'release notice must remember the revision after automatically closing',
+    );
     await page.waitForFunction(() => document.documentElement.dataset.themePreference);
 
     const homeState = await page.evaluate(() => ({

@@ -13,6 +13,7 @@
     "check:shutdown": "DOCPILOT_TEST_HIDDEN_WINDOWS=1 node scripts/check-shutdown-lifecycle.js",
     "check:terminal:create": "DOCPILOT_TEST_HIDDEN_WINDOWS=1 node scripts/check-react-terminal-creation.js",
     "check:terminal:narrow": "npm run renderer:build && DOCPILOT_TEST_HIDDEN_WINDOWS=1 node scripts/check-react-terminal-narrow-layout.js",
+    "check:ui:quiet": "npm run renderer:build && node scripts/check-quiet-react-regressions.js",
     "check:toc": "npm run renderer:build && DOCPILOT_TEST_HIDDEN_WINDOWS=1 node scripts/check-react-toc-navigation.js",
     "check:pane-drag": "npm run renderer:build && DOCPILOT_TEST_HIDDEN_WINDOWS=1 node scripts/check-react-pane-drag-drop.js",
     "check:update-flow": "npm run renderer:build && DOCPILOT_TEST_HIDDEN_WINDOWS=1 node scripts/check-react-update-preservation.js",
@@ -131,6 +132,7 @@
     "katex": "^0.16.45",
     "lowlight": "^3.3.0",
     "lucide-react": "^0.577.0",
+    "mermaid": "11.16.0",
     "node-pty": "^1.1.0"
   },
   "devDependencies": {

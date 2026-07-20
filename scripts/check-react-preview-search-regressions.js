@@ -37,23 +37,28 @@ async function main() {
     await page.setViewportSize({ width: 1440, height: 1024 });
     await page.waitForSelector('.workspace-sidebar');
     const release = page.locator('.release-notice-overlay');
-    if (!(await release.count())) throw new Error('release notes must appear after an unseen update');
-    const releaseShape = await release.locator('.release-notice-modal').evaluate(node => ({
-      width: node.getBoundingClientRect().width,
-      bodyColumns: getComputedStyle(node.querySelector('.release-notice-body')).gridTemplateColumns.split(' ').length,
-      brandIcons: node.querySelectorAll('.release-notice-mark svg').length,
-      dotCount: node.querySelectorAll('.release-notice-dot').length,
-      items: node.querySelectorAll('.release-notice-list li').length,
-    }));
-    if (releaseShape.width < 680 || releaseShape.width > 800 || releaseShape.bodyColumns !== 2 || releaseShape.brandIcons !== 1 || releaseShape.dotCount || releaseShape.items < 2) {
-      throw new Error(`release notes must use the centered two-column launch language and icon: ${JSON.stringify(releaseShape)}`);
+    if (process.env.DOCPILOT_TEST_HIDDEN_WINDOWS === '1') {
+      if (await release.count()) throw new Error('quiet regression mode must suppress release notes so tests never interrupt active work');
+    } else {
+      if (!(await release.count())) throw new Error('release notes must appear after an unseen update');
+      const releaseShape = await release.locator('.release-notice-modal').evaluate(node => ({
+        width: node.getBoundingClientRect().width,
+        bodyColumns: getComputedStyle(node.querySelector('.release-notice-body')).gridTemplateColumns.split(' ').length,
+        brandIcons: node.querySelectorAll('.release-notice-mark svg').length,
+        dotCount: node.querySelectorAll('.release-notice-dot').length,
+        items: node.querySelectorAll('.release-notice-list li').length,
+      }));
+      if (releaseShape.width < 680 || releaseShape.width > 800 || releaseShape.bodyColumns !== 2 || releaseShape.brandIcons !== 1 || releaseShape.dotCount || releaseShape.items < 2) {
+        throw new Error(`release notes must use the centered two-column launch language and icon: ${JSON.stringify(releaseShape)}`);
+      }
+      await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+      await release.locator('.release-notice-modal').screenshot({ path: path.join(artifactRoot, 'release-notice-light.png') });
+      await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+      await release.locator('.release-notice-modal').screenshot({ path: path.join(artifactRoot, 'release-notice-dark.png') });
+      await release.getByRole('button', { name: '확인' }).click();
     }
-    await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
-    await release.locator('.release-notice-modal').screenshot({ path: path.join(artifactRoot, 'release-notice-light.png') });
-    await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
-    await release.locator('.release-notice-modal').screenshot({ path: path.join(artifactRoot, 'release-notice-dark.png') });
-    await release.getByRole('button', { name: '확인' }).click();
     await page.locator('.workspace-file-row').filter({ hasText: 'README.md' }).first().click();
+    await page.getByRole('button', { name: 'Agent Copy' }).click();
     await page.waitForSelector('.markdown-preview p');
 
     const terminalFont = await page.locator('.terminal-xterm-host .xterm').evaluate(node => getComputedStyle(node).fontFamily);

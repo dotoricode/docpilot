@@ -1,6 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const { _electron: electron } = require('playwright');
 
 async function waitForReactEditorWindow(app) {
@@ -99,6 +100,9 @@ function listFixtureFiles(root) {
 async function main() {
   const repoRoot = path.resolve(__dirname, '..');
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-workspace-tree-'));
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-workspace-tree-user-'));
+  const workspaceStateKey = crypto.createHash('sha256').update(fs.realpathSync(fixtureRoot)).digest('hex');
+  const trashRoot = path.join(userData, 'workspaces', workspaceStateKey, 'trash');
   fs.mkdirSync(path.join(fixtureRoot, 'guides', 'deep'), { recursive: true });
   fs.mkdirSync(path.join(fixtureRoot, 'empty-folder'), { recursive: true });
   fs.writeFileSync(path.join(fixtureRoot, 'README.md'), '# Root\n', 'utf8');
@@ -112,6 +116,7 @@ async function main() {
     env: {
       ...process.env,
       DOCPILOT_FAKE_AGENT: '1',
+      DOCPILOT_USER_DATA_DIR: userData,
     },
   });
 
@@ -177,8 +182,7 @@ async function main() {
     if (title.trim() !== 'Deep Note') {
       throw new Error(`expected nested file preview, got: ${title}`);
     }
-    await editor.locator('.editor-mode-toggle button').filter({ hasText: '편집' }).click();
-    await editor.locator('.cm-content').click();
+    await editor.locator('.document-markdown-content').click();
     await editor.keyboard.type('\nUnsaved folder marker');
     await editor.waitForFunction(() => {
       const dirtyFolders = Array.from(document.querySelectorAll('.workspace-folder-row'))
@@ -227,23 +231,27 @@ async function main() {
     await editor.locator('.workspace-file-row').filter({ hasText: 'renamed-by-menu.md' }).first().click({ button: 'right' });
     await editor.locator('.tree-context-menu button').filter({ hasText: '파일 삭제' }).click();
     await waitForPath(
-      () => !fs.existsSync(path.join(fixtureRoot, 'guides', 'renamed-by-menu.md')) && fs.existsSync(path.join(fixtureRoot, '.docpilot', 'trash')),
+      () => !fs.existsSync(path.join(fixtureRoot, 'guides', 'renamed-by-menu.md')) && fs.existsSync(trashRoot),
       async () => {
         const bodyText = await editor.evaluate(() => document.body.innerText);
         return `deleted file should disappear and trash directory should exist; files=${listFixtureFiles(fixtureRoot).join(', ')}; body=${bodyText.slice(0, 1000)}`;
       },
     );
-    const trashedFiles = fs.readdirSync(path.join(fixtureRoot, '.docpilot', 'trash'), { recursive: true });
+    const trashedFiles = fs.readdirSync(trashRoot, { recursive: true });
     if (!trashedFiles.some(file => String(file).endsWith('renamed-by-menu.md'))) {
       throw new Error(`deleted file should move to recoverable trash, got ${trashedFiles.join(', ')}`);
     }
 
     const resolvedGuidePath = await editor.evaluate(async () => {
-      const port = new URLSearchParams(window.location.search).get('port') || '7474';
-      const response = await fetch(`http://localhost:${port}/file-path?id=${encodeURIComponent('guides')}`);
+      const params = new URLSearchParams(window.location.search);
+      const port = params.get('port') || '7474';
+      const token = params.get('token') || '';
+      const response = await fetch(`http://localhost:${port}/file-path?id=${encodeURIComponent('guides')}`, {
+        headers: { 'X-DocPilot-Token': token },
+      });
       return response.json();
     });
-    if (resolvedGuidePath.path !== path.join(fixtureRoot, 'guides')) {
+    if (resolvedGuidePath.path !== path.join(fs.realpathSync(fixtureRoot), 'guides')) {
       throw new Error(`folder path copy API should resolve absolute paths, got ${resolvedGuidePath.path}`);
     }
 
@@ -324,12 +332,12 @@ async function main() {
     await editor.locator('.workspace-folder-row').filter({ hasText: 'project-notes' }).first().click({ button: 'right' });
     await editor.locator('.tree-context-menu button').filter({ hasText: '폴더 삭제' }).click();
     await waitForPath(
-      () => !fs.existsSync(path.join(fixtureRoot, 'project-notes')) && fs.existsSync(path.join(fixtureRoot, '.docpilot', 'trash')),
+      () => !fs.existsSync(path.join(fixtureRoot, 'project-notes')) && fs.existsSync(trashRoot),
       () => `folder delete should remove the folder and keep it recoverable; files=${listFixtureFiles(fixtureRoot).join(', ')}`,
     );
 
     await editor.locator('.workspace-file-row[title="README.md"]').first().click();
-    await editor.locator('.editor-mode-toggle button').filter({ hasText: '프리뷰' }).click();
+    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Agent Copy' }).click();
     await editor.waitForSelector('.markdown-preview h1');
     const fileRowShape = await editor.locator('.workspace-file-row[title="README.md"]').first().evaluate(row => {
       const name = row.querySelector('.tree-name');
@@ -349,8 +357,9 @@ async function main() {
     if (fileRowShape.nameText !== 'README.md' || fileRowShape.nameWidth < 72 || fileRowShape.iconWidth < 12 || fileRowShape.columnCount < 3) {
       throw new Error(`file tree names should be readable and have a stable icon column: ${JSON.stringify(fileRowShape)}`);
     }
-    await editor.getByRole('button', { name: '전체 선택' }).click();
-    await editor.getByRole('button', { name: '전체 복사' }).click();
+    await editor.locator('.editor-more-menu summary').click();
+    await editor.getByRole('button', { name: 'Select all' }).click();
+    await editor.getByRole('button', { name: 'Copy all' }).click();
     const copied = await readClipboard(app);
     if (!copied.includes('# Root')) {
       throw new Error(`whole-document copy should write the selected document text, got: ${copied}`);
@@ -360,7 +369,7 @@ async function main() {
       width: control.getBoundingClientRect().width,
       whiteSpace: getComputedStyle(control.querySelector('span')).whiteSpace,
     }));
-    if (!topbarShape.text.includes('폭') || topbarShape.width < 180 || topbarShape.whiteSpace !== 'nowrap') {
+    if (!topbarShape.text.includes('Width') || topbarShape.width < 180 || topbarShape.whiteSpace !== 'nowrap') {
       throw new Error(`preview width control should be readable and stable: ${JSON.stringify(topbarShape)}`);
     }
 
@@ -368,6 +377,7 @@ async function main() {
   } finally {
     await app.close().catch(() => {});
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    fs.rmSync(userData, { recursive: true, force: true });
   }
 }
 

@@ -41,6 +41,7 @@ async function main() {
     const page = await waitForEditor(app);
     await page.setViewportSize({ width: 1800, height: 1000 });
     await page.locator('.workspace-file-row').filter({ hasText: 'PERFORMANCE.md' }).click();
+    await page.getByRole('button', { name: 'Agent Copy' }).click();
     await page.waitForSelector('.preview-width-resizer');
 
     await page.evaluate(() => {

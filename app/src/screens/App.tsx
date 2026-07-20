@@ -74,7 +74,11 @@ const RELEASE_NOTES: Record<string, ReleaseNoteItem[]> = {
     },
     {
       title: '좁은 화면의 편집기와 터미널을 보정했습니다',
-      body: 'Document 명령 메뉴가 터미널 뒤로 가려지지 않으며, 좁은 터미널 탭과 NOTE·IMPORTANT 정보 패널의 표시가 겹치지 않습니다.',
+      body: '터미널이 pane 높이를 끝까지 사용하고 내용이 잘리지 않으며, 얇은 스크롤바·보이는 커서·Shift+Enter 개행과 현재 워크스페이스 시작 경로를 적용했습니다.',
+    },
+    {
+      title: 'Mermaid와 AsciiDoc 선택·복사를 바로잡았습니다',
+      body: 'Markdown의 일반 내용은 계속 편집하면서 Mermaid는 안전하게 렌더링하고, AsciiDoc을 클릭하거나 복사할 때 보이는 블록과 정확히 같은 원문 범위를 사용합니다.',
     },
     {
       title: '앱 아이콘과 미서명 설치 안내를 바로잡았습니다',
@@ -284,8 +288,11 @@ const RELEASE_NOTICE_VERSION_GROUPS: Record<string, string[]> = {
   '2.0.5': ['2.0.5', '2.0.4'],
 };
 
-const RELEASE_NOTICE_REVISION = 'r1';
+const RELEASE_NOTICE_REVISION = 'r2';
 const RELEASE_NOTICE_SEEN_ID_KEY = 'docpilot:release-notice-seen-id';
+const RENDERER_QUERY = new URLSearchParams(window.location.search);
+const QUIET_TEST_MODE = RENDERER_QUERY.get('quietTest') === '1';
+const RELEASE_NOTICE_AUTO_CLOSE_MS = Math.max(1000, Number(RENDERER_QUERY.get('releaseNoticeTimeout')) || 5000);
 
 function releaseNoticeId(version: string) {
   return `${version}:${RELEASE_NOTICE_REVISION}`;
@@ -412,6 +419,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (QUIET_TEST_MODE) return undefined;
     let disposed = false;
     getAppVersion()
       .then(version => {
@@ -428,6 +436,12 @@ export function App() {
       disposed = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!releaseNotice) return undefined;
+    const timer = window.setTimeout(closeReleaseNotice, RELEASE_NOTICE_AUTO_CLOSE_MS);
+    return () => window.clearTimeout(timer);
+  }, [releaseNotice?.id]);
 
   useEffect(() => {
     window.localStorage.setItem('docpilot:left-panel-width', String(leftWidth));

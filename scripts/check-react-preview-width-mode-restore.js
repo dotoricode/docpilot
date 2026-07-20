@@ -50,12 +50,16 @@ async function main() {
     if (await release.count()) await release.getByRole('button', { name: '확인' }).click();
     await page.locator('.workspace-file-row').filter({ hasText: 'README.md' }).first().click();
     await page.waitForSelector('.markdown-preview h1');
+    await page.getByRole('button', { name: 'Agent Copy', exact: true }).click();
+    await page.waitForSelector('.markdown-preview.agent-copy-active');
 
     const before = await previewWidth(page);
     await page.getByRole('button', { name: 'Source', exact: true }).click();
     await page.waitForSelector('.editor-workspace.edit');
-    await page.getByRole('button', { name: 'Preview', exact: true }).click();
-    await page.waitForSelector('.editor-workspace.preview');
+    await page.getByRole('button', { name: 'Document', exact: true }).click();
+    const restoredAgentCopy = page.getByRole('button', { name: 'Agent Copy', exact: true });
+    if (await restoredAgentCopy.getAttribute('aria-pressed') !== 'true') await restoredAgentCopy.click();
+    await page.waitForSelector('.markdown-preview.agent-copy-active');
     await page.waitForTimeout(100);
 
     const after = await previewWidth(page);
@@ -64,7 +68,7 @@ async function main() {
       throw new Error(`fixture must start at ${EXPECTED_WIDTH}px: ${JSON.stringify({ before })}`);
     }
     if (Math.abs(after - before) > WIDTH_TOLERANCE || Math.abs(stored - EXPECTED_WIDTH) > WIDTH_TOLERANCE) {
-      throw new Error(`Preview width must survive Preview -> Source -> Preview: ${JSON.stringify({ before, after, stored })}`);
+      throw new Error(`Preview width must survive Agent Copy -> Source -> Agent Copy: ${JSON.stringify({ before, after, stored })}`);
     }
     console.log('react preview width mode restore checks passed');
   } finally {

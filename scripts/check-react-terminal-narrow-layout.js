@@ -98,7 +98,7 @@ async function main() {
     assert.equal(geometry.newTerminalVisible, true, `New terminal control must remain visible: ${JSON.stringify(geometry)}`);
     assert.equal(geometry.dockVisible, true, `dock controls must remain visible: ${JSON.stringify(geometry)}`);
     assert.ok(geometry.terminalScreenRight <= geometry.terminalHostRight + 1, `terminal content must fit inside the visible host: ${JSON.stringify(geometry)}`);
-    assert.equal(geometry.terminalScrollbarWidth, '8px', `terminal scrollbar must use the compact editor-style width: ${JSON.stringify(geometry)}`);
+    assert.equal(geometry.terminalScrollbarWidth, '5px', `terminal scrollbar must use the slim editor-style width: ${JSON.stringify(geometry)}`);
     console.log('react terminal narrow layout checks passed');
   } finally {
     await app.close().catch(() => {});
