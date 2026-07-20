@@ -792,7 +792,7 @@
 }
 
 .terminal-xterm-host .xterm-viewport::-webkit-scrollbar {
-  width: 8px;
+  width: 5px;
 }
 
 .terminal-xterm-host .xterm-viewport::-webkit-scrollbar-track {
@@ -800,7 +800,7 @@
 }
 
 .terminal-xterm-host .xterm-viewport::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
+  border: 1px solid transparent;
   border-radius: 999px;
   background: color-mix(in srgb, var(--workbench-muted) 52%, transparent);
   background-clip: content-box;
@@ -835,6 +835,10 @@
 .markdown-preview.agent-copy-active h5,
 .markdown-preview.agent-copy-active h6 {
   cursor: copy;
+}
+
+.markdown-preview.agent-copy-active .preview-picked {
+  background: color-mix(in srgb, var(--workbench-focus) 12%, transparent) !important;
 }
 
 .preview-inline-editor {
@@ -2301,6 +2305,50 @@ body.dragging-workbench-pane * {
 .document-markdown-content .ProseMirror-selectednode {
   outline: 2px solid var(--workbench-accent);
   outline-offset: 3px;
+}
+
+.document-mermaid-source {
+  display: none !important;
+}
+
+.mermaid-diagram {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 22px 0;
+  overflow: auto;
+  border: 1px solid var(--workbench-border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--workbench-raised) 72%, var(--workbench-editor));
+  padding: 18px;
+}
+
+.mermaid-source {
+  display: none;
+}
+
+.mermaid-render-target {
+  min-width: 0;
+  color: var(--workbench-muted);
+  font: 12px/1.5 var(--dp-sans);
+  text-align: center;
+}
+
+.mermaid-render-target svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+}
+
+.mermaid-diagram.has-error .mermaid-render-target {
+  color: var(--workbench-del-text);
+  white-space: pre-wrap;
+}
+
+.document-mermaid-diagram {
+  cursor: default;
+  user-select: none;
 }
 
 .document-markdown-content ul:not([data-type="taskList"]),

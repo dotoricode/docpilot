@@ -54,6 +54,8 @@ async function main() {
     }
     await editor.locator('.workspace-file-row').filter({ hasText: 'README.md' }).first().click();
     await editor.waitForSelector('.markdown-preview h1');
+    await editor.getByRole('button', { name: 'Agent Copy' }).click();
+    await editor.waitForSelector('.markdown-preview.agent-copy-active');
 
     const palette = await editor.locator('.preview-shell').evaluate(shell => {
       const toc = shell.querySelector('.toc-rail');

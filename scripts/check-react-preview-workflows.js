@@ -39,7 +39,19 @@ async function openWorkspace(app, workspace) {
 
 async function selectFile(editor, name) {
   await editor.locator('.workspace-file-row').filter({ hasText: name }).first().click();
+  await editor.locator(`.file-tab[title="${name}"][aria-selected="true"]`).waitFor();
   await editor.waitForSelector('.markdown-preview');
+}
+
+async function waitForClipboard(app, predicate, message) {
+  const deadline = Date.now() + 5000;
+  let text = '';
+  while (Date.now() < deadline) {
+    text = await app.evaluate(({ clipboard }) => clipboard.readText());
+    if (predicate(text)) return text;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  throw new Error(`${message}: ${text}`);
 }
 
 async function main() {
@@ -47,8 +59,24 @@ async function main() {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-preview-workflows-user-'));
   const markdownPath = path.join(workspace, 'README.md');
   const asciidocPath = path.join(workspace, 'guide.adoc');
+  const targetAdocParagraph = '핵심 주장: 정책 문서는 설정값 설명만으로 끝나면 안 되고, 영향 확인과 원복까지 하나의 작업이어야 한다.';
   fs.writeFileSync(markdownPath, '# Markdown workflow\n\nParagraph with **bold** source.\n\n[Native link](https://example.com)\n\n' + 'Scrollable body.\n\n'.repeat(80), 'utf8');
-  fs.writeFileSync(asciidocPath, '= AsciiDoc workflow\n\nA source-faithful paragraph.\n', 'utf8');
+  fs.writeFileSync(asciidocPath, [
+    '= AsciiDoc workflow',
+    '',
+    '== 역할 인계 카드',
+    '',
+    '인계 카드의 필드는 역할별로 다르지만 구조는 동일하다.',
+    '',
+    '* 보내는 역할과 받는 역할',
+    '',
+    '== 2.2.4. ko-doc-audit 판단',
+    '',
+    targetAdocParagraph,
+    '',
+    '근거: v4의 보안관리자 최우선 결정과 격리된 Admin 가이드.',
+    '',
+  ].join('\n'), 'utf8');
 
   const launch = () => electron.launch({
     args: ['.'],
@@ -108,7 +136,11 @@ async function main() {
     await editor.waitForSelector('.markdown-preview p');
     await editor.locator('.markdown-preview p').first().click();
     assert.equal(await inline.count(), 0, 'Agent Copy click must not open the source editor');
-    const clipboardText = await app.evaluate(({ clipboard }) => clipboard.readText());
+    const clipboardText = await waitForClipboard(
+      app,
+      text => /File: README\.md/.test(text) && /preserved Markdown/.test(text),
+      'Markdown Agent Copy must finish before its clipboard value is asserted',
+    );
     assert.match(clipboardText, /File: README\.md/);
     assert.match(clipboardText, /Lines: 3/);
     assert.match(clipboardText, /preserved Markdown/);
@@ -116,18 +148,27 @@ async function main() {
     await selectFile(editor, 'guide.adoc');
     await editor.waitForSelector('.adoc-preview p[data-line-start]');
     assert.equal(await agentCopy.getAttribute('aria-pressed'), 'true', 'Agent Copy must persist across documents in the session');
+    const targetAdocPreview = editor.locator('.adoc-preview p').filter({ hasText: targetAdocParagraph });
+    await targetAdocPreview.click();
+    const copiedAdoc = await waitForClipboard(
+      app,
+      text => /핵심 주장: 정책 문서는 설정값 설명만으로/.test(text),
+      'AsciiDoc Agent Copy must finish before its clipboard value is asserted',
+    );
+    assert.match(copiedAdoc, /핵심 주장: 정책 문서는 설정값 설명만으로/);
+    assert.doesNotMatch(copiedAdoc, /역할 인계 카드/, 'AsciiDoc Agent Copy must use the clicked source block instead of an unrelated earlier block');
     await editor.keyboard.press('Meta+Shift+C');
     assert.equal(await agentCopy.getAttribute('aria-pressed'), 'false');
 
-    await editor.locator('.adoc-preview p').first().click();
+    await targetAdocPreview.click();
     await inline.waitFor();
-    assert.equal(await inline.locator('textarea').inputValue(), 'A source-faithful paragraph.\n');
+    assert.equal(await inline.locator('textarea').inputValue(), `${targetAdocParagraph}\n`);
     await inline.locator('textarea').fill('A safely updated AsciiDoc paragraph.\n');
     await inline.locator('textarea').press('Meta+s');
     await editor.waitForFunction(() => !document.querySelector('.dirty-pill'));
     assert.match(fs.readFileSync(asciidocPath, 'utf8'), /safely updated AsciiDoc/);
 
-    await editor.locator('.adoc-preview p').first().click();
+    await editor.locator('.adoc-preview p').filter({ hasText: 'A safely updated AsciiDoc paragraph.' }).click();
     await inline.waitFor();
     fs.writeFileSync(asciidocPath, '= AsciiDoc workflow\n\nAn external revision.\n', 'utf8');
     await editor.waitForFunction(() => document.querySelector('.adoc-preview')?.textContent?.includes('external revision'), null, { timeout: 8_000 });

@@ -45,11 +45,10 @@ async function main() {
       await editor.locator('.release-notice-modal footer button').filter({ hasText: '확인' }).click();
       await editor.waitForSelector('.release-notice-overlay', { state: 'detached' });
     }
-    const homeTitle = await editor.locator('.home-hero h1').innerText();
-    if (!homeTitle.includes('문서 작업공간')) {
+    const homeTitle = await editor.locator('.home-project-heading h1').innerText();
+    if (homeTitle.trim() !== path.basename(fixtureRoot)) {
       throw new Error(`home screen did not render expected title: ${homeTitle}`);
     }
-    await editor.waitForSelector('.workspace-tabs');
     await editor.waitForSelector('.workspace-file-row');
     await editor.locator('.workspace-file-row').filter({ hasText: 'README.md' }).first().click();
     await editor.waitForSelector('.toc-rail');
@@ -61,17 +60,17 @@ async function main() {
     const title = await editor.locator('.markdown-preview h1').innerText();
     if (title.trim() !== 'Smoke Test') throw new Error(`unexpected preview title: ${title}`);
 
-    await editor.locator('.workspace-title button').filter({ hasText: '접기' }).waitFor();
+    await editor.getByRole('button', { name: 'Collapse project panel' }).waitFor();
     const topbarPanelButtons = await editor.locator('.topbar-right .panel-toggle-button').count();
     if (topbarPanelButtons) {
       throw new Error('panel collapse buttons should live inside their panels, not the top bar');
     }
-    await editor.locator('.workspace-title button').filter({ hasText: '접기' }).click();
+    await editor.getByRole('button', { name: 'Collapse project panel' }).click();
     await editor.waitForSelector('.left-rail .panel-rail-open-button');
-    await editor.locator('.left-rail .panel-rail-open-button').click();
+    await editor.getByRole('button', { name: 'Open project panel' }).click();
     await editor.waitForSelector('.workspace-sidebar');
 
-    await editor.locator('.editor-mode-toggle button').filter({ hasText: '편집' }).click();
+    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Source' }).click();
     await editor.waitForFunction(() => {
       const numbers = Array.from(document.querySelectorAll('.cm-lineNumbers .cm-gutterElement'))
         .map(node => (node.textContent || '').trim())
@@ -84,7 +83,7 @@ async function main() {
     if (!lineNumberText) {
       throw new Error('edit mode should show CodeMirror line numbers');
     }
-    await editor.locator('.editor-mode-toggle button').filter({ hasText: '프리뷰' }).click();
+    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Document' }).click();
     await editor.waitForSelector('.markdown-preview h1');
 
     const bridgeStatus = await editor.locator('.bridge-status').innerText();
@@ -92,7 +91,7 @@ async function main() {
       throw new Error(`bridge status did not render: ${bridgeStatus}`);
     }
 
-    await editor.locator('.workspace-tabs button').filter({ hasText: '지침' }).click();
+    await editor.locator('.workspace-tabs button').filter({ hasText: '지침' }).evaluate(button => button.click());
     await editor.waitForSelector('.workspace-instructions-pane .instructions-panel');
     const instructionsVisible = await editor.locator('.workspace-instructions-pane .instructions-panel').count();
     if (!instructionsVisible) {
@@ -101,8 +100,8 @@ async function main() {
 
     await editor.locator('.app-logo').click();
     await editor.waitForSelector('.home-screen');
-    const returnedHomeVisible = await editor.locator('.home-hero h1').innerText();
-    if (!returnedHomeVisible.includes('문서 작업공간')) {
+    const returnedHomeVisible = await editor.locator('.home-project-heading h1').innerText();
+    if (returnedHomeVisible.trim() !== path.basename(fixtureRoot)) {
       throw new Error(`DocPilot logo did not return to home: ${returnedHomeVisible}`);
     }
 

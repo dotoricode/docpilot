@@ -160,14 +160,17 @@ async function main() {
     if (newDot.text.trim() || newDot.background === dirtyMarker.background) {
       throw new Error(`new file marker should be a textless blue dot distinct from modified, got: ${JSON.stringify({ dirtyMarker, newDot })}`);
     }
-    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Preview' }).click();
+    await editor.getByRole('button', { name: 'Document', exact: true }).click();
+    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Agent Copy' }).click();
     await editor.waitForSelector('.markdown-preview h1');
 
     createdInstructionId = await editor.evaluate(async () => {
-      const port = new URLSearchParams(window.location.search).get('port') || '7474';
+      const params = new URLSearchParams(window.location.search);
+      const port = params.get('port') || '7474';
+      const token = params.get('token') || '';
       const response = await fetch(`http://localhost:${port}/instructions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'X-DocPilot-Token': token } : {}) },
         body: JSON.stringify({
           title: 'copy check instruction',
           body: '복사된 내용은 활성 지침을 우선 반영한다.',
@@ -320,10 +323,12 @@ async function main() {
 
     if (createdInstructionId) {
       await editor.evaluate(async id => {
-        const port = new URLSearchParams(window.location.search).get('port') || '7474';
+        const params = new URLSearchParams(window.location.search);
+        const port = params.get('port') || '7474';
+        const token = params.get('token') || '';
         await fetch(`http://localhost:${port}/instructions/delete`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(token ? { 'X-DocPilot-Token': token } : {}) },
           body: JSON.stringify({ id }),
         });
       }, createdInstructionId);
@@ -336,10 +341,12 @@ async function main() {
       for (const win of app.windows()) {
         try {
           await win.evaluate(async id => {
-            const port = new URLSearchParams(window.location.search).get('port') || '7474';
+            const params = new URLSearchParams(window.location.search);
+            const port = params.get('port') || '7474';
+            const token = params.get('token') || '';
             await fetch(`http://localhost:${port}/instructions/delete`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', ...(token ? { 'X-DocPilot-Token': token } : {}) },
               body: JSON.stringify({ id }),
             });
           }, createdInstructionId);

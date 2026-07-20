@@ -45,6 +45,8 @@ async function main() {
     if (await release.count()) await release.getByRole('button', { name: '확인' }).click();
     await page.locator('.workspace-file-row').filter({ hasText: 'README.md' }).first().click();
     await page.waitForSelector('.markdown-preview h1');
+    await page.getByRole('button', { name: 'Agent Copy' }).click();
+    await page.waitForSelector('.markdown-preview.agent-copy-active');
     const handle = page.locator('.preview-width-resizer');
     await handle.waitFor({ state: 'visible', timeout: 4000 });
     await page.waitForFunction(() => {
@@ -105,6 +107,7 @@ async function main() {
     }
     await page.reload();
     await page.locator('.workspace-file-row').filter({ hasText: 'README.md' }).first().click();
+    await page.getByRole('button', { name: 'Agent Copy' }).click();
     await page.waitForSelector('.preview-width-resizer');
     const restored = await page.locator('.preview-document-stage').evaluate(node => node.getBoundingClientRect().width);
     if (Math.abs(restored - geometryDuring.width) > 4) {

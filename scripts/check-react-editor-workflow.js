@@ -62,10 +62,10 @@ async function main() {
     const diskContent = fs.readFileSync(filePath, 'utf8');
     assert(diskContent.includes('Saved from React CodeMirror.'), 'saved file should contain editor changes');
 
-    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Preview' }).click();
-    await editor.waitForSelector('.markdown-preview h1');
-    const previewTitle = await editor.locator('.markdown-preview h1').innerText();
-    assert.strictEqual(previewTitle.trim(), 'Draft Updated');
+    await editor.locator('.editor-mode-toggle button').filter({ hasText: 'Document' }).click();
+    await editor.waitForSelector('.document-markdown-content h1');
+    const documentTitle = await editor.locator('.document-markdown-content h1').innerText();
+    assert.strictEqual(documentTitle.trim(), 'Draft Updated');
 
     console.log('react editor workflow checks passed');
   } finally {

@@ -41,6 +41,7 @@ import { copyTextWithActiveInstructions } from '../../shared/copy-with-instructi
 import { formatContextLocation } from '../../shared/context-format';
 import { DocumentMarkdownEditor, type DocumentMarkdownEditorHandle } from './DocumentMarkdownEditor';
 import { JsonTreeView } from './JsonTreeView';
+import { hydrateMermaidDiagrams } from './mermaid-renderer';
 
 type FileBuffer = {
   path: string;
@@ -200,7 +201,11 @@ const PREVIEW_WIDTH_EXPLICIT_STORAGE_KEY = 'docpilot:preview-width-explicit-v1';
 const PREVIEW_LINE_NUMBERS_STORAGE_KEY = 'docpilot:preview-line-numbers-v2';
 
 const RenderedPreviewHtml = memo(function RenderedPreviewHtml({ html }: { html: string }) {
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (rootRef.current) hydrateMermaidDiagrams(rootRef.current);
+  }, [html]);
+  return <div ref={rootRef} dangerouslySetInnerHTML={{ __html: html }} />;
 });
 
 function readStoredPreviewWidth() {
@@ -305,6 +310,9 @@ markdownRenderer.renderer.rules.fence = (tokens, index) => {
   const token = tokens[index];
   const lineStart = Array.isArray(token.map) ? token.map[0] + 2 : undefined;
   const lineEnd = Array.isArray(token.map) ? Math.max(lineStart || 0, token.map[1] - 1) : undefined;
+  if (normalizeHighlightLanguage(token.info) === 'mermaid') {
+    return `<figure class="mermaid-diagram preview-mermaid-diagram" data-mermaid-pending="true"><pre class="mermaid-source">${escapeHtml(token.content)}</pre><div class="mermaid-render-target" role="img" aria-label="Mermaid diagram">다이어그램 렌더링 중…</div></figure>\n`;
+  }
   return `${renderHighlightedCode(token.content, token.info, lineStart, lineEnd)}\n`;
 };
 
@@ -1328,8 +1336,9 @@ export function EditorPane({
     if (!renderedText) return;
     const fallbackRange = previewTextRangeForElement(paneState.source, renderedText, target, blocks, index);
     const fallbackLines = lineRangeForOffsets(paneState.source, fallbackRange.from, fallbackRange.to);
-    const relativeLineStart = positiveLineNumber(target.dataset.lineStart) ?? fallbackLines.start;
-    const relativeLineEnd = Math.max(relativeLineStart, positiveLineNumber(target.dataset.lineEnd) ?? fallbackLines.end);
+    const renderedLines = renderedSourceLineRange(target);
+    const relativeLineStart = renderedLines?.start ?? positiveLineNumber(target.dataset.lineStart) ?? fallbackLines.start;
+    const relativeLineEnd = Math.max(relativeLineStart, renderedLines?.end ?? positiveLineNumber(target.dataset.lineEnd) ?? fallbackLines.end);
     const relativeRange = sourceRangeForLines(paneState.source, relativeLineStart, relativeLineEnd);
     const from = paneState.prefixLength + relativeRange.from;
     const to = paneState.prefixLength + relativeRange.to;
@@ -2384,6 +2393,13 @@ function previewTextRangeForElement(
   knownOccurrence?: number,
 ) {
   const blockText = target.textContent?.trim() ?? '';
+  const sourceLines = renderedSourceLineRange(target);
+  if (sourceLines) {
+    const annotatedRange = sourceRangeForLines(source, sourceLines.start, sourceLines.end);
+    if (text === blockText) return annotatedRange;
+    const localRange = findTextRange(source, text, 0, annotatedRange.from, annotatedRange.to);
+    if (localRange.from >= annotatedRange.from && localRange.to <= annotatedRange.to) return localRange;
+  }
   const occurrence = knownOccurrence ?? blocks.slice(0, Math.max(index, 0))
     .filter(block => block instanceof HTMLElement && block.textContent?.trim() === blockText)
     .length;
@@ -2462,6 +2478,15 @@ function schedulePreviewLineNumbers(preview: HTMLElement | null, source: string)
 function annotatePreviewLineNumberBlock(block: Element | undefined, state: PreviewLineAnnotationState) {
   const element = block instanceof HTMLElement ? block : null;
   if (!element) return;
+  const renderedRange = renderedSourceLineRange(element);
+  if (renderedRange) {
+    element.dataset.lineStart = String(renderedRange.start);
+    element.dataset.lineEnd = String(renderedRange.end);
+    element.dataset.lineLabel = renderedRange.start === renderedRange.end
+      ? String(renderedRange.start)
+      : `${renderedRange.start}-${renderedRange.end}`;
+    return;
+  }
   if (element.matches('pre.code-block') && element.dataset.lineStart && element.dataset.lineEnd) {
     const start = Number(element.dataset.lineStart);
     const end = Number(element.dataset.lineEnd);
@@ -2487,6 +2512,22 @@ function annotatePreviewLineNumberBlock(block: Element | undefined, state: Previ
   element.dataset.lineStart = String(lines.start);
   element.dataset.lineEnd = String(lines.end);
   element.dataset.lineLabel = lines.start === lines.end ? String(lines.start) : `${lines.start}-${lines.end}`;
+}
+
+function renderedSourceLineRange(element: HTMLElement) {
+  let current: HTMLElement | null = element;
+  while (current) {
+    for (const className of current.classList) {
+      const match = /^docpilot-source-lines-(\d+)-(\d+)$/.exec(className);
+      if (!match) continue;
+      const start = Number(match[1]);
+      const end = Number(match[2]);
+      if (Number.isInteger(start) && Number.isInteger(end) && start > 0 && end >= start) return { start, end };
+    }
+    if (current.classList.contains('markdown-preview')) break;
+    current = current.parentElement;
+  }
+  return null;
 }
 
 function findTextRangeForLineAnnotation(state: PreviewLineAnnotationState, text: string, occurrence: number) {

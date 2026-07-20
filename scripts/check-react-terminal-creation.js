@@ -8,6 +8,9 @@ const path = require('node:path');
 const { _electron: electron } = require('playwright');
 
 const repoRoot = path.resolve(__dirname, '..');
+const terminalPaneSource = fs.readFileSync(path.join(repoRoot, 'app/src/features/terminal/TerminalPane.tsx'), 'utf8');
+assert.match(terminalPaneSource, /cursorStyle:\s*'bar'/, 'terminal cursor must not cover the character under the caret');
+assert.match(terminalPaneSource, /cursorWidth:\s*2/, 'terminal bar cursor must remain clearly visible without obscuring text');
 const executablePath = process.env.DOCPILOT_ELECTRON_EXECUTABLE || '';
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-terminal-create-workspace-'));
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'docpilot-terminal-create-user-'));
@@ -38,6 +41,10 @@ async function main() {
   }, workspace);
 
     const editor = await waitForEditor(app, start);
+    await app.evaluate(({ BrowserWindow }) => {
+      const editorWindow = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'));
+      editorWindow?.setSize(1280, 900);
+    });
     await editor.waitForSelector('.workspace-file-row', { timeout: 60_000 });
     const releaseNotice = editor.getByRole('dialog', { name: '새 버전 안내' });
     if (await releaseNotice.isVisible().catch(() => false)) {
@@ -169,11 +176,19 @@ async function main() {
 
     let createResponse;
     let deleteResponse;
+    const terminalInputs = [];
+    const terminalResizes = [];
     editor.on('response', response => {
       const method = response.request().method();
       const pathname = new URL(response.url()).pathname;
       if (method === 'POST' && pathname === '/terminal-sessions') createResponse = response;
       if (method === 'DELETE' && pathname.startsWith('/terminal-sessions/')) deleteResponse = response;
+      if (method === 'POST' && /\/terminal-sessions\/[^/]+\/input$/.test(pathname)) {
+        terminalInputs.push(response.request().postDataJSON());
+      }
+      if (method === 'POST' && /\/terminal-sessions\/[^/]+\/resize$/.test(pathname)) {
+        terminalResizes.push(response.request().postDataJSON());
+      }
     });
     await chooser.click();
     await terminalMenu.getByRole('menuitem', { name: /^Default shell Use your macOS login shell$/ }).click();
@@ -206,6 +221,33 @@ async function main() {
     assert.equal(state.body.sessions[0].shellId, 'default', 'bridge must run the chosen shell inside the retained terminal session');
     assert.equal(state.body.sessions[0].cwd, fs.realpathSync(workspace), 'terminal PTY must resolve its working directory to the active workspace root');
     assert.equal(await editor.locator('.terminal-tab.active').count(), 1, 'renderer must show the created terminal tab');
+
+    const terminalInput = editor.locator('.terminal-xterm-host .xterm-helper-textarea');
+    await terminalInput.focus();
+    const inputCountBeforeShiftEnter = terminalInputs.length;
+    await editor.keyboard.press('Shift+Enter');
+    await editor.waitForTimeout(250);
+    assert.deepEqual(
+      terminalInputs.slice(inputCountBeforeShiftEnter),
+      [{ data: '\x1b\r' }],
+      'Shift+Enter must send one modified-Enter sequence so terminal TUIs insert a newline without submitting',
+    );
+
+    await editor.getByRole('button', { name: 'Dock terminal below' }).click();
+    await editor.waitForTimeout(300);
+    const bottomRows = terminalResizes.at(-1)?.rows || 0;
+    const bottomHeight = await editor.locator('.terminal-xterm-host').evaluate(node => node.getBoundingClientRect().height);
+    await editor.getByRole('button', { name: 'Dock terminal right' }).click();
+    await editor.waitForTimeout(300);
+    const rightRows = terminalResizes.at(-1)?.rows || 0;
+    const rightHeight = await editor.locator('.terminal-xterm-host').evaluate(node => node.getBoundingClientRect().height);
+    const stackClass = await editor.locator('.workbench-stack').getAttribute('class');
+    const viewport = await editor.evaluate(() => ({ width: innerWidth, height: innerHeight, stackHeight: document.querySelector('.workbench-stack')?.getBoundingClientRect().height || 0 }));
+    assert(bottomRows > 0, `docking below must resize the PTY: ${JSON.stringify(terminalResizes)}`);
+    assert(
+      rightRows > bottomRows && rightHeight > bottomHeight,
+      `a tall right-docked terminal must expand PTY rows instead of leaving output in the upper half: ${JSON.stringify({ bottomRows, rightRows, bottomHeight, rightHeight, stackClass, viewport })}`,
+    );
     const persistedDefault = await editor.evaluate(async () => {
       const params = new URLSearchParams(window.location.search);
       const port = params.get('port') || '7474';
@@ -217,13 +259,15 @@ async function main() {
     });
     assert.equal(persistedDefault, 'zsh', 'a one-time shell choice must not replace the saved default');
 
+    await editor.getByRole('button', { name: 'Dock terminal below' }).click();
+    await editor.waitForTimeout(200);
     await editor.locator('.terminal-tab.active svg').last().click();
     await editor.waitForSelector('.terminal-tab.active', { state: 'detached' });
     await editor.waitForTimeout(300);
     assert(deleteResponse, 'closing a terminal tab must issue DELETE /terminal-sessions/:id');
     assert.equal(deleteResponse.status(), 200, await deleteResponse.text());
     assert.equal(
-      await editor.locator('.terminal-error').count(),
+      await editor.locator('.terminal-error:not(:empty)').count(),
       0,
       `closing a terminal tab must not report a connection failure: ${await editor.locator('.terminal-error').allTextContents()}`,
     );

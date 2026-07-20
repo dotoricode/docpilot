@@ -50,6 +50,10 @@ async function main() {
     await openFixture(start, fixtureRoot);
 
     const editor = await waitForReactEditorWindow(app);
+    await app.evaluate(({ BrowserWindow }) => {
+      const editorWindow = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'));
+      editorWindow?.setSize(1280, 900);
+    });
     editor.on('pageerror', error => {
       console.error('renderer pageerror:', error.stack || error.message || String(error));
     });
@@ -57,19 +61,18 @@ async function main() {
       if (message.type() === 'error') console.error('renderer console error:', message.text());
     });
     await editor.waitForSelector('.workspace-sidebar');
-    await editor.waitForSelector('.markdown-preview');
     if (await editor.locator('.release-notice-overlay').count()) {
       await editor.locator('.release-notice-modal footer button').click();
       await editor.waitForFunction(() => !document.querySelector('.release-notice-overlay'));
     }
-    await editor.getByRole('button', { name: /Dark/ }).click();
-    await editor.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
-
     await editor.locator('.workspace-file-row').filter({ hasText: 'alpha.md' }).first().click();
+    await editor.waitForSelector('.document-markdown-content');
+    await editor.locator('.theme-toggle button').filter({ hasText: 'Dark' }).click();
+    await editor.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
     await editor.waitForFunction(() => document.body.innerText.includes('Alpha Title'));
     await editor.waitForFunction(() => document.querySelectorAll('.file-tab').length === 1);
 
-    await editor.getByRole('button', { name: '편집' }).click();
+    await editor.getByRole('button', { name: 'Source' }).click();
     await pressShortcut(editor, 'F');
     await editor.waitForSelector('.cm-search input');
     if (await editor.locator('.preview-find-bar input').count()) {
@@ -110,7 +113,8 @@ async function main() {
     await editor.waitForSelector('.cm-search');
     await editor.locator('.editor-title').click({ position: { x: 8, y: 8 } });
     await editor.waitForFunction(() => !document.querySelector('.cm-search'));
-    await editor.getByRole('button', { name: '프리뷰' }).click();
+    await editor.getByRole('button', { name: 'Document', exact: true }).click();
+    await editor.getByRole('button', { name: 'Agent Copy' }).click();
     await pressShortcut(editor, 'F');
     await editor.waitForSelector('.preview-find-bar input');
     const scrollBeforeFind = await editor.evaluate(() => {

@@ -41,6 +41,13 @@ async function main() {
 
     const editor = await waitForReactEditorWindow(app);
     await editor.waitForSelector('.bridge-status.connected', { timeout: 12000 });
+    const releaseNotice = editor.getByRole('dialog', { name: '새 버전 안내' });
+    if (await releaseNotice.isVisible().catch(() => false)) {
+      await releaseNotice.getByRole('button', { name: '확인' }).click();
+    }
+    await editor.waitForSelector('.workspace-file-row');
+    await editor.locator('.workspace-file-row').filter({ hasText: 'README.md' }).first().click();
+    await editor.waitForSelector('.editor-pane');
     if (await editor.locator('.right-rail button').filter({ hasText: 'Agent' }).count()) {
       await editor.locator('.right-rail button').filter({ hasText: 'Agent' }).click();
     }

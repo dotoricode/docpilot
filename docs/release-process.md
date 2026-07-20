@@ -78,18 +78,15 @@ git diff -- docs prototypes/manual-v2
 
 ## 4. 앱 및 패키지 게이트
 
-Electron 회귀 검사는 작업 중인 사용자의 창과 포커스를 방해하지 않도록 `DOCPILOT_TEST_HIDDEN_WINDOWS=1`인 숨김 창과 검사별 임시 `DOCPILOT_USER_DATA_DIR`에서 실행합니다. 아래 npm `check:*` 명령은 숨김 창을 기본으로 사용합니다. 화면 확인이 꼭 필요한 수동 검증만 별도의 테스트 워크스페이스에서 창을 표시합니다.
+Electron 회귀 검사는 작업 중인 사용자의 창과 포커스를 방해하지 않도록 항상 `DOCPILOT_TEST_HIDDEN_WINDOWS=1`인 숨김 창에서 실행합니다. `npm run check:ui:quiet`는 `scripts/check-react-*.js` 전체를 자동 발견하므로 앞으로 추가되는 React/Electron 회귀 검사도 기본 게이트에 자동 포함합니다. 검사는 공유 포트와 앱 상태가 충돌하지 않도록 순차 실행하며, 각 검사마다 새로운 임시 `DOCPILOT_USER_DATA_DIR`를 사용하고 종료 후 삭제합니다. 현재 UI에서 제거된 기능의 구형 검사만 러너의 격리 목록에 구체적인 사유를 적어 제외할 수 있으며, 격리 건수와 파일명은 실행 로그에 반드시 표시합니다. 새 실패를 조용히 제외하거나 검사 파일 이름을 바꿔 우회하지 않습니다.
+
+숨김 회귀 범위에는 시작 화면과 워크스페이스 탐색, 파일 트리·검색·탭, Source/Document 편집과 원문 보존, Mermaid 보호·렌더링, 목차·프리뷰·Diff·분할·크기 조절, AsciiDoc의 화면 블록과 원문 줄 매핑·편집·복사, 패널 이동, 터미널 생성·셸·현재 워크스페이스 작업 경로·Shift+Enter 개행·pane 높이·커서·스크롤바·좁은 레이아웃, 설정·지침, 외부 파일 충돌, 업데이트 보존, AsciiDoc 보안이 모두 포함돼야 합니다. 화면 표시가 꼭 필요한 Finder·DMG·아이콘 수동 검증만 별도의 테스트 워크스페이스에서 수행합니다.
 
 ```bash
 npm run renderer:typecheck
 npm test
 npm run check:shutdown
-npm run check:terminal:create
-npm run check:terminal:narrow
-npm run check:toc
-npm run check:pane-drag
-npm run check:update-flow
-npm run check:renderer-security
+npm run check:ui:quiet
 npm audit --audit-level=low
 npm run build
 node scripts/check-packaged-app.js

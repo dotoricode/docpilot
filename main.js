@@ -12,6 +12,7 @@ const { canonicalizeRoot, isPathInside } = require('./shared/core/bridge-securit
 const { createUpdateController } = require('./shared/core/update-controller');
 
 const HIDE_TEST_WINDOWS = process.env.DOCPILOT_TEST_HIDDEN_WINDOWS === '1';
+const SHOW_TEST_RELEASE_NOTICE = process.env.DOCPILOT_TEST_SHOW_RELEASE_NOTICE === '1';
 
 if (process.env.DOCPILOT_USER_DATA_DIR) {
   app.setPath('userData', process.env.DOCPILOT_USER_DATA_DIR);
@@ -655,6 +656,8 @@ function loadEditorShell(win) {
       token: String(win._docpilotBridgeToken || ''),
       theme: effectiveTheme,
       preference,
+      ...(HIDE_TEST_WINDOWS && !SHOW_TEST_RELEASE_NOTICE ? { quietTest: '1' } : {}),
+      ...(SHOW_TEST_RELEASE_NOTICE ? { releaseNoticeTimeout: '10000' } : {}),
       ...(openFileRel ? { open: openFileRel } : {}),
     },
   });

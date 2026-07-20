@@ -7288,6 +7288,12 @@ textarea {
   padding: 6px 10px;
 }
 
+.terminal-error:empty {
+  min-height: 0;
+  border: 0;
+  padding: 0;
+}
+
 .terminal-empty {
   position: absolute;
   inset: 36px 0 0;

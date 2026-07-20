@@ -43,13 +43,33 @@ function highlightCodeBlocks(html) {
   );
 }
 
+function sourceLineRange(node) {
+  const start = Number(node.getSourceLocation?.()?.getLineNumber?.() || 0);
+  if (!Number.isInteger(start) || start < 1) return null;
+  const source = node.getSource?.();
+  let end = start;
+  if (typeof source === 'string' && source) end = start + source.split(/\r?\n/).length - 1;
+  if (['listing', 'literal'].includes(String(node.getContext?.() || ''))) end += 1;
+  return { start, end: Math.max(start, end) };
+}
+
+function annotateSourceLines(node) {
+  const range = sourceLineRange(node);
+  if (range && typeof node.addRole === 'function') {
+    node.addRole(`docpilot-source-lines-${range.start}-${range.end}`);
+  }
+  for (const block of node.getBlocks?.() || []) annotateSourceLines(block);
+}
+
 parentPort.on('message', ({ reqId, source }) => {
   try {
-    const html = String(getAsciidoctor().convert(source, {
+    const document = getAsciidoctor().load(source, {
       safe: 'secure',
-      standalone: false,
+      sourcemap: true,
       attributes: { 'source-highlighter': 'highlightjs' },
-    }));
+    });
+    annotateSourceLines(document);
+    const html = String(document.convert({ standalone: false }));
     parentPort.postMessage({ reqId, html: highlightCodeBlocks(html) });
   } catch (err) {
     parentPort.postMessage({ reqId, error: err instanceof Error ? err.message : String(err) });

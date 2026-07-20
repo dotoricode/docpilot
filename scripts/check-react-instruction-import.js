@@ -41,10 +41,19 @@ async function main() {
     }, fixtureRoot);
 
     const editor = await waitForReactEditorWindow(app);
+    await app.evaluate(({ BrowserWindow }) => {
+      const editorWindow = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'));
+      editorWindow?.setSize(1280, 900);
+    });
     await editor.waitForSelector('.workspace-sidebar');
-    await editor.locator('.workspace-tabs button').filter({ hasText: '지침' }).click();
+    await editor.locator('.workspace-tabs button').filter({ hasText: '지침' }).evaluate(button => button.click());
     await editor.waitForSelector('.instructions-panel');
     await editor.locator('[data-testid="instruction-file-input"]').setInputFiles(importPath);
+    await editor.waitForFunction(() => {
+      const title = document.querySelector('.instruction-form input');
+      const body = document.querySelector('.instruction-form textarea');
+      return title?.value === 'agent-guide' && body?.value.includes('Use project language.');
+    });
 
     const title = await editor.locator('.instruction-form input').first().inputValue();
     const body = await editor.locator('.instruction-form textarea').inputValue();

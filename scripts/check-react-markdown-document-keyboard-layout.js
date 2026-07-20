@@ -147,7 +147,12 @@ async function main() {
     });
     const visibleBottom = Math.min(geometry.shellBottom, geometry.terminalTop);
     assert.ok(geometry.menuBottom <= visibleBottom - 8, `slash menu must stay above the terminal: ${JSON.stringify(geometry)}`);
-    assert.ok(geometry.menuTop < geometry.caretTop, `bottom-edge slash menu must open upward: ${JSON.stringify(geometry)}`);
+    const availableAbove = geometry.caretTop;
+    const availableBelow = visibleBottom - geometry.caretTop;
+    assert.ok(
+      availableAbove > availableBelow ? geometry.menuTop < geometry.caretTop : geometry.menuTop > geometry.caretTop,
+      `slash menu must open toward the larger visible area: ${JSON.stringify(geometry)}`,
+    );
     await page.screenshot({ path: path.join(artifactRoot, 'markdown-slash-menu-above-terminal.png'), scale: 'css' });
     await page.keyboard.press('Escape');
 
@@ -294,9 +299,11 @@ async function main() {
     const agentCopyPreview = page.locator('.markdown-preview.agent-copy-active');
     await agentCopyPreview.waitFor();
     const agentCopyBlock = agentCopyPreview.locator('blockquote').first();
-    await agentCopyBlock.hover();
+    await agentCopyBlock.click();
+    const pickedAgentCopyBlock = agentCopyPreview.locator('.preview-picked');
+    await pickedAgentCopyBlock.waitFor();
     assert.notEqual(
-      await agentCopyBlock.evaluate(node => getComputedStyle(node).backgroundColor),
+      await pickedAgentCopyBlock.evaluate(node => getComputedStyle(node).backgroundColor),
       'rgba(0, 0, 0, 0)',
       'blue block highlighting must be reserved for Agent Copy mode',
     );

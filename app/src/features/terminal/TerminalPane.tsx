@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CaretDown, Check, DotsSixVertical, Plus, Trash, X } from '@phosphor-icons/react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -61,6 +61,7 @@ const TERMINAL_THEME = {
 } as const;
 
 const TERMINAL_FONT_FAMILY = '"MesloLGS NF", "JetBrainsMono Nerd Font", "Hack Nerd Font", "Symbols Nerd Font Mono", "Geist Mono", "SFMono-Regular", Menlo, monospace';
+const MODIFIED_ENTER_SEQUENCE = '\x1b\r';
 
 const DEFAULT_TERMINAL_SHELL: TerminalShell = {
   id: 'default',
@@ -75,6 +76,7 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
   const hostRef = useRef<HTMLDivElement | null>(null);
   const chooserRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  const fitTerminalRef = useRef<() => void>(() => {});
   const stopWatchingRef = useRef<(() => void) | null>(null);
   const viewIdRef = useRef(crypto.randomUUID());
   const lastSeqRef = useRef(0);
@@ -96,6 +98,8 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
       allowProposedApi: false,
       convertEol: true,
       cursorBlink: true,
+      cursorStyle: 'bar',
+      cursorWidth: 2,
       fontFamily: TERMINAL_FONT_FAMILY,
       fontSize: 12,
       lineHeight: 1.28,
@@ -107,24 +111,63 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
     terminal.open(hostRef.current);
     terminalRef.current = terminal;
     let disposed = false;
+    let fitFrame = 0;
+    let settleTimer = 0;
+    terminal.attachCustomKeyEventHandler(event => {
+      if (
+        event.type === 'keydown'
+        && event.key === 'Enter'
+        && event.shiftKey
+        && !event.altKey
+        && !event.ctrlKey
+        && !event.metaKey
+      ) {
+        event.preventDefault();
+        if (activeId) void sendTerminalInput(activeId, MODIFIED_ENTER_SEQUENCE).catch(reportError);
+        return false;
+      }
+      return true;
+    });
     const input = terminal.onData(data => {
       if (activeId) void sendTerminalInput(activeId, data).catch(reportError);
     });
-    const fit = () => {
-      if (!disposed) fitTerminalToHost(terminal, fitAddon, hostRef.current, activeId);
+    const fitNow = () => {
+      if (disposed) return;
+      fitTerminalToHost(terminal, fitAddon, hostRef.current, activeId);
     };
+    const fit = () => {
+      window.cancelAnimationFrame(fitFrame);
+      window.clearTimeout(settleTimer);
+      fitFrame = window.requestAnimationFrame(() => {
+        fitNow();
+        fitFrame = window.requestAnimationFrame(fitNow);
+      });
+      settleTimer = window.setTimeout(fitNow, 120);
+    };
+    fitTerminalRef.current = fit;
     const resizeObserver = new ResizeObserver(fit);
     resizeObserver.observe(hostRef.current);
+    const pane = hostRef.current.closest<HTMLElement>('.terminal-pane');
+    if (pane) resizeObserver.observe(pane);
+    window.addEventListener('resize', fit);
     fit();
     void document.fonts.ready.then(fit);
     return () => {
       disposed = true;
+      window.cancelAnimationFrame(fitFrame);
+      window.clearTimeout(settleTimer);
       input.dispose();
       resizeObserver.disconnect();
+      window.removeEventListener('resize', fit);
+      fitTerminalRef.current = () => {};
       terminal.dispose();
       terminalRef.current = null;
     };
   }, [activeId]);
+
+  useLayoutEffect(() => {
+    fitTerminalRef.current();
+  }, [position]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -407,7 +450,7 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
           </button>
         </div>
       </header>
-      {error ? <div className="terminal-error">{error}</div> : null}
+      <div className="terminal-error" role={error ? 'alert' : undefined}>{error}</div>
       {!sessions.length ? (
         <div className="terminal-empty">
           <button className="terminal-empty-primary" type="button" disabled={!defaultShell.available} onClick={() => void launchTerminal(defaultShell.id)}>
