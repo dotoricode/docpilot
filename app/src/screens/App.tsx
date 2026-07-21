@@ -1017,6 +1017,8 @@ export function App() {
         return;
       }
       if (mod && key === 'd') {
+        const target = event.target;
+        if (target instanceof Node && document.querySelector('.terminal-pane')?.contains(target)) return;
         event.preventDefault();
         event.stopPropagation();
         openCurrentOrQuickFileInSplit(event.shiftKey ? 'vertical' : 'horizontal');

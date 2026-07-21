@@ -73,15 +73,14 @@ const DEFAULT_TERMINAL_SHELL: TerminalShell = {
 };
 
 export function TerminalPane({ position, theme, onPositionChange, onPanePointerDown, onPaneKeyDown, onClose }: TerminalPaneProps) {
-  const hostRef = useRef<HTMLDivElement | null>(null);
+  const paneRef = useRef<HTMLElement | null>(null);
   const chooserRef = useRef<HTMLDivElement | null>(null);
-  const terminalRef = useRef<Terminal | null>(null);
-  const fitTerminalRef = useRef<() => void>(() => {});
-  const stopWatchingRef = useRef<(() => void) | null>(null);
-  const viewIdRef = useRef(crypto.randomUUID());
-  const lastSeqRef = useRef(0);
   const [sessions, setSessions] = useState<TerminalSessionSummary[]>([]);
   const [activeId, setActiveId] = useState('');
+  const [primaryId, setPrimaryId] = useState('');
+  const [secondaryId, setSecondaryId] = useState('');
+  const [focusedView, setFocusedView] = useState<'primary' | 'secondary'>('primary');
+  const [terminalSplitOrientation, setTerminalSplitOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
   const [error, setError] = useState('');
   const [defaultTerminalShell, setDefaultTerminalShell] = useState<TerminalShellId>('default');
   const [terminalShells, setTerminalShells] = useState<TerminalShell[]>([DEFAULT_TERMINAL_SHELL]);
@@ -93,97 +92,14 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
   const defaultShell = terminalShells.find(shell => shell.id === defaultTerminalShell) || DEFAULT_TERMINAL_SHELL;
 
   useEffect(() => {
-    if (!hostRef.current) return;
-    const terminal = new Terminal({
-      allowProposedApi: false,
-      convertEol: true,
-      cursorBlink: true,
-      cursorStyle: 'bar',
-      cursorWidth: 2,
-      fontFamily: TERMINAL_FONT_FAMILY,
-      fontSize: 12,
-      lineHeight: 1.28,
-      scrollback: 5000,
-      theme: TERMINAL_THEME[theme],
-    });
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-    terminal.open(hostRef.current);
-    terminalRef.current = terminal;
-    let disposed = false;
-    let fitFrame = 0;
-    let settleTimer = 0;
-    terminal.attachCustomKeyEventHandler(event => {
-      if (
-        event.type === 'keydown'
-        && event.key === 'Enter'
-        && event.shiftKey
-        && !event.altKey
-        && !event.ctrlKey
-        && !event.metaKey
-      ) {
-        event.preventDefault();
-        if (activeId) void sendTerminalInput(activeId, MODIFIED_ENTER_SEQUENCE).catch(reportError);
-        return false;
-      }
-      return true;
-    });
-    const input = terminal.onData(data => {
-      if (activeId) void sendTerminalInput(activeId, data).catch(reportError);
-    });
-    const fitNow = () => {
-      if (disposed) return;
-      fitTerminalToHost(terminal, fitAddon, hostRef.current, activeId);
-    };
-    const fit = () => {
-      window.cancelAnimationFrame(fitFrame);
-      window.clearTimeout(settleTimer);
-      fitFrame = window.requestAnimationFrame(() => {
-        fitNow();
-        fitFrame = window.requestAnimationFrame(fitNow);
-      });
-      settleTimer = window.setTimeout(fitNow, 120);
-    };
-    fitTerminalRef.current = fit;
-    const resizeObserver = new ResizeObserver(fit);
-    resizeObserver.observe(hostRef.current);
-    const pane = hostRef.current.closest<HTMLElement>('.terminal-pane');
-    if (pane) resizeObserver.observe(pane);
-    window.addEventListener('resize', fit);
-    fit();
-    void document.fonts.ready.then(fit);
-    return () => {
-      disposed = true;
-      window.cancelAnimationFrame(fitFrame);
-      window.clearTimeout(settleTimer);
-      input.dispose();
-      resizeObserver.disconnect();
-      window.removeEventListener('resize', fit);
-      fitTerminalRef.current = () => {};
-      terminal.dispose();
-      terminalRef.current = null;
-    };
-  }, [activeId]);
-
-  useLayoutEffect(() => {
-    fitTerminalRef.current();
-  }, [position]);
-
-  useEffect(() => {
-    const terminal = terminalRef.current;
-    if (terminal) {
-      terminal.options.theme = TERMINAL_THEME[theme];
-      terminal.refresh(0, Math.max(0, terminal.rows - 1));
-    }
-  }, [theme]);
-
-  useEffect(() => {
     let cancelled = false;
     listTerminalSessions()
       .then(result => {
         if (cancelled) return;
         setSessions(result.sessions);
-        setActiveId(current => current || result.sessions[0]?.id || '');
+        const firstId = result.sessions[0]?.id || '';
+        setActiveId(current => current || firstId);
+        setPrimaryId(current => current || firstId);
       })
       .catch(reportError);
     return () => { cancelled = true; };
@@ -216,44 +132,78 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
   }, []);
 
   useEffect(() => {
-    stopWatchingRef.current?.();
-    stopWatchingRef.current = null;
-    lastSeqRef.current = 0;
-    const terminal = terminalRef.current;
-    if (!activeId || !terminal) {
-      terminal?.reset();
-      return;
-    }
-    terminal.reset();
-    stopWatchingRef.current = watchTerminalSession(activeId, event => {
-      if (event.type === 'terminal.snapshot' && event.snapshot) {
-        terminal.reset();
-        lastSeqRef.current = event.snapshot.lastSeq;
-        terminal.write(event.snapshot.data, () => acknowledge(activeId, event.snapshot?.lastSeq || 0));
-      } else if (event.type === 'terminal.frame' && event.data && event.seq && event.seq > lastSeqRef.current) {
-        lastSeqRef.current = event.seq;
-        terminal.write(event.data, () => acknowledge(activeId, event.seq || 0));
-      } else if (event.type === 'terminal.restore-needed') {
-        void restoreSnapshot(activeId, terminal);
-      } else if (event.type === 'terminal.exit') {
-        setSessions(current => current.map(session => session.id === activeId ? { ...session, status: 'closed' } : session));
-      }
-    }, () => setError('Terminal session connection lost'), lastSeqRef.current);
-    return () => {
-      stopWatchingRef.current?.();
-      stopWatchingRef.current = null;
+    const handleTerminalSplitShortcut = (event: globalThis.KeyboardEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || !paneRef.current?.contains(target)) return;
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key.toLowerCase() !== 'd') return;
+      event.preventDefault();
+      event.stopPropagation();
+      void splitTerminal(event.shiftKey ? 'vertical' : 'horizontal');
     };
-  }, [activeId]);
+    window.addEventListener('keydown', handleTerminalSplitShortcut, true);
+    return () => window.removeEventListener('keydown', handleTerminalSplitShortcut, true);
+  }, [activeId, defaultShell.available, defaultTerminalShell, primaryId, secondaryId, sessions.length]);
 
-  async function createTerminal(shellId: TerminalShellId = defaultTerminalShell) {
+  async function createTerminal(shellId: TerminalShellId = defaultTerminalShell, targetView = focusedView) {
     setError('');
     try {
       const result = await startTerminalSession({ title: `Terminal ${sessions.length + 1}`, shellId, cwd: '.' });
       setSessions(current => [...current, result.session]);
-      setActiveId(result.session.id);
+      showSessionInView(result.session.id, targetView);
+      return result.session;
+    } catch (cause) {
+      reportError(cause);
+      return null;
+    }
+  }
+
+  async function splitTerminal(orientation: 'horizontal' | 'vertical') {
+    setTerminalSplitOrientation(orientation);
+    if (secondaryId) return;
+    if (!defaultShell.available) {
+      setError('The default shell is not installed.');
+      return;
+    }
+    setError('');
+    try {
+      let baseId = activeId || primaryId;
+      if (!baseId) {
+        const first = await startTerminalSession({ title: `Terminal ${sessions.length + 1}`, shellId: defaultTerminalShell, cwd: '.' });
+        baseId = first.session.id;
+        setSessions(current => [...current, first.session]);
+        setPrimaryId(baseId);
+        setFocusedView('primary');
+        setActiveId(baseId);
+      }
+      const second = await startTerminalSession({ title: `Terminal ${sessions.length + (activeId || primaryId ? 1 : 2)}`, shellId: defaultTerminalShell, cwd: '.' });
+      setSessions(current => [...current, second.session]);
+      setPrimaryId(baseId);
+      setSecondaryId(second.session.id);
+      setFocusedView('secondary');
+      setActiveId(second.session.id);
     } catch (cause) {
       reportError(cause);
     }
+  }
+
+  function showSessionInView(id: string, targetView = focusedView) {
+    if (id === primaryId) {
+      setFocusedView('primary');
+    } else if (id === secondaryId) {
+      setFocusedView('secondary');
+    } else if (targetView === 'secondary' && secondaryId) {
+      setSecondaryId(id);
+      setFocusedView('secondary');
+    } else {
+      setPrimaryId(id);
+      setFocusedView('primary');
+    }
+    setActiveId(id);
+  }
+
+  function focusTerminalView(view: 'primary' | 'secondary', id: string) {
+    setFocusedView(view);
+    setActiveId(id);
   }
 
   async function launchTerminal(shellId: TerminalShellId) {
@@ -305,11 +255,23 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
     try {
       await stopTerminalSession(id);
     } catch {}
-    setSessions(current => {
-      const remaining = current.filter(session => session.id !== id);
-      if (activeId === id) setActiveId(remaining[0]?.id || '');
-      return remaining;
-    });
+    const remaining = sessions.filter(session => session.id !== id);
+    setSessions(remaining);
+    if (id === secondaryId) {
+      setSecondaryId('');
+      setFocusedView('primary');
+      setActiveId(primaryId || remaining[0]?.id || '');
+      return;
+    }
+    if (id === primaryId) {
+      const nextPrimary = secondaryId || remaining[0]?.id || '';
+      setPrimaryId(nextPrimary);
+      setSecondaryId('');
+      setFocusedView('primary');
+      setActiveId(nextPrimary);
+      return;
+    }
+    if (activeId === id) setActiveId(primaryId || remaining[0]?.id || '');
   }
 
   function reportError(cause: unknown) {
@@ -317,7 +279,7 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
   }
 
   return (
-    <section className={`terminal-pane terminal-position-${position} ${chooserOpen ? 'terminal-chooser-open' : ''}`} aria-label="Terminal sessions">
+    <section ref={paneRef} className={`terminal-pane terminal-position-${position} ${chooserOpen ? 'terminal-chooser-open' : ''}`} aria-label="Terminal sessions">
       <header className="terminal-tabbar">
         <button
           className="terminal-pane-drag-handle"
@@ -338,7 +300,7 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
               type="button"
               role="tab"
               aria-selected={session.id === activeId}
-              onClick={() => setActiveId(session.id)}
+              onClick={() => showSessionInView(session.id)}
             >
               <span>{session.title}</span>
               <X size={12} weight="bold" onClick={event => { event.stopPropagation(); void closeTerminal(session.id); }} />
@@ -461,25 +423,199 @@ export function TerminalPane({ position, theme, onPositionChange, onPanePointerD
           <small>{defaultShell.available ? 'Opens inside DocPilot' : 'The default shell is not installed'}</small>
         </div>
       ) : null}
-      <div className="terminal-xterm-host" ref={hostRef} />
+      {primaryId ? (
+        <div
+          className={`terminal-view-layout ${secondaryId ? `split-${terminalSplitOrientation}` : 'single'}`}
+          data-split-orientation={secondaryId ? terminalSplitOrientation : 'none'}
+        >
+          <TerminalViewport
+            key={`primary-${primaryId}`}
+            sessionId={primaryId}
+            theme={theme}
+            active={activeId === primaryId}
+            fitSignal={`${position}:${terminalSplitOrientation}:${secondaryId ? 'split' : 'single'}`}
+            onFocus={() => focusTerminalView('primary', primaryId)}
+            onExit={() => setSessions(current => current.map(session => session.id === primaryId ? { ...session, status: 'closed' } : session))}
+            onError={reportError}
+          />
+          {secondaryId ? <div className="terminal-view-divider" aria-hidden="true" /> : null}
+          {secondaryId ? (
+            <TerminalViewport
+              key={`secondary-${secondaryId}`}
+              sessionId={secondaryId}
+              theme={theme}
+              active={activeId === secondaryId}
+              fitSignal={`${position}:${terminalSplitOrientation}:split`}
+              onFocus={() => focusTerminalView('secondary', secondaryId)}
+              onExit={() => setSessions(current => current.map(session => session.id === secondaryId ? { ...session, status: 'closed' } : session))}
+              onError={reportError}
+            />
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
+}
 
-  function acknowledge(sessionId: string, seq: number) {
-    if (!seq) return;
-    void acknowledgeTerminalFrame(sessionId, viewIdRef.current, seq).catch(() => {});
-  }
+type TerminalViewportProps = {
+  sessionId: string;
+  theme: 'light' | 'dark';
+  active: boolean;
+  fitSignal: string;
+  onFocus: () => void;
+  onExit: () => void;
+  onError: (cause: unknown) => void;
+};
 
-  async function restoreSnapshot(sessionId: string, terminal: Terminal) {
-    try {
-      const result = await getTerminalSnapshot(sessionId);
-      terminal.reset();
-      lastSeqRef.current = result.snapshot.lastSeq;
-      terminal.write(result.snapshot.data, () => acknowledge(sessionId, result.snapshot.lastSeq));
-    } catch (cause) {
-      reportError(cause);
-    }
-  }
+function TerminalViewport({ sessionId, theme, active, fitSignal, onFocus, onExit, onError }: TerminalViewportProps) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const terminalRef = useRef<Terminal | null>(null);
+  const fitTerminalRef = useRef<() => void>(() => {});
+  const stopWatchingRef = useRef<(() => void) | null>(null);
+  const viewIdRef = useRef(crypto.randomUUID());
+  const lastSeqRef = useRef(0);
+  const onExitRef = useRef(onExit);
+  const onErrorRef = useRef(onError);
+  onExitRef.current = onExit;
+  onErrorRef.current = onError;
+
+  useEffect(() => {
+    if (!hostRef.current) return;
+    const terminal = new Terminal({
+      allowProposedApi: false,
+      convertEol: true,
+      cursorBlink: true,
+      cursorStyle: 'bar',
+      cursorWidth: 2,
+      fontFamily: TERMINAL_FONT_FAMILY,
+      fontSize: 12,
+      lineHeight: 1.28,
+      scrollback: 5000,
+      theme: TERMINAL_THEME[theme],
+    });
+    const fitAddon = new FitAddon();
+    terminal.loadAddon(fitAddon);
+    terminal.open(hostRef.current);
+    terminalRef.current = terminal;
+    let disposed = false;
+    let fitFrame = 0;
+    let settleTimer = 0;
+    terminal.attachCustomKeyEventHandler(event => {
+      if (
+        event.type === 'keydown'
+        && event.key === 'Enter'
+        && event.shiftKey
+        && !event.altKey
+        && !event.ctrlKey
+        && !event.metaKey
+      ) {
+        event.preventDefault();
+        void sendTerminalInput(sessionId, MODIFIED_ENTER_SEQUENCE).catch(onErrorRef.current);
+        return false;
+      }
+      return true;
+    });
+    const input = terminal.onData(data => {
+      void sendTerminalInput(sessionId, data).catch(onErrorRef.current);
+    });
+    const fitNow = () => {
+      if (!disposed) fitTerminalToHost(terminal, fitAddon, hostRef.current, sessionId);
+    };
+    const fit = () => {
+      window.cancelAnimationFrame(fitFrame);
+      window.clearTimeout(settleTimer);
+      fitFrame = window.requestAnimationFrame(() => {
+        fitNow();
+        fitFrame = window.requestAnimationFrame(fitNow);
+      });
+      settleTimer = window.setTimeout(fitNow, 120);
+    };
+    fitTerminalRef.current = fit;
+    const resizeObserver = new ResizeObserver(fit);
+    resizeObserver.observe(hostRef.current);
+    const layout = hostRef.current.closest<HTMLElement>('.terminal-view-layout');
+    if (layout) resizeObserver.observe(layout);
+    window.addEventListener('resize', fit);
+    fit();
+    void document.fonts.ready.then(fit);
+    return () => {
+      disposed = true;
+      window.cancelAnimationFrame(fitFrame);
+      window.clearTimeout(settleTimer);
+      input.dispose();
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', fit);
+      fitTerminalRef.current = () => {};
+      terminal.dispose();
+      terminalRef.current = null;
+    };
+  }, [sessionId]);
+
+  useLayoutEffect(() => {
+    fitTerminalRef.current();
+  }, [fitSignal]);
+
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    terminal.options.theme = TERMINAL_THEME[theme];
+    terminal.refresh(0, Math.max(0, terminal.rows - 1));
+  }, [theme]);
+
+  useEffect(() => {
+    if (active) terminalRef.current?.focus();
+  }, [active]);
+
+  useEffect(() => {
+    stopWatchingRef.current?.();
+    stopWatchingRef.current = null;
+    lastSeqRef.current = 0;
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    terminal.reset();
+    const acknowledge = (seq: number) => {
+      if (seq) void acknowledgeTerminalFrame(sessionId, viewIdRef.current, seq).catch(() => {});
+    };
+    const restoreSnapshot = async () => {
+      try {
+        const result = await getTerminalSnapshot(sessionId);
+        terminal.reset();
+        lastSeqRef.current = result.snapshot.lastSeq;
+        terminal.write(result.snapshot.data, () => acknowledge(result.snapshot.lastSeq));
+      } catch (cause) {
+        onErrorRef.current(cause);
+      }
+    };
+    stopWatchingRef.current = watchTerminalSession(sessionId, event => {
+      if (event.type === 'terminal.snapshot' && event.snapshot) {
+        terminal.reset();
+        lastSeqRef.current = event.snapshot.lastSeq;
+        terminal.write(event.snapshot.data, () => acknowledge(event.snapshot?.lastSeq || 0));
+      } else if (event.type === 'terminal.frame' && event.data && event.seq && event.seq > lastSeqRef.current) {
+        lastSeqRef.current = event.seq;
+        terminal.write(event.data, () => acknowledge(event.seq || 0));
+      } else if (event.type === 'terminal.restore-needed') {
+        void restoreSnapshot();
+      } else if (event.type === 'terminal.exit') {
+        onExitRef.current();
+      }
+    }, () => onErrorRef.current('Terminal session connection lost'), lastSeqRef.current);
+    return () => {
+      stopWatchingRef.current?.();
+      stopWatchingRef.current = null;
+    };
+  }, [sessionId]);
+
+  return (
+    <div
+      className={`terminal-view ${active ? 'active' : ''}`}
+      data-session-id={sessionId}
+      onFocusCapture={onFocus}
+      onPointerDown={onFocus}
+    >
+      <div className="terminal-xterm-host" ref={hostRef} />
+    </div>
+  );
 }
 
 function fitTerminalToHost(terminal: Terminal, fitAddon: FitAddon, host: HTMLDivElement | null, sessionId: string) {
