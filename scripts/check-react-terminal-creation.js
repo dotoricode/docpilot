@@ -241,6 +241,31 @@ async function main() {
       'Shift+Enter must send one modified-Enter sequence so terminal TUIs insert a newline without submitting',
     );
 
+    const inputCountBeforeCursorShortcuts = terminalInputs.length;
+    await editor.keyboard.press('Meta+ArrowLeft');
+    await editor.keyboard.press('Meta+ArrowRight');
+    await editor.keyboard.press('Alt+ArrowLeft');
+    await editor.keyboard.press('Alt+ArrowRight');
+    await editor.keyboard.press('Meta+ArrowUp');
+    await editor.keyboard.press('Meta+ArrowDown');
+    await editor.keyboard.press('Alt+ArrowUp');
+    await editor.keyboard.press('Alt+ArrowDown');
+    await editor.waitForTimeout(250);
+    assert.deepEqual(
+      terminalInputs.slice(inputCountBeforeCursorShortcuts),
+      [
+        { data: '\x01' },
+        { data: '\x05' },
+        { data: '\x1bb' },
+        { data: '\x1bf' },
+        { data: '\x1b[A' },
+        { data: '\x1b[B' },
+        { data: '\x1b[A' },
+        { data: '\x1b[B' },
+      ],
+      'Cmd/Option+Arrow must send deterministic shell cursor movement sequences exactly once',
+    );
+
     await editor.keyboard.press('Meta+d');
     await editor.waitForFunction(() => document.querySelectorAll('.terminal-view').length === 2);
     assert.equal(createResponses.length, 2, 'Cmd+D in a focused terminal must create exactly one additional terminal session');

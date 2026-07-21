@@ -198,6 +198,7 @@ const PREVIEW_WIDTH_MAX = 2400;
 const PREVIEW_WIDTH_STEP = 20;
 const PREVIEW_WIDTH_STORAGE_KEY = 'docpilot:preview-width';
 const PREVIEW_WIDTH_EXPLICIT_STORAGE_KEY = 'docpilot:preview-width-explicit-v1';
+const TRANSIENT_COPY_UI_MS = 1600;
 const PREVIEW_LINE_NUMBERS_STORAGE_KEY = 'docpilot:preview-line-numbers-v2';
 
 const RenderedPreviewHtml = memo(function RenderedPreviewHtml({ html }: { html: string }) {
@@ -534,6 +535,7 @@ export function EditorPane({
   );
   const [previewCopyTarget, setPreviewCopyTarget] = useState<PreviewCopyTarget | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<CopyFeedback | null>(null);
+  const [contextRailVisible, setContextRailVisible] = useState(false);
   const [agentCopyEnabled, setAgentCopyEnabled] = useState(false);
   const [documentSafetyFailure, setDocumentSafetyFailure] = useState('');
   const [documentCommitPending, setDocumentCommitPending] = useState(false);
@@ -782,9 +784,25 @@ export function EditorPane({
 
   useEffect(() => {
     if (!copyFeedback) return undefined;
-    const timer = window.setTimeout(() => setCopyFeedback(null), 1400);
+    const timer = window.setTimeout(() => setCopyFeedback(null), TRANSIENT_COPY_UI_MS);
     return () => window.clearTimeout(timer);
   }, [copyFeedback]);
+
+  useEffect(() => {
+    if (!contextChips.length) {
+      setContextRailVisible(false);
+      return undefined;
+    }
+    setContextRailVisible(true);
+    const timer = window.setTimeout(() => setContextRailVisible(false), TRANSIENT_COPY_UI_MS);
+    return () => window.clearTimeout(timer);
+  }, [contextChips]);
+
+  useEffect(() => {
+    if (selectedPreviewIndex === null) return undefined;
+    const timer = window.setTimeout(() => setSelectedPreviewIndex(null), TRANSIENT_COPY_UI_MS);
+    return () => window.clearTimeout(timer);
+  }, [selectedPreviewIndex]);
 
   useEffect(() => {
     const closeEditorMenuOnOutsideClick = (event: PointerEvent) => {
@@ -1531,7 +1549,7 @@ export function EditorPane({
   }
 
   function renderDocumentContextRail() {
-    if (mode === 'edit' || !contextChips.length) return null;
+    if (mode === 'edit' || !contextChips.length || !contextRailVisible) return null;
     return (
       <aside className="document-context-rail" aria-label="다음 요청 참고 내용">
         <header>
@@ -2160,7 +2178,7 @@ export function EditorPane({
         ) : null}
         {!documentEditable ? <div
           ref={previewShellRef}
-          className={`preview-shell ${showPreviewLineNumbers ? 'show-line-numbers' : 'hide-line-numbers'} ${mode !== 'edit' && contextChips.length ? 'with-context-rail' : ''} ${compareOn ? `preview-compare-active split-${splitOrientation}` : ''} ${diffOn ? 'diff-review-shell' : ''}`}
+          className={`preview-shell ${showPreviewLineNumbers ? 'show-line-numbers' : 'hide-line-numbers'} ${mode !== 'edit' && contextChips.length && contextRailVisible ? 'with-context-rail' : ''} ${compareOn ? `preview-compare-active split-${splitOrientation}` : ''} ${diffOn ? 'diff-review-shell' : ''}`}
           onWheel={handlePreviewShellWheel}
         >
           {previewFindOpen ? (

@@ -2,7 +2,9 @@
 
 declare module '@fontsource-variable/geist';
 declare module '@fontsource-variable/geist-mono';
+declare module '@fontsource-variable/dm-sans';
 declare module '@fontsource-variable/noto-sans-kr';
+declare module '@fontsource-variable/space-grotesk';
 
 type DocPilotUpdateState = {
   status: 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'error';

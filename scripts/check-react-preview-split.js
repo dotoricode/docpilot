@@ -105,6 +105,10 @@ async function main() {
     if (!splitCopied.includes('File: SECOND.md') || !splitCopied.includes('Paragraph 1')) {
       throw new Error(`split preview copy should copy selected secondary text with metadata, got: ${splitCopied.slice(0, 240)}`);
     }
+    await editor.waitForSelector('.document-context-rail', { state: 'detached', timeout: 3_000 });
+    if (await editor.locator('.preview-shell.with-context-rail').count()) {
+      throw new Error('copied context list must collapse after its transient confirmation');
+    }
 
     await editor.locator('.preview-compare-pane.secondary').click();
     await editor.locator('.workspace-file-row').filter({ hasText: 'THIRD.md' }).first().click();

@@ -115,6 +115,20 @@ async function main() {
     await page.waitForSelector('.terminal-pane');
     const document = page.locator('.document-markdown-content[contenteditable="true"]:visible');
     await document.waitFor();
+    const documentTypography = await document.evaluate(node => {
+      const paragraph = node.querySelector('p');
+      const heading = node.querySelector('h1');
+      return {
+        bodyFamily: getComputedStyle(node).fontFamily,
+        bodyWeight: paragraph ? getComputedStyle(paragraph).fontWeight : '',
+        headingFamily: heading ? getComputedStyle(heading).fontFamily : '',
+        headingWeight: heading ? getComputedStyle(heading).fontWeight : '',
+      };
+    });
+    assert.match(documentTypography.bodyFamily, /DM Sans Variable.*Noto Sans KR Variable/, 'Document body must use the public manual font stack');
+    assert.equal(documentTypography.bodyWeight, '400', 'Document body must use the public manual regular weight');
+    assert.match(documentTypography.headingFamily, /Space Grotesk Variable.*Noto Sans KR Variable/, 'Document headings must use the public manual heading stack');
+    assert.equal(documentTypography.headingWeight, '590', 'Document headings must use the public manual heading weight');
     const shell = page.locator('.document-editor-shell');
     await shell.evaluate(node => { node.scrollTop = node.scrollHeight; });
     await document.locator('p').last().click();
