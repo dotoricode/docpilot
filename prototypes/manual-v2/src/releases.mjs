@@ -26,8 +26,8 @@ export const FALLBACK_RELEASES = Object.freeze([
 
 ## Upgrade notes
 - 원문과 동일한 Markdown 구조를 증명할 수 없는 고급 문법 또는 매우 큰 문서는 Source와 읽기 전용 Preview를 사용합니다.
-- 이 공개 빌드는 Developer ID 서명과 Apple 공증이 없는 ad-hoc 배포입니다. DocPilot은 검증된 DMG를 열지만 앱을 자동 종료하거나 Applications의 앱을 자동 교체하지 않습니다.
-- macOS가 실행을 막으면 DocPilot을 한 번 실행한 뒤 시스템 설정 → 개인정보 보호 및 보안 → 확인 없이 열기를 누르고, 다시 나타난 경고에서 열기를 선택합니다. Gatekeeper 비활성화나 터미널 우회 명령은 사용하지 마세요.`,
+- 이 팀 내부용 빌드는 Developer ID 서명과 Apple 공증이 없는 ad-hoc 배포입니다. 첫 실행이 차단되면 시스템 설정 → 개인정보 보호 및 보안 → 확인 없이 열기 → 열기로 최초 1회 승인합니다.
+- DocPilot은 검증된 DMG를 열지만 앱을 자동 종료하거나 Applications의 앱을 자동 교체하지 않습니다. Gatekeeper 비활성화나 터미널 우회 명령은 사용하지 마세요.`,
     assets: [],
     fallback: true,
   },
