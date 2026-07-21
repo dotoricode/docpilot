@@ -62,6 +62,10 @@ const TERMINAL_THEME = {
 
 const TERMINAL_FONT_FAMILY = '"MesloLGS NF", "JetBrainsMono Nerd Font", "Hack Nerd Font", "Symbols Nerd Font Mono", "Geist Mono", "SFMono-Regular", Menlo, monospace';
 const MODIFIED_ENTER_SEQUENCE = '\x1b\r';
+const TERMINAL_VERTICAL_ARROW_SEQUENCE = {
+  ArrowUp: '\x1b[A',
+  ArrowDown: '\x1b[B',
+} as const;
 
 const DEFAULT_TERMINAL_SHELL: TerminalShell = {
   id: 'default',
@@ -501,6 +505,22 @@ function TerminalViewport({ sessionId, theme, active, fitSignal, onFocus, onExit
     let fitFrame = 0;
     let settleTimer = 0;
     terminal.attachCustomKeyEventHandler(event => {
+      if (
+        event.type === 'keydown'
+        && !event.shiftKey
+        && !event.ctrlKey
+        && event.metaKey !== event.altKey
+        && (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'ArrowUp' || event.key === 'ArrowDown')
+      ) {
+        const sequence = event.key === 'ArrowUp' || event.key === 'ArrowDown'
+          ? TERMINAL_VERTICAL_ARROW_SEQUENCE[event.key]
+          : event.metaKey
+            ? event.key === 'ArrowLeft' ? '\x01' : '\x05'
+            : event.key === 'ArrowLeft' ? '\x1bb' : '\x1bf';
+        event.preventDefault();
+        void sendTerminalInput(sessionId, sequence).catch(onErrorRef.current);
+        return false;
+      }
       if (
         event.type === 'keydown'
         && event.key === 'Enter'
