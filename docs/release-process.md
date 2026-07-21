@@ -2,7 +2,9 @@
 
 DocPilot 릴리즈는 macOS 앱, GitHub Release, GitHub Pages 공개 매뉴얼과 Vercel 공개 매뉴얼을 하나의 배포 단위로 다룹니다.
 
-현재 공개 빌드는 Developer ID 서명과 Apple 공증이 없는 ad-hoc 배포입니다. 따라서 앱은 새 DMG의 다운로드와 SHA-256 검증, DMG 열기까지만 수행합니다. 자동 종료, Applications 교체, 자동 재시작은 릴리즈 기능으로 제공하거나 성공했다고 표현하지 않습니다.
+현재 빌드는 팀 내부 공유를 위한 Developer ID 서명과 Apple 공증이 없는 ad-hoc 배포입니다. 따라서 인터넷에서 내려받은 앱은 첫 실행 때 Gatekeeper의 “Apple은 악성 코드가 없음을 확인할 수 없습니다” 경고로 차단되는 것이 정상입니다. 앱은 새 DMG의 다운로드와 SHA-256 검증, DMG 열기까지만 수행합니다. 자동 종료, Applications 교체, 자동 재시작은 릴리즈 기능으로 제공하거나 성공했다고 표현하지 않습니다.
+
+팀원이 출처와 SHA-256을 확인한 뒤 처음 실행할 때는 앱을 한 번 실행해 경고를 발생시키고, `시스템 설정 → 개인정보 보호 및 보안 → 확인 없이 열기`를 선택한 다음 다시 나타나는 경고에서 `열기`를 선택합니다. 이는 Apple이 안내하는 unsigned·미공증 앱의 예외 승인 절차입니다. Control-click만으로 열린다고 안내하지 않습니다. [Apple: Open apps safely on your Mac](https://support.apple.com/102445)
 
 미서명·미공증 빌드를 배포할 때는 모든 공개 설치 안내에 Apple 공식 첫 실행 절차를 반드시 제공합니다. 사용자가 Applications의 DocPilot을 한 번 실행해 차단 상태를 만든 다음 `시스템 설정 → 개인정보 보호 및 보안 → 확인 없이 열기`를 누르고, 다시 나타난 경고에서 `열기`를 선택하도록 안내합니다. `xattr`, `spctl --master-disable` 또는 Gatekeeper 전체 비활성화 같은 터미널 우회 방법은 제공하지 않습니다.
 
@@ -90,6 +92,7 @@ npm run check:ui:quiet
 npm audit --audit-level=low
 npm run build
 node scripts/check-packaged-app.js
+npm run check:distribution
 DOCPILOT_ELECTRON_EXECUTABLE='dist/package/mac/DocPilot.app/Contents/MacOS/DocPilot' npm run check:terminal:create
 ```
 
@@ -97,7 +100,18 @@ DOCPILOT_ELECTRON_EXECUTABLE='dist/package/mac/DocPilot.app/Contents/MacOS/DocPi
 
 마지막 명령은 패키지 내부 `node-pty`가 실제 `app.asar.unpacked`의 `spawn-helper`로 셸을 생성하는지 확인하므로 생략하지 않습니다. 가능하면 Intel 호스트에서 x64, Apple Silicon 호스트에서 arm64 packaged smoke를 각각 실행합니다. DMG별 SHA-256을 릴리즈 노트에 기록합니다.
 
-서명 게이트는 현재 `codesign --verify --deep --strict`로 ad-hoc signature의 구조적 무결성을 확인합니다. Developer ID identity, hardened runtime과 notarization이 준비되지 않은 상태에서 Sparkle, Squirrel, `electron-updater`, `quitAndInstall()` 기반 자동 설치로 전환하지 않습니다.
+`check:distribution`은 `codesign --verify` 성공만으로 설치 가능하다고 판정하지 않습니다. unsigned 모드에서는 x64/arm64 앱이 `Signature=adhoc`, `TeamIdentifier=not set`인지, macOS의 `syspolicy_check distribution` 평가가 실제 배포 불가인지, DMG에 공증 티켓이 없는지 확인합니다. `syspolicy_check`가 없는 구형 macOS에서는 Gatekeeper `spctl` 평가가 `rejected`인지 확인합니다. 또한 공개 매뉴얼과 이 문서에 `시스템 설정 → 개인정보 보호 및 보안 → 확인 없이 열기` 절차가 없으면 실패합니다.
+
+서명 게이트의 의미는 다음과 같이 구분합니다.
+
+| 검사 | 의미 | unsigned 팀 배포 기대값 |
+|---|---|---|
+| `codesign --verify --deep --strict` | 앱 번들이 패키징 뒤 변조되거나 깨지지 않았는가 | 통과 |
+| `codesign --display --verbose=4` | 신뢰 가능한 배포 주체가 서명했는가 | `adhoc`, Team ID 없음 |
+| `syspolicy_check distribution` (`spctl` fallback) | macOS가 일반 다운로드 앱으로 배포 가능한 상태로 판단하는가 | `Notary Ticket Missing`/배포 불가 (`rejected`) |
+| `xcrun stapler validate` | Apple 공증 티켓이 붙어 있는가 | 티켓 없음 |
+
+팀 내부 unsigned 배포에서 Gatekeeper 경고 자체를 결함 없이 제거할 수 있다고 표현하지 않습니다. 경고 없는 일반 실행이 요구사항으로 바뀌면 릴리즈를 중단하고 Apple Developer Program의 Developer ID Application 서명, hardened runtime, Apple 공증과 stapling을 준비한 뒤 `DOCPILOT_DISTRIBUTION_MODE=notarized npm run check:distribution`이 통과해야 합니다. Developer ID identity, hardened runtime과 notarization이 준비되지 않은 상태에서 Sparkle, Squirrel, `electron-updater`, `quitAndInstall()` 기반 자동 설치로 전환하지 않습니다.
 
 ## 5. 병합, 태그와 GitHub Release
 
@@ -138,6 +152,8 @@ npm run manual:verify:public
 이후 두 아키텍처 중 현재 Mac에 맞는 DMG를 공개 매뉴얼에서 실제로 내려받아 다음을 확인합니다.
 
 - DMG 안의 About/bundle version이 Latest Release tag와 같은가
+- 브라우저로 새로 내려받은 앱의 첫 실행이 Gatekeeper에 차단되는가
+- 차단 직후 `시스템 설정 → 개인정보 보호 및 보안 → 확인 없이 열기 → 열기`로 최초 1회 승인할 수 있는가
 - New terminal이 기본 로그인 셸을 생성하는가
 - 설치 화면과 Dock 아이콘 바깥쪽에 검은 사각 배경이 없는가
 - Finder와 DMG 설치 화면의 앱 아이콘 바깥쪽에 불필요한 밝은 림이나 외곽 그림자가 없는가
@@ -156,3 +172,24 @@ npm run manual:verify:public
 ```
 
 앱 릴리즈 자체의 문제라면 Vercel만 되돌려 숨기지 않고 새 patch release를 준비합니다.
+
+## 9. 2.0.5 Gatekeeper 회귀 사후 기록
+
+### 증상
+
+Vercel 매뉴얼에서 2.0.5 DMG를 내려받아 Applications에 복사한 뒤 실행하면 macOS가 “Apple은 `DocPilot.app`에 사용자의 Mac에 손상을 입히거나 사용자의 개인정보에 침입할 수 있는 악성 코드가 없음을 확인할 수 없습니다”라고 표시하고 실행을 차단했습니다.
+
+### 원인
+
+- 빌드는 의도한 대로 ad-hoc 서명됐고 Developer ID 및 공증 티켓은 없었습니다. 따라서 인터넷 다운로드 quarantine이 붙은 앱을 Gatekeeper가 차단한 것은 정상 동작입니다.
+- 기존 패키지 게이트는 `codesign --verify --deep --strict` 통과를 확인했지만, 이것은 구조적 무결성 검사일 뿐 Gatekeeper 신뢰 검사가 아닙니다.
+- 릴리즈 검증은 DMG hash, bundle version, 아이콘과 패키지 실행을 확인했지만 브라우저에서 새로 내려받아 quarantine이 적용된 최초 실행 경로를 확인하지 않았습니다.
+- 릴리즈 노트의 Control-click 안내는 최신 macOS의 공식 `시스템 설정 → 개인정보 보호 및 보안 → 확인 없이 열기` 경로와 일치하지 않았습니다.
+
+### 재발 방지
+
+1. `npm run build` 직후 `npm run check:distribution`을 필수로 실행합니다.
+2. unsigned 모드의 `syspolicy_check` 배포 불가(`spctl rejected`)는 예상된 사용자 경험으로 기록하되, 정확한 최초 1회 승인 안내가 없으면 릴리즈를 중단합니다.
+3. `codesign` 구조 검증, Gatekeeper 평가와 notarization ticket 검증을 서로 대체하지 않습니다.
+4. Vercel Preview 승인 전에 실제 브라우저 다운로드 → DMG 복사 → 첫 실행 차단 → 시스템 설정 승인 흐름을 사람이 확인합니다.
+5. 경고 없는 실행을 완료 조건으로 삼는 릴리즈는 unsigned 모드로 게시하지 않습니다.

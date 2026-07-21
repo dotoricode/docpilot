@@ -23,6 +23,7 @@
     "check:markdown-document": "npm run renderer:build && DOCPILOT_TEST_HIDDEN_WINDOWS=1 node scripts/check-react-markdown-document.js",
     "check:markdown-keyboard-layout": "npm run renderer:build && DOCPILOT_TEST_HIDDEN_WINDOWS=1 node scripts/check-react-markdown-document-keyboard-layout.js",
     "check:renderer-security": "npm run renderer:build && DOCPILOT_TEST_HIDDEN_WINDOWS=1 node scripts/check-react-asciidoc-security.js",
+    "check:distribution": "node scripts/check-macos-distribution.js",
     "manual:verify": "node scripts/check-manual-v2-orca-parity.mjs && node scripts/check-manual-v2-changelog-evidence.mjs && node scripts/check-manual-v2-demo-playback.mjs && npm --prefix prototypes/manual-v2 run build",
     "manual:pages:stage": "npm --prefix prototypes/manual-v2 run build:pages && rsync -a prototypes/manual-v2/dist/ docs/",
     "manual:vercel:link": "npx --yes vercel@56.3.1 link --yes --project docpilot-manual --scope wpfhks-projects",
