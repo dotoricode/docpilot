@@ -61,6 +61,10 @@ async function main() {
     await page.getByRole('button', { name: 'Agent Copy' }).click();
     await page.waitForSelector('.markdown-preview p');
 
+    if (!(await page.locator('.terminal-xterm-host .xterm').count())) {
+      await page.locator('.terminal-empty-primary').click();
+      await page.waitForSelector('.terminal-xterm-host .xterm');
+    }
     const terminalFont = await page.locator('.terminal-xterm-host .xterm').evaluate(node => getComputedStyle(node).fontFamily);
     if (!/MesloLGS NF|Nerd Font|Symbols Nerd Font/i.test(terminalFont)) {
       throw new Error(`terminal must expose a Nerd Font fallback, got: ${terminalFont}`);

@@ -225,11 +225,11 @@ const guidePages = {
     shortcuts: [
       ['Cmd/Ctrl+O', '파일 열기'], ['Cmd/Ctrl+Shift+O', '프로젝트 폴더 열기'], ['Cmd/Ctrl+S', '현재 문서 저장'],
       ['Cmd/Ctrl+P', '빠른 열기'], ['Cmd/Ctrl+Shift+F', '프로젝트 검색'], ['Cmd/Ctrl+F', '현재 편집기 또는 Preview 찾기'],
-      ['Cmd/Ctrl+Shift+P', '편집기 명령 팔레트'], ['Cmd/Ctrl+D', '현재 문서 좌우 분할'], ['Cmd/Ctrl+Shift+D', '현재 문서 상하 분할'],
+      ['Cmd/Ctrl+Shift+P', '편집기 명령 팔레트'], ['Cmd/Ctrl+D', '현재 문서 또는 터미널 좌우 분할'], ['Cmd/Ctrl+Shift+D', '현재 문서 또는 터미널 상하 분할'],
       ['Cmd/Ctrl+W', '활성 문서 탭 닫기'], ['Alt+방향키', '포커스된 Workbench Pane 이동'],
     ],
     sections: [
-      { id: 'scope', title: '단축키 범위', kind: 'list', items: ['현재 포커스가 Source인지 Preview인지에 따라 Cmd/Ctrl+F의 대상이 달라집니다.', '빠른 열기가 열려 있을 때 분할 단축키를 사용하면 선택한 결과를 분할로 엽니다.'] },
+      { id: 'scope', title: '단축키 범위', kind: 'list', items: ['현재 포커스가 Source인지 Preview인지에 따라 Cmd/Ctrl+F의 대상이 달라집니다.', '터미널 Pane에 포커스가 있으면 분할 단축키가 터미널을 좌우 또는 상하로 나눕니다.', '빠른 열기가 열려 있을 때 분할 단축키를 사용하면 선택한 결과를 분할로 엽니다.'] },
       { id: 'conflict', title: '충돌할 때', kind: 'notes', items: ['운영체제 또는 입력기 단축키가 먼저 실행되면 시스템 설정을 확인하세요.', '메뉴의 단축키 표시는 현재 플랫폼 기준입니다.'] },
     ],
     related: ['find/quick-open', 'workspace/tabs-panes-splits'],

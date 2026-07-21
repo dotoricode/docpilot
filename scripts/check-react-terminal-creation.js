@@ -176,13 +176,21 @@ async function main() {
 
     let createResponse;
     let deleteResponse;
+    const createResponses = [];
+    const deleteResponses = [];
     const terminalInputs = [];
     const terminalResizes = [];
     editor.on('response', response => {
       const method = response.request().method();
       const pathname = new URL(response.url()).pathname;
-      if (method === 'POST' && pathname === '/terminal-sessions') createResponse = response;
-      if (method === 'DELETE' && pathname.startsWith('/terminal-sessions/')) deleteResponse = response;
+      if (method === 'POST' && pathname === '/terminal-sessions') {
+        createResponse = response;
+        createResponses.push(response);
+      }
+      if (method === 'DELETE' && pathname.startsWith('/terminal-sessions/')) {
+        deleteResponse = response;
+        deleteResponses.push(response);
+      }
       if (method === 'POST' && /\/terminal-sessions\/[^/]+\/input$/.test(pathname)) {
         terminalInputs.push(response.request().postDataJSON());
       }
@@ -233,6 +241,26 @@ async function main() {
       'Shift+Enter must send one modified-Enter sequence so terminal TUIs insert a newline without submitting',
     );
 
+    await editor.keyboard.press('Meta+d');
+    await editor.waitForFunction(() => document.querySelectorAll('.terminal-view').length === 2);
+    assert.equal(createResponses.length, 2, 'Cmd+D in a focused terminal must create exactly one additional terminal session');
+    assert.equal(await editor.locator('.terminal-view-layout').getAttribute('data-split-orientation'), 'horizontal', 'Cmd+D must split the terminal side by side');
+    assert.equal(await editor.locator('.terminal-xterm-host').count(), 2, 'terminal split must render two live xterm hosts');
+    assert.equal(await editor.locator('.file-tab-pane[data-pane="secondary"] .file-tab').count(), 0, 'terminal Cmd+D must not split the document pane');
+    const horizontalViews = await editor.locator('.terminal-view').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect()));
+    assert(Math.abs(horizontalViews[0].width - horizontalViews[1].width) <= 4, `horizontal terminal split must share width evenly: ${JSON.stringify(horizontalViews)}`);
+
+    await editor.locator('.terminal-view.active .xterm-helper-textarea').focus();
+    await editor.keyboard.press('Meta+Shift+d');
+    await editor.waitForFunction(() => document.querySelector('.terminal-view-layout')?.getAttribute('data-split-orientation') === 'vertical');
+    assert.equal(createResponses.length, 2, 'Cmd+Shift+D on an existing split must change direction without leaking another session');
+    const verticalViews = await editor.locator('.terminal-view').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect()));
+    assert(Math.abs(verticalViews[0].height - verticalViews[1].height) <= 4, `vertical terminal split must share height evenly: ${JSON.stringify(verticalViews)}`);
+
+    await editor.getByRole('button', { name: 'Delete terminal' }).click();
+    await editor.waitForFunction(() => document.querySelectorAll('.terminal-view').length === 1);
+    assert.equal(deleteResponses.length, 1, 'closing the selected split terminal must stop only that terminal session');
+
     await editor.getByRole('button', { name: 'Dock terminal below' }).click();
     await editor.waitForTimeout(300);
     const bottomRows = terminalResizes.at(-1)?.rows || 0;
@@ -266,6 +294,7 @@ async function main() {
     await editor.waitForTimeout(300);
     assert(deleteResponse, 'closing a terminal tab must issue DELETE /terminal-sessions/:id');
     assert.equal(deleteResponse.status(), 200, await deleteResponse.text());
+    assert.equal(deleteResponses.length, 2, 'closing both split terminals must stop both retained sessions');
     assert.equal(
       await editor.locator('.terminal-error:not(:empty)').count(),
       0,
